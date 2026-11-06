@@ -43,3 +43,23 @@ describe("claude code hook", () => {
     expect(hookContext({ session_id: "abcdef12-3456", cwd: "/vault" })).toContain("installed");
   });
 });
+
+describe("skill install", () => {
+  it("links into runtimes that exist, keeps foreign folders, and is idempotent", async () => {
+    const { installSkill, skillSource } = await import("../src/core/skill.js");
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pw-skill-"));
+    const claude = path.join(root, ".claude");
+    const codex = path.join(root, ".codex");
+    fs.mkdirSync(claude);
+    const targets = [
+      { runtime: "claude-code", dir: path.join(claude, "skills"), home: claude },
+      { runtime: "codex", dir: path.join(codex, "skills"), home: codex },
+    ];
+    expect(installSkill(targets).map((r) => r.result)).toEqual(["linked", "skipped"]);
+    expect(fs.realpathSync(path.join(claude, "skills", "parawatch"))).toBe(fs.realpathSync(skillSource()));
+    expect(installSkill(targets)[0]!.result).toBe("already linked");
+    fs.mkdirSync(path.join(codex, "skills", "parawatch"), { recursive: true });
+    expect(installSkill(targets, { only: ["codex"] })[0]!.result).toBe("skipped");
+    expect(installSkill(targets, { only: ["codex"], force: true })[0]!.result).toBe("linked");
+  });
+});

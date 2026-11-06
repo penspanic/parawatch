@@ -8,7 +8,7 @@ It answers three questions from one terminal command:
 - **What is running?** Every agent session, its subagents and its `codex exec` jobs, grouped by project, with what each one is doing right now.
 - **Did my answer reach the agent?** When you answer a card, the agent waiting on it wakes up. You do not go back to the chat to say "I decided".
 
-parawatch is a CLI first. Agents use the CLI, you use the CLI, and editor plugins (an Obsidian plugin is planned as a separate package) use the CLI too. There is no GUI and no server.
+parawatch is a CLI first. Agents use the CLI, you use the CLI, and editor plugins use the CLI too. There is no server. The [Obsidian plugin](plugins/obsidian/README.md) in this repository is a side panel on top of it.
 
 ```
 $ parawatch status
@@ -34,9 +34,12 @@ One line per item, always inside the terminal width. Finished subagents fold int
 
 ```
 npm install -g parawatch
+parawatch skill install
 ```
 
 Node 20 or newer. macOS and Linux.
+
+`parawatch skill install` links the agent skill in this repository ([`skills/parawatch`](skills/parawatch/SKILL.md)) into `~/.claude/skills` and `~/.codex/skills`, so Claude Code and Codex agents learn the protocol on their own. The repository copy is the source; the installed skill is a link to it, so updating parawatch updates the skill.
 
 ## Concepts
 
@@ -92,6 +95,12 @@ parawatch close c4 -n "used the top box"
 
 `wait` prints the answers and exits with code 0. With `--timeout <seconds>` it exits with code 2 when nothing came. An answer given before `wait` starts is not lost: each consumer has its own cursor, and `wait` returns everything after it.
 
+### Agent skill
+
+[`skills/parawatch/SKILL.md`](skills/parawatch/SKILL.md) teaches an agent the whole protocol: claiming its session, writing a good card, keeping one background wait armed, closing cards, declaring long jobs, and who asks the human when a lead runs workers. Install it with `parawatch skill install` (see [Install](#install)); `parawatch skill path` prints where it lives, for runtimes that load skills from elsewhere.
+
+`claim` and `run start` pick up the calling session from `$CLAUDE_CODE_SESSION_ID` (or `$CODEX_THREAD_ID`), so an agent can put itself on the board without knowing its id.
+
 ### Waking a Claude Code session
 
 Claude Code re-invokes a session when one of its background commands exits. So an agent that runs `parawatch wait -p <project>` as a background command is woken by your answer, with the answer as the command's output.
@@ -140,6 +149,8 @@ interface Adapter {
 It reads only, reads only files touched since `sinceMs`, and reads only the head and tail of large logs.
 
 ## Plugins and dashboards
+
+The Obsidian plugin lives in [`plugins/obsidian`](plugins/obsidian/README.md). Anything else can build on the same two commands:
 
 ```
 parawatch status --json          # one snapshot: projects, cards, runs

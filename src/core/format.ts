@@ -89,7 +89,7 @@ function pad(s: string, n: number): string {
 export function clean(s: string): string {
   return s
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/\*\*|__|`/g, "")
+    .replace(/\*\*|`/g, "")
     .replace(/^\s*(?:[-*>]|#+)\s+/gm, "")
     .replace(/\s+/g, " ")
     .trim();

@@ -23,6 +23,7 @@ import { fold } from "../core/state.js";
 import { collectRuns } from "../core/runs.js";
 import { cardDetail, cardRows, inboxLine, runsTree, view } from "../core/format.js";
 import { hookContext, notify, writeInstructions } from "../core/integrate.js";
+import { installSkill, skillSource, skillTargets } from "../core/skill.js";
 import { SCHEMA_VERSION, type Card } from "../core/types.js";
 
 const collect = (v: string, prev: string[] = []) => [...prev, v];
@@ -32,6 +33,11 @@ const int = (v: string) => {
   return n;
 };
 const print = (x: unknown) => process.stdout.write(JSON.stringify(x) + "\n");
+
+/** The agent session running this command, when its runtime says so. */
+function currentSession(): string | undefined {
+  return process.env.CLAUDE_CODE_SESSION_ID || process.env.CODEX_THREAD_ID || undefined;
+}
 
 const program = new Command();
 program
@@ -221,9 +227,9 @@ run
   .command("start <title>")
   .requiredOption("-p, --project <name>", "project")
   .option("-t, --task <task>", "task")
-  .option("--parent <id>", "the run that started this one")
+  .option("--parent <id>", "the run that started this one (defaults to the calling session)")
   .action((title: string, o) => {
-    process.stdout.write(startRun({ title, project: o.project, task: o.task, parent: o.parent }) + "\n");
+    process.stdout.write(startRun({ title, project: o.project, task: o.task, parent: o.parent ?? currentSession() }) + "\n");
   });
 run.command("note <id> <text>").action((id: string, text: string) => noteRun(id, text));
 run
@@ -233,13 +239,18 @@ run
   .action((id: string, o) => endRun(id, o.failed ? "failed" : "done", o.note));
 
 program
-  .command("claim <session>")
-  .description("say which project an observed agent session belongs to (id prefix, 6+ characters)")
+  .command("claim [session]")
+  .description("say which project an agent session belongs to (id prefix, 6+ characters; defaults to the calling session)")
   .requiredOption("-p, --project <name>", "project")
   .option("-t, --task <task>", "task")
   .option("--role <role>", "for example lead or worker")
   .option("--title <title>", "name to show")
-  .action((session: string, o) => claimSession({ session, project: o.project, task: o.task, role: o.role, title: o.title }));
+  .action((session: string | undefined, o) => {
+    const id = session ?? currentSession();
+    if (!id) throw new UserError("no session id given and none found in the environment (CLAUDE_CODE_SESSION_ID, CODEX_THREAD_ID)");
+    claimSession({ session: id, project: o.project, task: o.task, role: o.role, title: o.title });
+    process.stdout.write(`${id.slice(0, 8)} → ${o.project}${o.role ? ` (${o.role})` : ""}\n`);
+  });
 
 // ------------------------------------------------------------------ status
 
@@ -274,6 +285,26 @@ program
     out.push("", head("AGENTS", runs.length ? `${working} working` : "nothing running"));
     if (runs.length) out.push(runsTree(runs, v));
     process.stdout.write(out.join("\n") + "\n");
+  });
+
+// ------------------------------------------------------------------ skill
+
+const skill = program.command("skill").description("the agent skill that teaches agents to use parawatch");
+skill
+  .command("path")
+  .description("print where the skill lives")
+  .action(() => {
+    process.stdout.write(skillSource() + "\n");
+  });
+skill
+  .command("install")
+  .description("link the skill into Claude Code (~/.claude/skills) and Codex (~/.codex/skills)")
+  .option("--runtime <name>", "only this runtime: claude-code or codex (repeatable)", collect)
+  .option("--force", "replace a folder that is already there")
+  .action((o) => {
+    for (const r of installSkill(skillTargets(), { only: o.runtime, force: o.force })) {
+      process.stdout.write(`${r.runtime.padEnd(12)} ${r.result.padEnd(15)} ${r.path}${r.note ? `  (${r.note})` : ""}\n`);
+    }
   });
 
 // ------------------------------------------------------------------ setup

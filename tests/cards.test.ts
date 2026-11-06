@@ -94,3 +94,17 @@ describe("concurrent writers", () => {
     expect(readEvents().map((e) => e.seq)).toEqual([1, 2, 3, 4, 5, 6]);
   }, 30_000);
 });
+
+describe("calling session", () => {
+  it("claim and run start default to the agent session in the environment", async () => {
+    const run = promisify(execFile);
+    const cli = path.resolve("src/bin/cli.ts");
+    const tsx = path.resolve("node_modules/.bin/tsx");
+    const env = { ...process.env, CLAUDE_CODE_SESSION_ID: "abcdef12-0000-4000-8000-000000000001" };
+    await run(tsx, [cli, "claim", "-p", "demo", "--role", "lead"], { env });
+    const { stdout } = await run(tsx, [cli, "run", "start", "-p", "demo", "CI"], { env });
+    const state = fold(readEvents());
+    expect(state.claims[0]).toMatchObject({ session: "abcdef12-0000-4000-8000-000000000001", project: "demo", role: "lead" });
+    expect(state.runs.get(stdout.trim())?.parent).toBe("abcdef12-0000-4000-8000-000000000001");
+  }, 30_000);
+});

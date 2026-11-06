@@ -1,0 +1,465 @@
+/* Parawatch side panel. Colors come from the active Obsidian theme. */
+
+.pw-panel {
+  --pw-gap: 10px;
+  --pw-radius: var(--radius-m, 8px);
+  --pw-decide: var(--color-yellow, #d9a400);
+  --pw-try: var(--color-cyan, #1a9fb3);
+  --pw-block: var(--color-red, #d64545);
+  --pw-working: var(--color-green, #2e9e5b);
+  --pw-waiting: var(--color-yellow, #d9a400);
+  --pw-bad: var(--color-red, #d64545);
+  font-size: var(--font-ui-small, 13px);
+  padding: 4px 2px 24px;
+}
+
+/* ---------------------------------------------------------------- head */
+
+.pw-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px 8px;
+}
+.pw-summary-need {
+  font-weight: var(--font-semibold, 600);
+  color: var(--text-normal);
+}
+.pw-summary-need.is-urgent {
+  color: var(--text-accent);
+}
+.pw-summary-sep,
+.pw-summary-agents {
+  color: var(--text-muted);
+}
+.pw-icon-btn {
+  margin-left: auto;
+}
+
+.pw-error {
+  border: 1px solid var(--pw-bad);
+  border-radius: var(--pw-radius);
+  padding: 8px 10px;
+  margin: 0 0 var(--pw-gap);
+  background: color-mix(in srgb, var(--pw-bad) 8%, transparent);
+}
+.pw-error-title {
+  font-weight: var(--font-semibold, 600);
+}
+.pw-error-text {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller, 12px);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 4px 0;
+}
+.pw-error-hint {
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------- sections */
+
+.pw-section {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 14px 4px 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: var(--font-ui-smaller, 12px);
+  color: var(--text-muted);
+}
+.pw-section-title {
+  font-weight: var(--font-semibold, 600);
+}
+.pw-section-count {
+  color: var(--text-faint);
+}
+.pw-empty {
+  color: var(--text-faint);
+  padding: 4px 4px 2px;
+}
+
+/* ---------------------------------------------------------------- cards */
+
+.pw-card {
+  position: relative;
+  border: 1px solid var(--background-modifier-border);
+  border-left: 3px solid var(--pw-accent, var(--background-modifier-border));
+  border-radius: var(--pw-radius);
+  background: var(--background-primary);
+  padding: 9px 10px 10px;
+  margin: 0 0 var(--pw-gap);
+}
+.pw-card-decide {
+  --pw-accent: var(--pw-decide);
+}
+.pw-card-try {
+  --pw-accent: var(--pw-try);
+}
+.pw-card-block {
+  --pw-accent: var(--pw-block);
+}
+.pw-card-answered {
+  --pw-accent: var(--text-faint);
+  background: transparent;
+  padding: 7px 10px;
+}
+.pw-card-answered .pw-card-title {
+  color: var(--text-muted);
+  font-weight: var(--font-normal, 400);
+}
+.pw-card.is-busy {
+  opacity: 0.6;
+}
+.pw-card.is-drop {
+  outline: 2px dashed var(--interactive-accent);
+  outline-offset: 2px;
+}
+
+.pw-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: var(--font-ui-smaller, 12px);
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+.pw-kind {
+  font-weight: var(--font-semibold, 600);
+  color: var(--pw-accent);
+}
+.pw-card-answered .pw-kind {
+  color: var(--text-faint);
+}
+.pw-card-project {
+  color: var(--text-normal);
+}
+.pw-card-age {
+  margin-left: auto;
+}
+.pw-card-id {
+  font-family: var(--font-monospace);
+  color: var(--text-faint);
+}
+.pw-card-title {
+  font-weight: var(--font-semibold, 600);
+  color: var(--text-normal);
+  font-size: var(--font-ui-medium, 14px);
+  line-height: 1.35;
+}
+.pw-card-body {
+  color: var(--text-normal);
+  margin-top: 4px;
+  line-height: 1.45;
+}
+.pw-card-body > :first-child {
+  margin-top: 0;
+}
+.pw-card-body > :last-child {
+  margin-bottom: 0;
+}
+.pw-look {
+  margin-top: 6px;
+  display: flex;
+  gap: 6px;
+}
+.pw-look-label {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.pw-from,
+.pw-comments {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller, 12px);
+}
+.pw-comment.pw-by-human {
+  color: var(--text-normal);
+}
+.pw-answer {
+  margin-top: 3px;
+  color: var(--text-muted);
+}
+
+.pw-opens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.pw-open-btn,
+.pw-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+}
+.pw-open-btn span:last-child,
+.pw-file span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pw-btn-icon {
+  display: inline-flex;
+}
+.pw-btn-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.pw-media {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+.pw-media-item {
+  min-width: 0;
+}
+.pw-media-img,
+.pw-media-video {
+  display: block;
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border-radius: var(--radius-s, 4px);
+  background: var(--background-secondary);
+}
+.pw-media-img {
+  cursor: zoom-in;
+}
+
+/* ---------------------------------------------------------------- reply */
+
+.pw-reply {
+  margin-top: 10px;
+}
+.pw-options {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+.pw-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: auto;
+  min-height: 32px;
+  padding: 6px 10px;
+  text-align: left;
+  white-space: normal;
+  justify-content: flex-start;
+}
+.pw-option-n {
+  font-family: var(--font-monospace);
+  color: var(--text-muted);
+}
+.pw-option-text {
+  flex: 1;
+  line-height: 1.35;
+}
+.pw-option-rec {
+  font-size: var(--font-ui-smaller, 12px);
+  color: var(--pw-decide);
+  font-weight: var(--font-semibold, 600);
+}
+.pw-option.is-recommended {
+  border: 1px solid color-mix(in srgb, var(--pw-decide) 60%, transparent);
+}
+
+.pw-note {
+  width: 100%;
+  resize: none;
+  height: 32px;
+  min-height: 32px;
+  font-size: var(--font-ui-small, 13px);
+  transition: height 120ms ease;
+}
+.pw-note:focus,
+.pw-reply.has-draft .pw-note {
+  height: 64px;
+  resize: vertical;
+}
+.pw-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.pw-chips:empty {
+  display: none;
+}
+.pw-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 4px 1px 8px;
+  border-radius: 999px;
+  background: var(--background-modifier-hover);
+  font-size: var(--font-ui-smaller, 12px);
+  max-width: 100%;
+}
+.pw-chip-x {
+  all: unset;
+  cursor: pointer;
+  padding: 0 4px;
+  color: var(--text-muted);
+}
+.pw-reply:focus-within .pw-reply-hint {
+  display: block;
+}
+.pw-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
+}
+.pw-reply-hint {
+  display: none;
+  margin-top: 5px;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller, 12px);
+}
+
+/* ---------------------------------------------------------------- agents */
+
+.pw-group {
+  margin: 0 0 12px;
+}
+.pw-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 4px 3px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  margin-bottom: 2px;
+}
+.pw-group-name {
+  font-weight: var(--font-semibold, 600);
+  color: var(--text-normal);
+}
+.pw-group-hint {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller, 12px);
+}
+
+.pw-run {
+  --pw-indent: calc(var(--pw-depth, 0) * 16px);
+  position: relative;
+  padding: 4px 4px 4px calc(4px + var(--pw-indent));
+  border-radius: var(--radius-s, 4px);
+}
+.pw-run:hover {
+  background: var(--background-modifier-hover);
+}
+.pw-run.is-child::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--pw-indent) - 8px);
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--background-modifier-border);
+}
+.pw-run-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.pw-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+.pw-state-working .pw-dot {
+  background: var(--pw-working);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pw-working) 20%, transparent);
+}
+.pw-state-waiting .pw-dot {
+  background: var(--pw-waiting);
+}
+.pw-state-stalled .pw-dot,
+.pw-state-failed .pw-dot {
+  background: var(--pw-bad);
+}
+.pw-state-idle .pw-dot,
+.pw-state-done .pw-dot,
+.pw-fold .pw-dot {
+  background: transparent;
+  border: 1.5px solid var(--text-faint);
+}
+.pw-run-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-normal);
+}
+.pw-run.is-lead .pw-run-title {
+  font-weight: var(--font-semibold, 600);
+}
+.pw-state-done .pw-run-title,
+.pw-state-idle:not(.is-lead) .pw-run-title,
+.pw-fold .pw-run-title {
+  color: var(--text-muted);
+}
+.pw-run-role {
+  font-size: var(--font-ui-smaller, 12px);
+  color: var(--text-faint);
+}
+.pw-run-age {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller, 12px);
+  min-width: 3ch;
+  text-align: right;
+}
+.pw-run-action {
+  margin: 1px 0 0 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller, 12px);
+}
+.pw-state-stalled .pw-run-action,
+.pw-state-failed .pw-run-action {
+  color: var(--pw-bad);
+}
+.pw-fold {
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------- status bar */
+
+.pw-statusbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.pw-statusbar-icon {
+  display: inline-flex;
+}
+.pw-statusbar-icon svg {
+  width: 13px;
+  height: 13px;
+}
+.pw-statusbar.is-urgent {
+  color: var(--text-accent);
+  font-weight: var(--font-semibold, 600);
+}
+.pw-statusbar.is-error {
+  color: var(--text-error);
+}
+.pw-notice {
+  cursor: pointer;
+  white-space: pre-line;
+}

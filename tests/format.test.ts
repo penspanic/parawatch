@@ -2,27 +2,29 @@ import { describe, expect, it } from "vitest";
 import { cardRows, clean, fit, runsTree, textWidth, type View } from "../src/core/format.js";
 import type { Card, Run } from "../src/core/types.js";
 
+// Hangul syllables, written as escapes so the source stays ASCII. Each takes two terminal columns.
+const WIDE = "\uAC00\uB098\uB2E4\uB77C";
 const v = (width: number, extra: Partial<View> = {}): View => ({ color: false, width, wide: false, all: false, ...extra });
 const now = Date.parse("2026-11-07T03:00:00Z");
 const at = (minAgo: number) => new Date(now - minAgo * 60_000).toISOString();
 const run = (id: string, extra: Partial<Run> = {}): Run => ({ id, runtime: "claude-code", kind: "session", title: id, state: "working", lastActivity: at(0), ...extra });
 
 describe("terminal text", () => {
-  it("counts Korean and CJK as two columns", () => {
+  it("counts CJK as two columns", () => {
     expect(textWidth("abc")).toBe(3);
-    expect(textWidth("구슬")).toBe(4);
-    expect(textWidth(fit("옆에서 보는 유리통", 9))).toBeLessThanOrEqual(9);
+    expect(textWidth(WIDE)).toBe(8);
+    expect(textWidth(fit(`${WIDE} ${WIDE} ${WIDE}`, 9))).toBeLessThanOrEqual(9);
     expect(fit("short", 10)).toBe("short");
   });
 
   it("turns an agent message into one plain line", () => {
-    expect(clean("- **원인**: 통에 `n` 이\n\n[결과](a.md) 참고")).toBe("원인: 통에 n 이 결과 참고");
+    expect(clean("- **Cause**: the tank holds `n` marbles\n\n[result](a.md) attached")).toBe("Cause: the tank holds n marbles result attached");
   });
 });
 
 describe("runs tree", () => {
   const runs: Run[] = [
-    run("lead-1", { project: "game", role: "lead", title: "Game Director", state: "idle", action: "**Done.** 다음은 구슬을 더 넣는 것입니다. ".repeat(5) }),
+    run("lead-1", { project: "game", role: "lead", title: "Game Director", state: "idle", action: `**Done.** ${WIDE} more marbles next. `.repeat(5) }),
     run("sub-1", { project: "game", kind: "subagent", parent: "lead-1", title: "139 shake", action: "Bash: npm test" }),
     run("sub-2", { project: "game", kind: "subagent", parent: "lead-1", title: "137 tank", state: "done", lastActivity: at(30) }),
     run("sub-3", { project: "game", kind: "subagent", parent: "lead-1", title: "136 cup", state: "done", lastActivity: at(40) }),
@@ -61,7 +63,7 @@ describe("runs tree", () => {
 describe("card rows", () => {
   it("aligns ids, kinds and projects and stays inside the terminal", () => {
     const card = (id: string, kind: Card["kind"], project: string, title: string): Card => ({ id, kind, project, title, openedAt: at(5), status: "open", answers: [], comments: [] });
-    const rows = cardRows([card("c1", "decide", "game", "Which ending?"), card("c12", "block", "app", "아이패드 시뮬레이터 런타임을 설치해 주세요 ".repeat(4))], v(70), now);
+    const rows = cardRows([card("c1", "decide", "game", "Which ending?"), card("c12", "block", "app", `Install the simulator runtime ${WIDE} `.repeat(4))], v(70), now);
     for (const r of rows) expect(textWidth(r)).toBeLessThanOrEqual(70);
     expect(rows[0]!.indexOf("decide")).toBe(rows[1]!.indexOf("blocked"));
   });

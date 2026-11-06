@@ -14,7 +14,9 @@ export function instructions(project?: string): string {
   return `${BEGIN}
 ## Parawatch
 
-The human follows this work through \`parawatch\`. Use it instead of asking in chat.
+The human follows this work through \`parawatch\`. Use it instead of asking in chat. If a \`parawatch\` skill is available, follow it.
+
+- At the start of a session: \`parawatch claim --project ${p}\` (add \`--role lead\` if you lead this project).
 
 - Need a decision: \`parawatch ask --project ${p} "question" --option "..." --option "..." --recommend N --body "two or three lines"\`
 - Need the human to try something (a build, a video, a screen): \`parawatch try --project ${p} "title" --open <app or file> --attach <video or image> --look "what to look at"\`
