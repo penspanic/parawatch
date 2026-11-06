@@ -15,7 +15,18 @@ interface Draft {
   attach: string[];
 }
 
-const KIND_LABEL: Record<Card["kind"], string> = { decide: "Decide", try: "Try", block: "Blocked" };
+const KIND_LABEL: Record<Card["kind"], string> = { decide: "Decide", try: "Try", block: "Blocked", todo: "To do" };
+const KIND_ORDER: Card["kind"][] = ["block", "decide", "try", "todo"];
+const DAY = 24 * 60 * 60 * 1000;
+
+/** When the matter came up: `since` when it is older than the card, else when the card opened. */
+function cardStart(c: Card): string {
+  return c.since && c.since < c.openedAt ? c.since : c.openedAt;
+}
+
+function shortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
 const STATE_LABEL: Record<Run["state"], string> = {
   working: "working",
   waiting: "waiting",
@@ -98,11 +109,16 @@ export class Panel {
     const h = this.head;
     h.replaceChildren();
     const s = this.snapshot;
-    const open = s?.cards.filter((c) => c.status === "open").length ?? 0;
+    const open = s?.cards.filter((c) => c.status === "open" && c.kind !== "todo").length ?? 0;
+    const todo = s?.cards.filter((c) => c.status === "open" && c.kind === "todo").length ?? 0;
     const working = s?.runs.filter((r) => r.state === "working" || r.state === "waiting").length ?? 0;
     const line = el("div", "pw-summary", undefined, h);
     const need = el("span", open ? "pw-summary-need is-urgent" : "pw-summary-need", open ? `${open} need${open === 1 ? "s" : ""} you` : "Nothing needs you", line);
     need.setAttribute("aria-live", "polite");
+    if (todo) {
+      el("span", "pw-summary-sep", "·", line);
+      el("span", "pw-summary-todo", `${todo} to do`, line);
+    }
     el("span", "pw-summary-sep", "·", line);
     el("span", "pw-summary-agents", `${working} working`, line);
     const btn = el("button", "pw-icon-btn clickable-icon", undefined, line);
@@ -121,7 +137,7 @@ export class Panel {
 
   private signature(): string {
     const cards = this.snapshot?.cards ?? [];
-    return JSON.stringify([cards.map((c) => [c.id, c.status, c.answers.length, c.comments.length]), [...this.busy]]);
+    return JSON.stringify([cards.map((c) => [c.id, c.status, c.kind, c.title, c.since, c.from, c.session, c.answers.length, c.comments.length]), [...this.busy]]);
   }
 
   private renderCards(now: number): void {
@@ -133,10 +149,12 @@ export class Panel {
 
     root.replaceChildren();
     const cards = this.snapshot?.cards ?? [];
-    const open = cards.filter((c) => c.status === "open").sort((a, b) => a.openedAt.localeCompare(b.openedAt));
+    const open = cards
+      .filter((c) => c.status === "open")
+      .sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || cardStart(a).localeCompare(cardStart(b)));
     const answered = cards.filter((c) => c.status === "answered");
 
-    this.section(root, "Needs you", open.length);
+    this.section(root, "Needs you", open.filter((c) => c.kind !== "todo").length);
     if (!open.length) el("div", "pw-empty", this.snapshot ? "Nothing needs you right now." : "Loading…", root);
     // one light section per project, the project with the oldest card first
     const byProject = new Map<string, Card[]>();
@@ -145,13 +163,20 @@ export class Panel {
       byProject.get(c.project)!.push(c);
     }
     for (const [project, list] of byProject) {
-      const kinds = (["decide", "try", "block"] as const)
-        .map((k) => [k, list.filter((c) => c.kind === k).length] as const)
+      const kinds = KIND_ORDER.map((k) => [k, list.filter((c) => c.kind === k).length] as const)
         .filter(([, n]) => n)
         .map(([k, n]) => `${n} ${KIND_LABEL[k].toLowerCase()}`)
         .join(" · ");
-      const body = this.foldGroup(root, `cards:${project}`, project, String(list.length), kinds);
-      for (const c of list) body.appendChild(this.card(c, now));
+      const now_ = list.filter((c) => c.kind !== "todo");
+      const later = list.filter((c) => c.kind === "todo");
+      const body = this.foldGroup(root, `cards:${project}`, project, now_.length ? String(now_.length) : undefined, kinds);
+      for (const c of now_) body.appendChild(this.card(c, now));
+      if (later.length) {
+        // nothing waits on these, so they start folded under a quiet line
+        const todo = this.foldGroup(body, `todo:${project}`, "To do", String(later.length), "nothing waits on these", true);
+        todo.parentElement!.classList.add("pw-todo-group");
+        for (const c of later) todo.appendChild(this.card(c, now));
+      }
     }
 
     if (answered.length) {
@@ -177,7 +202,7 @@ export class Panel {
   }
 
   /** A light, collapsible section; returns the element to put its rows in. */
-  private foldGroup(parent: HTMLElement, key: string, name: string, count?: string, hint?: string): HTMLElement {
+  private foldGroup(parent: HTMLElement, key: string, name: string, count?: string, hint?: string, startCollapsed = false): HTMLElement {
     const box = el("div", "pw-fold-group", undefined, parent);
     const head = el("div", "pw-fold-head", undefined, box);
     head.setAttribute("role", "button");
@@ -188,14 +213,17 @@ export class Panel {
     if (count) el("span", "pw-fold-count", count, head);
     if (hint) el("span", "pw-fold-hint", hint, head);
     const body = el("div", "pw-fold-body", undefined, box);
+    // a group that starts collapsed remembers being opened instead of being closed
+    const stored = startCollapsed ? `open:${key}` : key;
+    const isShut = () => (startCollapsed ? !this.collapsed.has(stored) : this.collapsed.has(stored));
     const apply = () => {
-      const shut = this.collapsed.has(key);
+      const shut = isShut();
       box.classList.toggle("is-collapsed", shut);
       head.setAttribute("aria-expanded", String(!shut));
     };
     const toggle = () => {
-      if (this.collapsed.has(key)) this.collapsed.delete(key);
-      else this.collapsed.add(key);
+      if (this.collapsed.has(stored)) this.collapsed.delete(stored);
+      else this.collapsed.add(stored);
       saveCollapsed(this.collapsed);
       apply();
     };
@@ -215,9 +243,20 @@ export class Panel {
     const head = el("div", "pw-card-head", undefined, box);
     el("span", `pw-kind pw-kind-${c.kind}`, KIND_LABEL[c.kind], head);
     el("span", "pw-card-project", grouped ? (c.task ?? "") : c.project + (c.task ? ` / ${c.task}` : ""), head);
-    const age = el("span", "pw-card-age", ago(c.openedAt, now), head);
-    age.dataset.since = c.openedAt;
-    age.title = new Date(c.openedAt).toLocaleString();
+    const start = cardStart(c);
+    const opened = `Card opened ${new Date(c.openedAt).toLocaleString()}`;
+    if (start !== c.openedAt) {
+      // moved from somewhere else: show when it first came up, not when the card was made
+      const age = el("span", "pw-card-age", `since ${shortDate(start)}`, head);
+      age.title = `First came up ${new Date(start).toLocaleDateString()}\n${opened}`;
+    } else if (now - Date.parse(start) > 2 * DAY) {
+      const age = el("span", "pw-card-age", shortDate(start), head);
+      age.title = opened;
+    } else {
+      const age = el("span", "pw-card-age", ago(start, now), head);
+      age.dataset.since = start;
+      age.title = opened;
+    }
     el("span", "pw-card-id", c.id, head);
   }
 
@@ -248,9 +287,32 @@ export class Panel {
       const log = el("div", "pw-comments", undefined, box);
       for (const m of c.comments) el("div", `pw-comment pw-by-${m.by === "human" ? "human" : "agent"}`, `${m.by === "human" ? "You" : "Agent"}: ${m.text}`, log);
     }
-    if (c.from) el("div", "pw-from", `from ${c.from}`, box);
+    this.fromLine(c, box);
     this.reply(c, box, busy);
     return box;
+  }
+
+  /** Who asked, with a link that opens their session and puts a line about the card on the clipboard. */
+  private fromLine(c: Card, box: HTMLElement): void {
+    if (!c.from && !c.session) return;
+    const row = el("div", "pw-from", undefined, box);
+    el("span", undefined, "from ", row);
+    const who = c.from ?? `session ${c.session!.slice(0, 8)}`;
+    if (!c.session) {
+      el("span", "pw-from-name", who, row);
+      return;
+    }
+    const link = el("a", "pw-from-link", who, row);
+    link.href = "#";
+    link.title = `Open this session in Claude and copy a line about ${c.id} to paste there`;
+    this.host.icon(el("span", "pw-from-icon", undefined, link), "arrow-up-right");
+    link.onclick = (e) => {
+      e.preventDefault();
+      void this.backend
+        .goto(c.id)
+        .then(() => this.host.notice(`Opened ${who}. A line about ${c.id} is on your clipboard; paste it to talk about this card.`))
+        .catch((err) => this.host.notice(err instanceof Error ? err.message : String(err)));
+    };
   }
 
   private reply(c: Card, box: HTMLElement, busy: boolean): void {
@@ -285,7 +347,7 @@ export class Panel {
     const sendNote = el("button", "pw-btn", "Send note", actions);
     let primary: HTMLButtonElement | undefined;
     if (c.kind === "try") primary = el("button", "pw-btn mod-cta", "Looks good", actions);
-    if (c.kind === "block") primary = el("button", "pw-btn mod-cta", "Done", actions);
+    if (c.kind === "block" || c.kind === "todo") primary = el("button", "pw-btn mod-cta", "Done", actions);
     if (c.kind === "decide" && !c.options?.length) {
       sendNote.textContent = "Send";
       sendNote.classList.add("mod-cta");
@@ -446,7 +508,18 @@ export class Panel {
     row.style.setProperty("--pw-depth", String(depth));
     const top = el("div", "pw-run-top", undefined, row);
     el("span", "pw-dot", undefined, top).setAttribute("aria-label", STATE_LABEL[r.state]);
-    el("span", "pw-run-title", r.title, top);
+    const title = el("span", "pw-run-title", r.title, top);
+    if (r.runtime === "claude-code" && r.kind === "session") {
+      title.classList.add("is-link");
+      title.setAttribute("role", "link");
+      title.tabIndex = 0;
+      const go = () =>
+        void this.backend.goto(r.id).catch((err) => this.host.notice(err instanceof Error ? err.message : String(err)));
+      title.onclick = go;
+      title.onkeydown = (e) => {
+        if (e.key === "Enter") go();
+      };
+    }
     if (r.role === "lead") el("span", "pw-run-role", "lead", top);
     el("span", "pw-run-age", ago(r.lastActivity, now), top);
     const what = r.error ? `unreadable: ${r.error}` : clean(r.action);

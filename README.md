@@ -46,7 +46,7 @@ Node 20 or newer. macOS and Linux.
 | | |
 |--|--|
 | **Project** | A name and one or more paths. Git worktrees of a path belong to the project too. |
-| **Card** | Something that needs the human. Three kinds: `decide` (pick an option or write an answer), `try` (open a build, watch a video, look at a screen), `block` (only the human can do it: install, sudo, sign in). |
+| **Card** | Something that needs the human. Four kinds: `decide` (pick an option or write an answer), `try` (open a build, watch a video, look at a screen), `block` (only the human can do it and the agent is stuck until they do: install, sudo, sign in), `todo` (only the human can do it, but nothing waits on it now: check a bill, register a company). A card remembers the session that opened it, and `--since` keeps when the matter first came up when it is older than the card. |
 | **Run** | An agent at work. Most runs are *observed*: parawatch reads the agent's own log. Jobs that leave no log (a bake, a benchmark) can be *declared* with `parawatch run start`. |
 | **Lead** | A role, not a concept of its own. Claim a session with `--role lead` and it shows at the top of its project with its children under it. |
 
@@ -88,10 +88,13 @@ It writes a short block between `<!-- parawatch:begin -->` and `<!-- parawatch:e
 parawatch ask -p game "Which ending?" -o "Side tank" -o "Top box" -r 2 -b "two or three lines"
 parawatch try -p game "Try build 139" --open /path/Game.app --look "does the glass read?"
 parawatch block -p app "Install the iPad simulator runtime"
+parawatch todo -p game "Check the GitHub bill" --since 2026-10-01
 parawatch wait -p game           # run in the background; exits when the human answers
 parawatch comment c4 "baking the top box now"   # a note on the card; does not wake anyone
 parawatch close c4 -n "used the top box"
 ```
+
+`parawatch edit <card>` changes a card after the fact: its kind, wording, task, who asked or `--since`. `parawatch goto <card>` opens the session that asked in the Claude desktop app (`--copy` also puts a line about the card on the clipboard, to paste there); sessions outside the desktop app get the `claude --resume` command instead.
 
 `wait` prints the answers and exits with code 0. With `--timeout <seconds>` it exits with code 2 when nothing came. An answer given before `wait` starts is not lost: each consumer has its own cursor, and `wait` returns everything after it.
 
@@ -99,7 +102,7 @@ parawatch close c4 -n "used the top box"
 
 [`skills/parawatch/SKILL.md`](skills/parawatch/SKILL.md) teaches an agent the whole protocol: claiming its session, writing a good card, keeping one background wait armed, closing cards, declaring long jobs, and who asks the human when a lead runs workers. Install it with `parawatch skill install` (see [Install](#install)); `parawatch skill path` prints where it lives, for runtimes that load skills from elsewhere.
 
-`claim` and `run start` pick up the calling session from `$CLAUDE_CODE_SESSION_ID` (or `$CODEX_THREAD_ID`), so an agent can put itself on the board without knowing its id.
+`claim`, `run start` and every card command pick up the calling session from `$CLAUDE_CODE_SESSION_ID` (or `$CODEX_THREAD_ID`), so an agent can put itself on the board without knowing its id.
 
 ### Waking a Claude Code session
 

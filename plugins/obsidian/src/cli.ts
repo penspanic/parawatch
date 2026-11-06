@@ -62,6 +62,10 @@ export class CliBackend implements Backend {
     return JSON.parse(await this.run(["status", "--json", "--since", String(this.opts.sinceHours())])) as Snapshot;
   }
 
+  async goto(target: string): Promise<string> {
+    return (await this.run(["goto", target, "--copy"])).trim();
+  }
+
   async answer(card: string, reply: Reply): Promise<void> {
     const args = ["answer", card];
     if (reply.choice !== undefined) args.push("--choice", String(reply.choice));

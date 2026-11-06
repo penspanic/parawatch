@@ -20,7 +20,7 @@ parawatch claim -p <project> --role lead --title "<what you are, e.g. Game Direc
 parawatch claim -p <project> --title "<your task>"                                        # otherwise
 ```
 
-`claim` without a session id uses the calling session (`$CLAUDE_CODE_SESSION_ID`). Your subagents and the `codex exec` jobs you start show under you on their own.
+`claim` without a session id uses the calling session (`$CLAUDE_CODE_SESSION_ID`). Cards you open record your session too, so the human can jump from a card to you; claim first so the card shows your title. Your subagents and the `codex exec` jobs you start show under you on their own.
 
 If the project is not listed and the human wants it tracked: `parawatch project add <name> <repo path> [<notes folder>]`. Git worktrees of a registered path belong to the project automatically.
 
@@ -40,7 +40,8 @@ One question per card. Pick the kind by what the human has to do:
 | A choice | `parawatch ask -p <project> "<the question>" -o "<option>" -o "<option>" -r <n> -b "<why it matters now>"` |
 | An open answer | `parawatch ask -p <project> "<the question>" -b "<context>"` |
 | Try a build, watch a video, look at a screen | `parawatch try -p <project> "<what to try>" --open <app, file or URL> --attach <image or video> -l "<what to look at>"` |
-| Something only they can do | `parawatch block -p <project> "<what to do>" -b "<exact steps>"` |
+| Something only they can do, and you are stuck until they do | `parawatch block -p <project> "<what to do>" -b "<exact steps>"` |
+| Something only they can do, but nothing waits on it now | `parawatch todo -p <project> "<what to do>" -b "<exact steps, and by when>"` |
 
 A good card:
 
@@ -50,6 +51,8 @@ A good card:
 - **Options are exclusive and concrete, and each says what happens if picked.** Recommend one with `-r` when you have a view; say why in the body.
 - **Attach evidence** with absolute paths: screenshots, short videos, logs. `--open` takes what they should launch (an `.app`, a file, a URL).
 - **Add `-t <task>`** when the project runs several tasks at once, so the human can tell them apart.
+- **`block` is red and counts as needing them now.** Use it only when your work stops until they act. Errands for later (a bill, a registration, a policy check, a measurement whenever the machine is free) are `todo`; they wait folded in the panel and do not pop up.
+- **Moving items from a board or a note:** pass `--since <YYYY-MM-DD>` with the date the item first came up, so the card does not look new. `parawatch edit <card>` fixes a card's kind, wording or date later.
 - Do not open a card for something you can decide yourself, or that the project's own rules already settle.
 
 ## 3. Waiting for the answer

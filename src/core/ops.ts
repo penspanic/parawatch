@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { appendEvent, eventsPath, readCursor, readEvents, writeCursor } from "./store.js";
 import { fold, nextId } from "./state.js";
-import { HUMAN, type Card, type CardKind, type Claim, type PwEvent } from "./types.js";
+import { CARD_KINDS, HUMAN, type Card, type CardEdit, type CardKind, type Claim, type PwEvent } from "./types.js";
 
 export class UserError extends Error {}
 
@@ -42,6 +42,30 @@ export interface CardInput {
   open?: string[];
   look?: string;
   from?: string;
+  /** the agent session opening the card */
+  session?: string;
+  /** when the matter first came up (a date or a timestamp) */
+  since?: string;
+}
+
+/** A date or timestamp as ISO text; a bare date counts as local midnight. */
+export function parseWhen(s: string): string {
+  const t = s.trim();
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(t) ? new Date(`${t}T00:00:00`) : new Date(t);
+  if (Number.isNaN(d.getTime())) throw new UserError(`"${s}" is not a date (use YYYY-MM-DD)`);
+  return d.toISOString();
+}
+
+/** The claimed name of a session (claims may hold an id prefix). */
+export function sessionTitle(claims: Claim[], session: string | undefined): string | undefined {
+  if (!session) return undefined;
+  const c = claims.find((x) => session.startsWith(x.session) || x.session.startsWith(session));
+  return c?.title;
+}
+
+function checkKind(kind: string): CardKind {
+  if (!CARD_KINDS.includes(kind as CardKind)) throw new UserError(`kind must be one of ${CARD_KINDS.join(", ")}`);
+  return kind as CardKind;
 }
 
 export function openCard(input: CardInput): Card {
@@ -54,9 +78,13 @@ export function openCard(input: CardInput): Card {
       throw new UserError(`--recommend must be between 1 and ${options.length}`);
     }
   }
+  checkKind(input.kind);
+  const since = input.since?.trim() ? parseWhen(input.since) : undefined;
   let id = "";
   appendEvent((events) => {
     id = nextId(events, "c");
+    const session = input.session?.trim() || undefined;
+    const from = input.from?.trim() || sessionTitle(fold(events).claims, session);
     return {
       type: "card.open",
       card: {
@@ -71,7 +99,9 @@ export function openCard(input: CardInput): Card {
         attach: absPaths(input.attach),
         open: absPaths(input.open),
         look: input.look?.trim() || undefined,
-        from: input.from || undefined,
+        from,
+        session,
+        since,
       },
     };
   });
@@ -112,6 +142,26 @@ export function commentCard(id: string, text: string, by: string): void {
   requireCard(id);
   if (!text.trim()) throw new UserError("a comment needs text");
   appendEvent(() => ({ type: "card.comment", card: id, by, text: text.trim() }));
+}
+
+export function editCard(id: string, set: CardEdit): Card {
+  requireCard(id);
+  const clean: CardEdit = {};
+  if (set.kind !== undefined) clean.kind = checkKind(set.kind);
+  if (set.title !== undefined) {
+    if (!set.title.trim()) throw new UserError("a card needs a title");
+    clean.title = set.title.trim();
+  }
+  // an empty value clears the field; null survives JSON where undefined would vanish
+  const cleared = null as unknown as undefined;
+  if (set.body !== undefined) clean.body = set.body.trim() || cleared;
+  if (set.task !== undefined) clean.task = set.task.trim() || cleared;
+  if (set.from !== undefined) clean.from = set.from.trim() || cleared;
+  if (set.session !== undefined) clean.session = set.session.trim() || cleared;
+  if (set.since !== undefined) clean.since = set.since.trim() ? parseWhen(set.since) : cleared;
+  if (!Object.keys(clean).length) throw new UserError("nothing to change");
+  appendEvent(() => ({ type: "card.edit", card: id, set: clean }));
+  return requireCard(id);
 }
 
 export function closeCard(id: string, note?: string): void {

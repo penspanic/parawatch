@@ -1,6 +1,11 @@
 export const SCHEMA_VERSION = 1;
 
-export type CardKind = "decide" | "try" | "block";
+/**
+ * decide: a choice. try: try a build or look at something. block: only the human can do it and
+ * the agent is stuck until they do. todo: only the human can do it, but nothing waits on it now.
+ */
+export type CardKind = "decide" | "try" | "block" | "todo";
+export const CARD_KINDS: CardKind[] = ["decide", "try", "block", "todo"];
 export type CardStatus = "open" | "answered" | "closed";
 
 export interface Answer {
@@ -31,7 +36,12 @@ export interface Card {
   attach?: string[];
   open?: string[];
   look?: string;
+  /** who asked: an agent or session name */
   from?: string;
+  /** the agent session that opened the card, so the human can jump to it */
+  session?: string;
+  /** when the matter first came up, if earlier than the card (moved from a board, say) */
+  since?: string;
   openedAt: string;
   status: CardStatus;
   answers: Answer[];
@@ -39,6 +49,9 @@ export interface Card {
   closedAt?: string;
   closeNote?: string;
 }
+
+/** Fields `parawatch edit` may change on a card. */
+export type CardEdit = Partial<Pick<Card, "kind" | "title" | "body" | "task" | "from" | "session" | "since">>;
 
 export interface Project {
   name: string;
@@ -81,6 +94,7 @@ export type EventBody =
   | { type: "card.answer"; card: string; by: string; choice?: number; comment?: string; attach?: string[] }
   | { type: "card.comment"; card: string; by: string; text: string }
   | { type: "card.close"; card: string; note?: string }
+  | { type: "card.edit"; card: string; set: CardEdit }
   | { type: "run.start"; run: { id: string; project: string; task?: string; title: string; parent?: string } }
   | { type: "run.note"; run: string; text: string }
   | { type: "run.end"; run: string; status: "done" | "failed"; note?: string }

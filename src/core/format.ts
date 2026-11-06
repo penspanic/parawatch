@@ -97,8 +97,13 @@ export function clean(s: string): string {
 
 // ------------------------------------------------------------------ cards
 
-const KIND_LABEL: Record<Card["kind"], string> = { decide: "decide", try: "try", block: "blocked" };
-const KIND_PAINT: Record<Card["kind"], Paint> = { decide: "yellow", try: "cyan", block: "red" };
+const KIND_LABEL: Record<Card["kind"], string> = { decide: "decide", try: "try", block: "blocked", todo: "to do" };
+const KIND_PAINT: Record<Card["kind"], Paint> = { decide: "yellow", try: "cyan", block: "red", todo: "blue" };
+
+/** When the matter came up: `since` when it is older than the card, else when the card opened. */
+export function cardStart(c: Card): string {
+  return c.since && c.since < c.openedAt ? c.since : c.openedAt;
+}
 
 /** Cards as aligned rows: id, kind, project, title, age. */
 export function cardRows(cards: Card[], v: View = PLAIN, now = Date.now(), indent = ""): string[] {
@@ -109,7 +114,7 @@ export function cardRows(cards: Card[], v: View = PLAIN, now = Date.now(), inden
   const titleW = Math.min(v.width - fixed, Math.max(0, ...cards.map((c) => textWidth(c.title + noteOf(c)))));
   return cards.map((c) => {
     const proj = c.project + (c.task ? `/${c.task}` : "");
-    const age = ago(c.openedAt, now).padStart(4);
+    const age = ago(cardStart(c), now).padStart(4);
     const note = noteOf(c);
     const title = fit(c.title, titleW - textWidth(note));
     const dim = c.status !== "open";
@@ -144,7 +149,8 @@ export function cardDetail(c: Card): string {
   if (c.look) out.push("", `Look at: ${c.look}`);
   for (const o of c.open ?? []) out.push(`Open: ${o}`);
   for (const a of c.attach ?? []) out.push(`Attached: ${a}`);
-  if (c.from) out.push(`From: ${c.from}`);
+  if (c.from || c.session) out.push(`From: ${[c.from, c.session ? `session ${c.session.slice(0, 8)}` : ""].filter(Boolean).join(", ")}`);
+  out.push(`Opened: ${new Date(c.openedAt).toLocaleString()}${c.since ? `, first came up ${new Date(c.since).toLocaleDateString()}` : ""}`);
   for (const a of c.answers) {
     const choice = a.choice !== undefined ? ` chose ${a.choice}${c.options?.[a.choice - 1] ? ` (${c.options[a.choice - 1]})` : ""}` : "";
     out.push("", `${a.by}${choice}${a.comment ? `: ${a.comment}` : ""}`);

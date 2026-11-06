@@ -1,8 +1,11 @@
 import { execFile } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { beforeEach, describe, expect, it } from "vitest";
-import { answerCard, closeCard, commentCard, openCard, readInbox, UserError, waitInbox } from "../src/core/ops.js";
+import { answerCard, claimSession, closeCard, commentCard, editCard, openCard, readInbox, UserError, waitInbox } from "../src/core/ops.js";
+import { desktopSessionUrl, findDesktopSession } from "../src/core/desktop.js";
 import { fold } from "../src/core/state.js";
 import { readEvents } from "../src/core/store.js";
 import { freshHome } from "./helpers.js";
@@ -107,4 +110,40 @@ describe("calling session", () => {
     expect(state.claims[0]).toMatchObject({ session: "abcdef12-0000-4000-8000-000000000001", project: "demo", role: "lead" });
     expect(state.runs.get(stdout.trim())?.parent).toBe("abcdef12-0000-4000-8000-000000000001");
   }, 30_000);
+});
+
+describe("card kinds, origin and editing", () => {
+  it("records the asking session, names it from its claim and keeps when the matter came up", () => {
+    claimSession({ session: "abcdef12", project: "demo", role: "lead", title: "Demo Director" });
+    const c = openCard({ kind: "todo", project: "demo", title: "Check billing", session: "abcdef12-0000-4000-8000-000000000001", since: "2026-10-01" });
+    expect(c).toMatchObject({ kind: "todo", from: "Demo Director", session: "abcdef12-0000-4000-8000-000000000001" });
+    expect(new Date(c.since!).getDate()).toBe(1);
+    expect(() => openCard({ kind: "todo", project: "demo", title: "x", since: "someday" })).toThrow(UserError);
+  });
+
+  it("edits kind and fields, and clears a field given an empty value", () => {
+    openCard({ kind: "block", project: "demo", title: "Check billing", body: "Org settings" });
+    const c = editCard("c1", { kind: "todo", since: "2026-10-01", body: "" });
+    expect(c.kind).toBe("todo");
+    expect(c.body).toBeUndefined();
+    expect(c.since).toBeDefined();
+    expect(fold(readEvents()).cards.get("c1")!.body).toBeUndefined();
+    expect(() => editCard("c1", { kind: "later" as never })).toThrow(UserError);
+    expect(() => editCard("c1", {})).toThrow(UserError);
+  });
+});
+
+describe("desktop sessions", () => {
+  it("finds the desktop session that runs a CLI session, preferring a live one", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "parawatch-desk-"));
+    const sub = path.join(dir, "acct", "org");
+    fs.mkdirSync(sub, { recursive: true });
+    const write = (id: string, d: object) => fs.writeFileSync(path.join(sub, `${id}.json`), JSON.stringify({ sessionId: id, ...d }));
+    write("local_old", { cliSessionId: "abcdef12-1", isArchived: true, lastActivityAt: 5 });
+    write("local_live", { cliSessionId: "zzz", lastAssistantCliSessionId: "abcdef12-1", lastActivityAt: 1, title: "Director" });
+    const s = findDesktopSession("abcdef12", dir)!;
+    expect(s.id).toBe("local_live");
+    expect(desktopSessionUrl(s)).toBe("claude://code/continue?session=local_live&source=parawatch");
+    expect(findDesktopSession("nothere", dir)).toBeUndefined();
+  });
 });

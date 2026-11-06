@@ -20,7 +20,8 @@ The human follows this work through \`parawatch\`. Use it instead of asking in c
 
 - Need a decision: \`parawatch ask --project ${p} "question" --option "..." --option "..." --recommend N --body "two or three lines"\`
 - Need the human to try something (a build, a video, a screen): \`parawatch try --project ${p} "title" --open <app or file> --attach <video or image> --look "what to look at"\`
-- Need something only the human can do (install, sudo, sign in): \`parawatch block --project ${p} "what to do"\`
+- Stuck until the human does something only they can do (install, sudo, sign in): \`parawatch block --project ${p} "what to do"\`
+- Something only the human can do, but nothing waits on it now: \`parawatch todo --project ${p} "what to do"\`
 - After opening a card, keep a background wait armed: \`parawatch wait --project ${p}\`. It prints the human's answers and exits; act on them, \`parawatch close <card> --note "what you did"\`, then arm it again.
 - A long job with no agent log (a bake, a benchmark): \`parawatch run start --project ${p} "title"\`, \`parawatch run note <id> "..."\`, \`parawatch run end <id>\`.
 - Never answer a card yourself. \`parawatch status\` shows everything that is open.

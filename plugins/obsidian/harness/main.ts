@@ -24,6 +24,7 @@ const cards: Card[] = [
     recommend: 2,
     attach: ["/captures/side-tank.png", "/captures/top-box.png"],
     from: "Game Director",
+    session: "lead-game-0000",
     openedAt: at(12),
     status: "open",
     answers: [],
@@ -49,6 +50,31 @@ const cards: Card[] = [
     title: "Install the iPad simulator runtime",
     body: "Xcode → Settings → Components → iOS 26.6 Simulator. The UI tests need it.",
     openedAt: at(64),
+    status: "open",
+    answers: [],
+    comments: [],
+  },
+  {
+    id: "c7",
+    kind: "todo",
+    project: "game",
+    title: "Check the GitHub bill",
+    body: "Not urgent. Organisation settings > Billing.",
+    from: "Game Director",
+    session: "lead-game-0000",
+    since: new Date(now - 37 * 24 * 60 * 60_000).toISOString(),
+    openedAt: at(15),
+    status: "open",
+    answers: [],
+    comments: [],
+  },
+  {
+    id: "c8",
+    kind: "todo",
+    project: "game",
+    title: "Register the studio for game ratings",
+    since: new Date(now - 38 * 24 * 60 * 60_000).toISOString(),
+    openedAt: at(15),
     status: "open",
     answers: [],
     comments: [],
@@ -117,6 +143,10 @@ const backend: Backend = {
       c.status = "answered";
       c.answers.push({ seq: 99, at: new Date().toISOString(), by: "human", ...reply });
     }
+  },
+  goto: async (t) => {
+    log(`goto ${t}`);
+    return "Opened";
   },
   open: (t) => log(`open ${t}`),
   mediaUrl: async (f) => media[f],

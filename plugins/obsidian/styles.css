@@ -6,6 +6,7 @@
   --pw-decide: var(--color-yellow, #d9a400);
   --pw-try: var(--color-cyan, #1a9fb3);
   --pw-block: var(--color-red, #d64545);
+  --pw-todo: var(--text-faint);
   --pw-working: var(--color-green, #2e9e5b);
   --pw-waiting: var(--color-yellow, #d9a400);
   --pw-bad: var(--color-red, #d64545);
@@ -29,6 +30,7 @@
   color: var(--text-accent);
 }
 .pw-summary-sep,
+.pw-summary-todo,
 .pw-summary-agents {
   color: var(--text-muted);
 }
@@ -100,6 +102,12 @@
 .pw-card-block {
   --pw-accent: var(--pw-block);
 }
+.pw-card-todo {
+  --pw-accent: var(--pw-todo);
+}
+.pw-card-todo .pw-kind {
+  color: var(--text-muted);
+}
 .pw-card-answered {
   --pw-accent: var(--text-faint);
   background: transparent;
@@ -167,6 +175,36 @@
 .pw-look-label {
   color: var(--text-muted);
   white-space: nowrap;
+}
+.pw-from-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.pw-from-link:hover {
+  color: var(--text-accent);
+  text-decoration: underline;
+}
+.pw-from-icon svg {
+  width: 12px;
+  height: 12px;
+}
+.pw-run-title.is-link {
+  cursor: pointer;
+}
+.pw-run-title.is-link:hover {
+  color: var(--text-accent);
+  text-decoration: underline;
+}
+/* the quiet to-do line inside a project */
+.pw-todo-group > .pw-fold-head .pw-fold-name {
+  font-weight: var(--font-normal, 400);
+  color: var(--text-muted);
+}
+.pw-todo-group > .pw-fold-head .pw-fold-count {
+  color: var(--text-muted);
 }
 .pw-from,
 .pw-comments {

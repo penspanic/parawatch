@@ -35,6 +35,16 @@ export function fold(events: PwEvent[]): State {
         if (c) c.comments.push({ seq: ev.seq, at: ev.ts, by: ev.by, text: ev.text });
         break;
       }
+      case "card.edit": {
+        const c = s.cards.get(ev.card);
+        if (!c) break;
+        const target = c as unknown as Record<string, unknown>;
+        for (const [k, v] of Object.entries(ev.set)) {
+          if (v === null || v === undefined) delete target[k];
+          else target[k] = v;
+        }
+        break;
+      }
       case "card.close": {
         const c = s.cards.get(ev.card);
         if (!c) break;

@@ -13,7 +13,7 @@ interface Settings {
 }
 
 const DEFAULTS: Settings = { binary: "", refreshSeconds: 10, sinceHours: 6, notifyNewCards: true };
-const KIND_WORD: Record<Card["kind"], string> = { decide: "Decide", try: "Try", block: "Blocked" };
+const KIND_WORD: Record<Card["kind"], string> = { decide: "Decide", try: "Try", block: "Blocked", todo: "To do" };
 
 export default class ParawatchPlugin extends Plugin {
   settings: Settings = { ...DEFAULTS };
@@ -126,7 +126,8 @@ export default class ParawatchPlugin extends Plugin {
   }
 
   private onEvent(e: PwEvent): void {
-    if (e.type === "card.open" && this.settings.notifyNewCards && e.card && typeof e.card === "object") {
+    // a to-do does not interrupt; it waits in the panel
+    if (e.type === "card.open" && this.settings.notifyNewCards && e.card && typeof e.card === "object" && e.card.kind !== "todo") {
       const c = e.card;
       const n = new Notice(`Parawatch · ${c.project}\n${KIND_WORD[c.kind]}: ${c.title}`, 12_000);
       n.noticeEl.addClass("pw-notice");
@@ -140,7 +141,7 @@ export default class ParawatchPlugin extends Plugin {
     const el = this.statusEl;
     if (!el) return;
     el.empty();
-    const open = this.snapshot?.cards.filter((c) => c.status === "open").length ?? 0;
+    const open = this.snapshot?.cards.filter((c) => c.status === "open" && c.kind !== "todo").length ?? 0;
     const icon = el.createSpan({ cls: "pw-statusbar-icon" });
     setIcon(icon, "radar");
     el.createSpan({ text: open ? `${open} need${open === 1 ? "s" : ""} you` : "Parawatch" });

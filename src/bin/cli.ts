@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import { Command } from "commander";
 import {
@@ -9,21 +10,24 @@ import {
   closeCard,
   commentCard,
   consumerName,
+  editCard,
   endRun,
   noteRun,
   openCard,
   readInbox,
   removeProject,
   startRun,
+  sessionTitle,
   waitInbox,
   type CardInput,
 } from "../core/ops.js";
 import { eventsPath, homeDir, readEvents, parseEventLines } from "../core/store.js";
 import { fold } from "../core/state.js";
 import { collectRuns } from "../core/runs.js";
-import { cardDetail, cardRows, inboxLine, runsTree, view } from "../core/format.js";
+import { cardDetail, cardLine, cardRows, inboxLine, runsTree, view } from "../core/format.js";
 import { hookContext, notify, writeInstructions } from "../core/integrate.js";
 import { installSkill, skillSource, skillTargets } from "../core/skill.js";
+import { desktopSessionUrl, findDesktopSession } from "../core/desktop.js";
 import { SCHEMA_VERSION, type Card } from "../core/types.js";
 
 const collect = (v: string, prev: string[] = []) => [...prev, v];
@@ -55,8 +59,23 @@ function cardCommand(kind: Card["kind"], name: string, summary: string) {
     .option("-t, --task <task>", "task within the project")
     .option("-b, --body <text>", "two or three lines of context")
     .option("--attach <file>", "image, video or file to look at (repeatable)", collect)
-    .option("--from <who>", "who is asking (agent or session name)")
+    .option("--from <who>", "who is asking (defaults to the calling session's claimed title)")
+    .option("--session <id>", "the agent session asking (defaults to the calling session)")
+    .option("--since <date>", "when the matter first came up, if earlier (YYYY-MM-DD)")
     .option("--json", "print the card as JSON");
+}
+
+/** Options every card kind shares. */
+function common(o: Record<string, string | string[] | undefined>) {
+  return {
+    project: o.project as string,
+    task: o.task as string | undefined,
+    body: o.body as string | undefined,
+    attach: o.attach as string[] | undefined,
+    from: o.from as string | undefined,
+    session: (o.session as string | undefined) ?? currentSession(),
+    since: o.since as string | undefined,
+  };
 }
 
 function finishCard(input: CardInput, json?: boolean) {
@@ -69,15 +88,67 @@ function finishCard(input: CardInput, json?: boolean) {
 cardCommand("decide", "ask", "ask the human to decide")
   .option("-o, --option <text>", "a choice (repeatable)", collect)
   .option("-r, --recommend <n>", "the recommended choice, 1-based", int)
-  .action((title: string, o) => finishCard({ kind: "decide", title, project: o.project, task: o.task, body: o.body, options: o.option, recommend: o.recommend, attach: o.attach, from: o.from }, o.json));
+  .action((title: string, o) => finishCard({ kind: "decide", title, ...common(o), options: o.option, recommend: o.recommend }, o.json));
 
 cardCommand("try", "try", "ask the human to try a build, watch a video or look at a screen")
   .option("--open <path>", "app, file or URL to open (repeatable)", collect)
   .option("-l, --look <text>", "what to look at")
-  .action((title: string, o) => finishCard({ kind: "try", title, project: o.project, task: o.task, body: o.body, attach: o.attach, open: o.open, look: o.look, from: o.from }, o.json));
+  .action((title: string, o) => finishCard({ kind: "try", title, ...common(o), open: o.open, look: o.look }, o.json));
 
-cardCommand("block", "block", "tell the human about something only they can do")
-  .action((title: string, o) => finishCard({ kind: "block", title, project: o.project, task: o.task, body: o.body, attach: o.attach, from: o.from }, o.json));
+cardCommand("block", "block", "something only the human can do, and you are stuck until they do it")
+  .action((title: string, o) => finishCard({ kind: "block", title, ...common(o) }, o.json));
+
+cardCommand("todo", "todo", "something only the human can do, but nothing waits on it now")
+  .action((title: string, o) => finishCard({ kind: "todo", title, ...common(o) }, o.json));
+
+program
+  .command("edit <card>")
+  .description("change a card: its kind, wording, task, who asked or when it came up (an empty value clears)")
+  .option("-k, --kind <kind>", "decide, try, block or todo")
+  .option("--title <text>", "new title")
+  .option("-b, --body <text>", "new body")
+  .option("-t, --task <task>", "task within the project")
+  .option("--from <who>", "who asked")
+  .option("--session <id>", "the agent session that asked")
+  .option("--since <date>", "when the matter first came up (YYYY-MM-DD)")
+  .option("--json", "print the card as JSON")
+  .action((id: string, o) => {
+    const card = editCard(id, { kind: o.kind, title: o.title, body: o.body, task: o.task, from: o.from, session: o.session, since: o.since });
+    if (o.json) print(card);
+    else process.stdout.write(cardLine(card) + "\n");
+  });
+
+program
+  .command("goto <target>")
+  .description("open the agent session behind a card (or a session id) in the Claude desktop app")
+  .option("--copy", "also put a line about the card on the clipboard, to paste into that session")
+  .option("--print", "print the link instead of opening it")
+  .action((target: string, o) => {
+    const state = fold(readEvents());
+    const card = state.cards.get(target);
+    const session = card ? card.session : target;
+    if (!session) throw new UserError(`card ${target} does not say which session opened it (set one with: parawatch edit ${target} --session <id>)`);
+    const desk = findDesktopSession(session);
+    const name = sessionTitle(state.claims, session) ?? desk?.title ?? session.slice(0, 8);
+    if (o.copy && card) {
+      const line = `About parawatch card ${card.id} ("${card.title}"): `;
+      try {
+        execFileSync("pbcopy", { input: line });
+      } catch {
+        process.stderr.write(`parawatch: could not copy to the clipboard; the line is: ${line}\n`);
+      }
+    }
+    if (!desk) {
+      throw new UserError(`${name} is not a Claude desktop session. In a terminal: claude --resume ${session}`);
+    }
+    const url = desktopSessionUrl(desk);
+    if (o.print) {
+      process.stdout.write(url + "\n");
+      return;
+    }
+    execFileSync("open", [url]);
+    process.stdout.write(`Opened ${name}${desk.archived ? " (archived)" : ""}\n`);
+  });
 
 program
   .command("answer <card>")
@@ -272,11 +343,16 @@ program
     const v = view({ wide: o.wide });
     const head = (title: string, n: number | string, ...extra: string[]) =>
       v.color ? `\x1b[1m${title}\x1b[0m  \x1b[2m${n}${extra.join("")}\x1b[0m` : `${title}  ${n}${extra.join("")}`;
-    const open = cards.filter((c) => c.status === "open");
+    const open = cards.filter((c) => c.status === "open" && c.kind !== "todo");
+    const todo = cards.filter((c) => c.status === "open" && c.kind === "todo");
     const answered = cards.filter((c) => c.status === "answered");
     const out: string[] = [];
     out.push(head("NEEDS YOU", open.length || "nothing"));
     out.push(...cardRows(open, v, Date.now(), "  "));
+    if (todo.length) {
+      out.push("", head("TO DO, NOTHING WAITS ON IT", todo.length));
+      out.push(...cardRows(todo, v, Date.now(), "  "));
+    }
     if (answered.length) {
       out.push("", head("ANSWERED, WAITING FOR THE AGENT", answered.length));
       out.push(...cardRows(answered, v, Date.now(), "  "));
