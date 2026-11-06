@@ -64,7 +64,7 @@ const STATE_MARK: Record<Run["state"], string> = {
 };
 
 function runLine(r: Run, now: number): string {
-  const who = r.kind === "subagent" ? `subagent${r.model ? `, ${r.model}` : ""}` : `${r.runtime} ${r.kind}`;
+  const who = r.kind === "subagent" ? `subagent${r.model ? `, ${r.model}` : ""}` : r.runtime === r.kind ? r.runtime : `${r.runtime} ${r.kind}`;
   const role = r.role ? ` ${r.role}` : "";
   const what = r.error ? `unreadable: ${r.error}` : r.action ?? "";
   return `${STATE_MARK[r.state]} ${r.title}  (${who}${role}, ${r.id.slice(0, 8)})  ${r.state} ${ago(r.lastActivity, now)}${what ? `  ${what}` : ""}`;
