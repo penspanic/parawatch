@@ -1,0 +1,27 @@
+{
+  "name": "parawatch",
+  "version": "0.1.0",
+  "description": "A control tower for people running many AI coding agents in parallel: see what is running, what needs you, and wake the right agent when you answer.",
+  "keywords": ["ai-agents", "claude-code", "codex", "cli", "human-in-the-loop", "parallel", "inbox"],
+  "license": "MIT",
+  "author": "penspanic",
+  "type": "module",
+  "bin": { "parawatch": "dist/bin/cli.js" },
+  "files": ["dist", "README.md", "LICENSE"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/bin/cli.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit"
+  },
+  "dependencies": {
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
