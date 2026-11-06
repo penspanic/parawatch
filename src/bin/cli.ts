@@ -21,7 +21,7 @@ import {
 import { eventsPath, homeDir, readEvents, parseEventLines } from "../core/store.js";
 import { fold } from "../core/state.js";
 import { collectRuns } from "../core/runs.js";
-import { cardDetail, cardLine, inboxLine, runsTree } from "../core/format.js";
+import { cardDetail, cardRows, inboxLine, runsTree, view } from "../core/format.js";
 import { hookContext, notify, writeInstructions } from "../core/integrate.js";
 import { SCHEMA_VERSION, type Card } from "../core/types.js";
 
@@ -114,7 +114,7 @@ program
   .action((o) => {
     const cards = [...fold(readEvents()).cards.values()].filter((c) => (o.all || c.status !== "closed") && (!o.project || c.project === o.project));
     if (o.json) print({ v: SCHEMA_VERSION, cards });
-    else process.stdout.write(cards.map((c) => cardLine(c)).join("\n") + (cards.length ? "\n" : "No cards.\n"));
+    else process.stdout.write(cards.length ? cardRows(cards, view()).join("\n") + "\n" : "No cards.\n");
   });
 
 // ------------------------------------------------------------------ inbox
@@ -208,11 +208,12 @@ program
   .option("--since <hours>", "look at logs touched in the last N hours", int, 6)
   .option("-a, --all", "include runs that ended a while ago")
   .option("--runtime <name>", "only this adapter (repeatable)", collect)
+  .option("-w, --wide", "show runtime and ids")
   .option("--json", "JSON output")
   .action((o) => {
     const runs = collectRuns(fold(readEvents()), { sinceHours: o.since, project: o.project, includeEnded: o.all, runtimes: o.runtime });
     if (o.json) print({ v: SCHEMA_VERSION, runs });
-    else process.stdout.write((runs.length ? runsTree(runs) : "Nothing running.") + "\n");
+    else process.stdout.write((runs.length ? runsTree(runs, view({ wide: o.wide, all: o.all })) : "Nothing running.") + "\n");
   });
 
 const run = program.command("run").description("report a job that leaves no agent log");
@@ -247,6 +248,7 @@ program
   .description("everything at a glance: what needs you, then what is running")
   .option("-p, --project <name>", "only this project")
   .option("--since <hours>", "look at logs touched in the last N hours", int, 6)
+  .option("-w, --wide", "show runtime and ids")
   .option("--json", "JSON output")
   .action((o) => {
     const state = fold(readEvents());
@@ -256,17 +258,21 @@ program
       print({ v: SCHEMA_VERSION, generatedAt: new Date().toISOString(), projects: [...state.projects.values()], cards, runs });
       return;
     }
+    const v = view({ wide: o.wide });
+    const head = (title: string, n: number | string, ...extra: string[]) =>
+      v.color ? `\x1b[1m${title}\x1b[0m  \x1b[2m${n}${extra.join("")}\x1b[0m` : `${title}  ${n}${extra.join("")}`;
     const open = cards.filter((c) => c.status === "open");
     const answered = cards.filter((c) => c.status === "answered");
     const out: string[] = [];
-    out.push(open.length ? `NEEDS YOU (${open.length})` : "NEEDS YOU: nothing");
-    for (const c of open) out.push("  " + cardLine(c));
+    out.push(head("NEEDS YOU", open.length || "nothing"));
+    out.push(...cardRows(open, v, Date.now(), "  "));
     if (answered.length) {
-      out.push("", `ANSWERED, NOT YET HANDLED (${answered.length})`);
-      for (const c of answered) out.push("  " + cardLine(c));
+      out.push("", head("ANSWERED, WAITING FOR THE AGENT", answered.length));
+      out.push(...cardRows(answered, v, Date.now(), "  "));
     }
-    out.push("", "RUNNING");
-    out.push(runs.length ? runsTree(runs).split("\n").map((l) => "  " + l).join("\n") : "  nothing");
+    const working = runs.filter((r) => r.state === "working" || r.state === "waiting").length;
+    out.push("", head("AGENTS", runs.length ? `${working} working` : "nothing running"));
+    if (runs.length) out.push(runsTree(runs, v));
     process.stdout.write(out.join("\n") + "\n");
   });
 

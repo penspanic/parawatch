@@ -12,20 +12,23 @@ parawatch is a CLI first. Agents use the CLI, you use the CLI, and editor plugin
 
 ```
 $ parawatch status
-NEEDS YOU (3)
-  c4   decide   game  Which ending for the shake box?  12m
-  c5   try      game  Try build 139  3m
-  c6   blocked  app  Install the iPad simulator runtime  1h
+NEEDS YOU  3
+  c4   decide   game  Which ending for the shake box?       12m
+  c5   try      game  Try build 139: does the glass read?    3m
+  c6   blocked  app   Install the iPad simulator runtime     1h
 
-RUNNING
-  game
-    ● Game Director  (claude-code session, 811a9612)  working 4s  Bash: parawatch wait -p game
-      ● 139 shake round 2  (subagent, sonnet, afea0520)  working 40s  Bash: npm test
-      ✓ 137 glass tank  (subagent, sonnet, a55c5a9c)  done 8m  The tank renders at 60 fps.
-      ● Generate only the TODO icons  (codex exec, 019a3c2e)  working 1m  exec: swift test
-  app
-    ○ App Director  (claude-code session, 8e870e0b)  idle 25m  Waiting for the runtime install.
+AGENTS  4 working
+app
+  ○ App Director                     25m  PR101 passed. Waiting for the runtime install.
+  ● PR101 CI, UI tests                6m
+game
+  ● Game Director                     6s  Bash: Wait for answers
+  ├ ● 139 shake round 2              42s  Bash: Run tests
+  ├ ● Generate only the TODO icons    1m  exec: swift test
+  └ ✓ 2 finished                      8m
 ```
+
+One line per item, always inside the terminal width. Finished subagents fold into a count after five minutes (`parawatch runs --all` shows them). `--wide` adds the runtime and ids. Colors follow `NO_COLOR` and `FORCE_COLOR`.
 
 ## Install
 
@@ -55,6 +58,7 @@ parawatch answer c4 -m "fill it to the rim"          # or just say something
 parawatch answer c5 -m "glass is too dark" --attach ~/Desktop/shot.png
 parawatch runs --since 12        # agents seen in the last 12 hours
 parawatch runs -p game --all    # include finished ones
+parawatch runs --wide            # with runtime and ids
 ```
 
 Register projects once:
@@ -120,7 +124,7 @@ parawatch reads agent logs. It never writes to them and never sends them anywher
 
 States: `●` working, `◐` waiting, `○` idle, `✓` done, `!` stalled (quiet longer than its tool's timeout allows), `✗` failed.
 
-A run belongs to a project by, in order: a claim, its working directory, its parent's project, a project path named in its first prompt.
+Runs that match no registered project show under `other`. A run belongs to a project by, in order: a claim, its working directory, its parent's project, a project path named in its first prompt.
 
 ### Adding a runtime
 
