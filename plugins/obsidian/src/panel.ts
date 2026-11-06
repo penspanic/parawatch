@@ -56,6 +56,7 @@ export class Panel {
   private drafts = new Map<string, Draft>();
   private busy = new Set<string>();
   private expanded = new Set<string>();
+  private collapsed = loadCollapsed();
   private cardsSig = "";
   private head: HTMLElement;
   private cardsEl: HTMLElement;
@@ -137,7 +138,21 @@ export class Panel {
 
     this.section(root, "Needs you", open.length);
     if (!open.length) el("div", "pw-empty", this.snapshot ? "Nothing needs you right now." : "Loading…", root);
-    for (const c of open) root.appendChild(this.card(c, now));
+    // one light section per project, the project with the oldest card first
+    const byProject = new Map<string, Card[]>();
+    for (const c of open) {
+      if (!byProject.has(c.project)) byProject.set(c.project, []);
+      byProject.get(c.project)!.push(c);
+    }
+    for (const [project, list] of byProject) {
+      const kinds = (["decide", "try", "block"] as const)
+        .map((k) => [k, list.filter((c) => c.kind === k).length] as const)
+        .filter(([, n]) => n)
+        .map(([k, n]) => `${n} ${KIND_LABEL[k].toLowerCase()}`)
+        .join(" · ");
+      const body = this.foldGroup(root, `cards:${project}`, project, String(list.length), kinds);
+      for (const c of list) body.appendChild(this.card(c, now));
+    }
 
     if (answered.length) {
       this.section(root, "Waiting for the agent", answered.length);
@@ -161,10 +176,45 @@ export class Panel {
     return s;
   }
 
-  private cardHead(c: Card, box: HTMLElement, now: number): void {
+  /** A light, collapsible section; returns the element to put its rows in. */
+  private foldGroup(parent: HTMLElement, key: string, name: string, count?: string, hint?: string): HTMLElement {
+    const box = el("div", "pw-fold-group", undefined, parent);
+    const head = el("div", "pw-fold-head", undefined, box);
+    head.setAttribute("role", "button");
+    head.tabIndex = 0;
+    const chevron = el("span", "pw-chevron", undefined, head);
+    this.host.icon(chevron, "chevron-down");
+    el("span", "pw-fold-name", name, head);
+    if (count) el("span", "pw-fold-count", count, head);
+    if (hint) el("span", "pw-fold-hint", hint, head);
+    const body = el("div", "pw-fold-body", undefined, box);
+    const apply = () => {
+      const shut = this.collapsed.has(key);
+      box.classList.toggle("is-collapsed", shut);
+      head.setAttribute("aria-expanded", String(!shut));
+    };
+    const toggle = () => {
+      if (this.collapsed.has(key)) this.collapsed.delete(key);
+      else this.collapsed.add(key);
+      saveCollapsed(this.collapsed);
+      apply();
+    };
+    head.onclick = toggle;
+    head.onkeydown = (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        toggle();
+      }
+    };
+    apply();
+    return body;
+  }
+
+  /** `grouped`: the card sits under its project's section, so the head shows only the task. */
+  private cardHead(c: Card, box: HTMLElement, now: number, grouped = false): void {
     const head = el("div", "pw-card-head", undefined, box);
     el("span", `pw-kind pw-kind-${c.kind}`, KIND_LABEL[c.kind], head);
-    el("span", "pw-card-project", c.project + (c.task ? ` / ${c.task}` : ""), head);
+    el("span", "pw-card-project", grouped ? (c.task ?? "") : c.project + (c.task ? ` / ${c.task}` : ""), head);
     const age = el("span", "pw-card-age", ago(c.openedAt, now), head);
     age.dataset.since = c.openedAt;
     age.title = new Date(c.openedAt).toLocaleString();
@@ -175,7 +225,7 @@ export class Panel {
     const box = el("div", `pw-card pw-card-${c.kind}`);
     const busy = this.busy.has(c.id);
     if (busy) box.classList.add("is-busy");
-    this.cardHead(c, box, now);
+    this.cardHead(c, box, now, true);
     el("div", "pw-card-title", c.title, box);
     if (c.body) this.host.renderMarkdown(c.body, el("div", "pw-card-body markdown-rendered", undefined, box));
     if (c.look) {
@@ -384,12 +434,10 @@ export class Panel {
       return;
     }
     for (const g of groups) {
-      const box = el("div", "pw-group", undefined, root);
-      const gh = el("div", "pw-group-head", undefined, box);
-      el("span", "pw-group-name", g.name === "other" ? "Other" : g.name, gh);
-      if (g.name === "other") el("span", "pw-group-hint", "not in a registered project", gh);
-      else if (g.working) el("span", "pw-group-hint", `${g.working} working`, gh);
-      for (const row of g.rows) box.appendChild("run" in row ? this.runRow(row, now) : this.foldRow(row, now));
+      const other = g.name === "other";
+      const hint = other ? "not in a registered project" : g.working ? `${g.working} working` : "idle";
+      const body = this.foldGroup(root, `agents:${g.name}`, other ? "Other" : g.name, undefined, hint);
+      for (const row of g.rows) body.appendChild("run" in row ? this.runRow(row, now) : this.foldRow(row, now));
     }
   }
 
@@ -436,5 +484,24 @@ export class Panel {
       if (e.key === "Enter" || e.key === " ") toggle();
     };
     return row;
+  }
+}
+
+const COLLAPSED_KEY = "parawatch:collapsed";
+
+function loadCollapsed(): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(COLLAPSED_KEY);
+    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveCollapsed(s: Set<string>): void {
+  try {
+    window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...s]));
+  } catch {
+    // storage unavailable; the state lasts for this session only
   }
 }

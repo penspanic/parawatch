@@ -99,7 +99,13 @@ async function load(): Promise<Snapshot> {
     // no real snapshot next to the page
   }
   const useReal = new URLSearchParams(location.search).has("real") && real;
-  return { v: 1, generatedAt: new Date().toISOString(), projects: real?.projects ?? [], cards: cards.filter((c) => c.status !== "closed"), runs: useReal ? real!.runs : fakeRuns };
+  return {
+    v: 1,
+    generatedAt: new Date().toISOString(),
+    projects: real?.projects ?? [],
+    cards: useReal ? real!.cards : cards.filter((c) => c.status !== "closed"),
+    runs: useReal ? real!.runs : fakeRuns,
+  };
 }
 
 const backend: Backend = {

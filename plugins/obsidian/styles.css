@@ -327,24 +327,53 @@
 
 /* ---------------------------------------------------------------- agents */
 
-.pw-group {
-  margin: 0 0 12px;
+.pw-fold-group {
+  margin: 0 0 6px;
 }
-.pw-group-head {
+.pw-fold-head {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 4px 4px 3px;
-  border-bottom: 1px solid var(--background-modifier-border);
-  margin-bottom: 2px;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 4px;
+  margin: 0 0 4px;
+  border-radius: var(--radius-s, 4px);
+  cursor: pointer;
+  user-select: none;
 }
-.pw-group-name {
+.pw-fold-head:hover {
+  background: var(--background-modifier-hover);
+}
+.pw-chevron {
+  display: inline-flex;
+  color: var(--text-faint);
+  transition: transform 120ms ease;
+}
+.pw-chevron svg {
+  width: 14px;
+  height: 14px;
+}
+.pw-fold-group.is-collapsed .pw-chevron {
+  transform: rotate(-90deg);
+}
+.pw-fold-group.is-collapsed .pw-fold-body {
+  display: none;
+}
+.pw-fold-name {
   font-weight: var(--font-semibold, 600);
   color: var(--text-normal);
 }
-.pw-group-hint {
+.pw-fold-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-accent);
+  font-weight: var(--font-semibold, 600);
+}
+.pw-fold-hint {
+  margin-left: auto;
   color: var(--text-faint);
   font-size: var(--font-ui-smaller, 12px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pw-run {

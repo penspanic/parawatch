@@ -2,9 +2,9 @@
 
 A side panel for [parawatch](../../README.md): what needs you, what your agents are doing, and buttons to answer them. It runs the `parawatch` CLI and keeps no state of its own.
 
-- **Needs you**: every open card. Pick an option, write a note, press Done or Looks good. Paste or drop a screenshot to attach it. Your answer goes through `parawatch answer`, which wakes the agent waiting on that card.
+- **Needs you**: every open card, in one collapsible section per project. Pick an option, write a note, press Done or Looks good. Paste or drop a screenshot to attach it. Your answer goes through `parawatch answer`, which wakes the agent waiting on that card.
 - **Waiting for the agent**: cards you answered that the agent has not closed yet.
-- **Agents**: every observed session, subagent and `codex exec` job, grouped by project, with what each is doing right now. Finished subagents fold into a count; click to expand.
+- **Agents**: every observed session, subagent and `codex exec` job, grouped by project in collapsible sections, with what each is doing right now. Finished subagents fold into a count; click to expand.
 - A status bar item shows how many cards wait for you, and a notice pops up when an agent asks something.
 
 Desktop only. It needs the CLI installed (`npm install -g parawatch`).
