@@ -103,6 +103,18 @@ export class Panel {
     this.renderAgents(now);
   }
 
+  /** Bring one card into view, opening any folded section it sits in. */
+  focusCard(id: string): void {
+    const box = this.cardsEl.querySelector<HTMLElement>(`[data-card-id="${CSS.escape(id)}"]`);
+    if (!box) return;
+    for (let g = box.closest<HTMLElement>(".pw-fold-group.is-collapsed"); g; g = g.parentElement?.closest<HTMLElement>(".pw-fold-group.is-collapsed") ?? null) {
+      g.querySelector<HTMLElement>(":scope > .pw-fold-head")?.click();
+    }
+    box.scrollIntoView({ block: "center", behavior: "smooth" });
+    box.classList.add("is-flash");
+    window.setTimeout(() => box.classList.remove("is-flash"), 1600);
+  }
+
   // ---------------------------------------------------------------- head
 
   private renderHead(): void {
@@ -262,6 +274,7 @@ export class Panel {
 
   private card(c: Card, now: number): HTMLElement {
     const box = el("div", `pw-card pw-card-${c.kind}`);
+    box.dataset.cardId = c.id;
     const busy = this.busy.has(c.id);
     if (busy) box.classList.add("is-busy");
     this.cardHead(c, box, now, true);

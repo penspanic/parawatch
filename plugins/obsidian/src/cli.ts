@@ -2,7 +2,7 @@ import { execFile, spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { Backend, PwEvent, Reply, Snapshot } from "./types";
+import type { Backend, PwEvent, Reply, Snapshot } from "@parawatch/panel";
 
 const HOME = os.homedir();
 

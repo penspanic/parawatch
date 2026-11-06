@@ -1,6 +1,7 @@
 // Renders the panel in a plain browser page with fake cards and, when present, a real
 // `parawatch status --json` snapshot. Answers are logged instead of sent.
 import { Panel } from "../src/panel";
+import { setIcon } from "../src/icons";
 import type { Backend, Card, Reply, Snapshot } from "../src/types";
 
 const now = Date.now();
@@ -161,11 +162,10 @@ const panel = new Panel(root, backend, {
     p.textContent = md;
     el.appendChild(p);
   },
-  icon: (el, name) => {
-    el.dataset.icon = name;
-    el.textContent = name === "refresh-cw" ? "↻" : name === "external-link" ? "↗" : "▫";
-  },
+  icon: setIcon,
   notice: (m) => log(`notice: ${m}`),
   refresh: () => void load().then((s) => panel.update(s)),
 });
 void load().then((s) => panel.update(s));
+// for poking at the panel from the console
+(window as unknown as { panel: Panel }).panel = panel;

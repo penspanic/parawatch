@@ -29,4 +29,4 @@ The build copies `main.js`, `manifest.json` and `styles.css` into that folder. O
 
 ## Working on the panel
 
-`npm run harness -w @parawatch/obsidian` builds `harness/out/`, a plain page that renders the panel with sample cards and logs answers instead of sending them. Serve that folder with any static server. Put a `parawatch status --json` dump in `harness/snapshot.json` and add `?real` to the URL to see your own agents; add `?theme=dark` for the dark theme.
+The panel itself lives in [`packages/panel`](../../packages/panel) and is shared with the desktop app. `npm run harness -w @parawatch/panel` builds `packages/panel/harness/out/`, a plain page that renders the panel with sample cards and logs answers instead of sending them. Serve that folder with any static server. Put a `parawatch status --json` dump in `harness/snapshot.json` and add `?real` to the URL to see your own agents; add `?theme=dark` for the dark theme.

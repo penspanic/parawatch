@@ -9,8 +9,10 @@
   "scripts": {
     "build": "tsc --noEmit -p . && node esbuild.config.mjs production",
     "dev": "node esbuild.config.mjs",
-    "harness": "node esbuild.config.mjs harness",
     "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@parawatch/panel": "0.1.0"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",

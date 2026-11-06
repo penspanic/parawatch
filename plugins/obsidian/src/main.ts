@@ -1,7 +1,6 @@
 import { App, ItemView, MarkdownRenderer, Notice, Plugin, PluginSettingTab, Setting, setIcon, type WorkspaceLeaf } from "obsidian";
 import { CliBackend } from "./cli";
-import { Panel } from "./panel";
-import type { Card, PwEvent, Snapshot } from "./types";
+import { Panel, type Card, type PwEvent, type Snapshot } from "@parawatch/panel";
 
 const VIEW = "parawatch";
 

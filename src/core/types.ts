@@ -102,6 +102,15 @@ export type EventBody =
 
 export type PwEvent = EventBase & EventBody;
 
+/** What `parawatch status --json` prints and what the panels render. */
+export interface Snapshot {
+  v: number;
+  generatedAt: string;
+  projects: Project[];
+  cards: Card[];
+  runs: Run[];
+}
+
 /** Who counts as a human when deciding what wakes an agent. */
 export const HUMAN = "human";
 

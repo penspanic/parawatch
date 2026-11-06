@@ -8,7 +8,7 @@ It answers three questions from one terminal command:
 - **What is running?** Every agent session, its subagents and its `codex exec` jobs, grouped by project, with what each one is doing right now.
 - **Did my answer reach the agent?** When you answer a card, the agent waiting on it wakes up. You do not go back to the chat to say "I decided".
 
-parawatch is a CLI first. Agents use the CLI, you use the CLI, and editor plugins use the CLI too. There is no server. The [Obsidian plugin](plugins/obsidian/README.md) in this repository is a side panel on top of it.
+parawatch is a CLI first. Agents use the CLI, and so can you. There is no server. On top of it, this repository has a [desktop app](apps/desktop/README.md) for macOS, Windows and Linux (the panel in its own window, a menu bar count, a dock badge and notifications) and an [Obsidian plugin](plugins/obsidian/README.md) with the same panel in a side pane.
 
 ```
 $ parawatch status
@@ -151,9 +151,15 @@ interface Adapter {
 
 It reads only, reads only files touched since `sinceMs`, and reads only the head and tail of large logs.
 
-## Plugins and dashboards
+## Apps, plugins and dashboards
 
-The Obsidian plugin lives in [`plugins/obsidian`](plugins/obsidian/README.md). Anything else can build on the same two commands:
+| | |
+|--|--|
+| [`apps/desktop`](apps/desktop/README.md) | The desktop app. Reads and writes the store directly, so it works without the CLI on `PATH`. |
+| [`plugins/obsidian`](plugins/obsidian/README.md) | The Obsidian plugin. Runs the CLI. |
+| [`packages/panel`](packages/panel) | The panel both of them show, as plain DOM, with a harness page for working on it. |
+
+Anything else can build on the same two commands:
 
 ```
 parawatch status --json          # one snapshot: projects, cards, runs
@@ -165,7 +171,7 @@ parawatch watch --from 120       # starting after event 120
 
 Everything lives in one append-only file, `~/.local/state/parawatch/events.jsonl` (`$PARAWATCH_HOME`, or `$XDG_STATE_HOME/parawatch`). Writers take a short lock, so several agents can write at once. Cursors live next to it in `cursors/`. Delete the folder to start over.
 
-Desktop notifications for new cards use `osascript` on macOS and `notify-send` on Linux. `PARAWATCH_NOTIFY=0` turns them off.
+Desktop notifications for new cards use `osascript` on macOS and `notify-send` on Linux. `PARAWATCH_NOTIFY=0` turns them off. While the desktop app runs it notifies instead, and the CLI stays quiet. To-dos never notify.
 
 ## Not goals
 

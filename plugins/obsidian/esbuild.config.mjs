@@ -4,20 +4,10 @@ import esbuild from "esbuild";
 
 const mode = process.argv[2] ?? "dev";
 
-if (mode === "harness") {
-  // A browser page that renders the panel against fixture data, for looking at it outside Obsidian.
-  await esbuild.build({
-    entryPoints: ["harness/main.ts"],
-    bundle: true,
-    format: "iife",
-    target: "es2022",
-    outfile: "harness/out/harness.js",
-    logLevel: "info",
-  });
-  fs.copyFileSync("styles.css", "harness/out/styles.css");
-  fs.copyFileSync("harness/index.html", "harness/out/index.html");
-  if (fs.existsSync("harness/snapshot.json")) fs.copyFileSync("harness/snapshot.json", "harness/out/snapshot.json");
-} else {
+// The panel's stylesheet lives in the shared package; Obsidian wants it as styles.css.
+const STYLES = new URL("../../packages/panel/panel.css", import.meta.url).pathname;
+
+{
   const prod = mode === "production";
   const ctx = await esbuild.context({
     entryPoints: ["src/main.ts"],
@@ -36,7 +26,7 @@ if (mode === "harness") {
   const copy = () => {
     fs.mkdirSync("dist", { recursive: true });
     fs.copyFileSync("manifest.json", "dist/manifest.json");
-    fs.copyFileSync("styles.css", "dist/styles.css");
+    fs.copyFileSync(STYLES, "dist/styles.css");
     if (vaultDir && fs.existsSync("dist/main.js")) {
       fs.mkdirSync(vaultDir, { recursive: true });
       for (const f of ["main.js", "manifest.json", "styles.css"]) fs.copyFileSync(`dist/${f}`, `${vaultDir}/${f}`);

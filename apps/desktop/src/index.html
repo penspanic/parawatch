@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: pwfile:; media-src 'self' blob: pwfile:"
+    />
+    <title>Parawatch</title>
+    <link rel="stylesheet" href="theme.css" />
+    <link rel="stylesheet" href="panel.css" />
+    <link rel="stylesheet" href="app.css" />
+  </head>
+  <body>
+    <main id="panel"></main>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script src="renderer.js"></script>
+  </body>
+</html>

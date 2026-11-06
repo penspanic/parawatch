@@ -3,5 +3,7 @@ dist/
 *.log
 .DS_Store
 plugins/obsidian/dist
-plugins/obsidian/harness/out
-plugins/obsidian/harness/snapshot.json
+packages/panel/harness/out
+packages/panel/harness/snapshot.json
+apps/desktop/release
+apps/desktop/build

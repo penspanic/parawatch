@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 import { readInbox, inboxFrom } from "./ops.js";
-import { readCursor, readEvents } from "./store.js";
+import { homeDir, readCursor, readEvents } from "./store.js";
 import { fold } from "./state.js";
 import { inboxLine } from "./format.js";
 import type { Card } from "./types.js";
@@ -67,8 +68,26 @@ export function hookContext(input: { session_id?: string; cwd?: string }, projec
 }
 
 /** Best-effort desktop notification. Never throws, never blocks. */
+/** The desktop app writes its pid here while it runs, so the CLI leaves notifications to it. */
+export function desktopPidPath(): string {
+  return path.join(homeDir(), "desktop.pid");
+}
+
+function desktopAppRunning(): boolean {
+  try {
+    const pid = Number(fs.readFileSync(desktopPidPath(), "utf8").trim());
+    if (!Number.isInteger(pid) || pid <= 0) return false;
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function notify(card: Card): void {
   if (process.env.PARAWATCH_NOTIFY === "0") return;
+  if (card.kind === "todo") return; // a to-do waits in the panel
+  if (desktopAppRunning()) return; // the app notifies, with its own badge
   const title = `parawatch · ${card.project}`;
   const body = `${card.kind === "decide" ? "Decide" : card.kind === "try" ? "Try" : "Blocked"}: ${card.title}`;
   try {

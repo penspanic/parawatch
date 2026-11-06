@@ -120,6 +120,11 @@
 .pw-card.is-busy {
   opacity: 0.6;
 }
+.pw-card.is-flash {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+  transition: outline-color 1.2s ease;
+}
 .pw-card.is-drop {
   outline: 2px dashed var(--interactive-accent);
   outline-offset: 2px;

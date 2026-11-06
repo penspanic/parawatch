@@ -17,17 +17,18 @@ import {
   readInbox,
   removeProject,
   startRun,
-  sessionTitle,
   waitInbox,
   type CardInput,
 } from "../core/ops.js";
-import { eventsPath, homeDir, readEvents, parseEventLines } from "../core/store.js";
+import { readEvents } from "../core/store.js";
+import { followEvents } from "../core/follow.js";
 import { fold } from "../core/state.js";
 import { collectRuns } from "../core/runs.js";
 import { cardDetail, cardLine, cardRows, inboxLine, runsTree, view } from "../core/format.js";
 import { hookContext, notify, writeInstructions } from "../core/integrate.js";
 import { installSkill, skillSource, skillTargets } from "../core/skill.js";
-import { desktopSessionUrl, findDesktopSession } from "../core/desktop.js";
+import { cardContextLine, resolveGoto } from "../core/desktop.js";
+import { snapshot } from "../core/snapshot.js";
 import { SCHEMA_VERSION, type Card } from "../core/types.js";
 
 const collect = (v: string, prev: string[] = []) => [...prev, v];
@@ -124,30 +125,22 @@ program
   .option("--copy", "also put a line about the card on the clipboard, to paste into that session")
   .option("--print", "print the link instead of opening it")
   .action((target: string, o) => {
-    const state = fold(readEvents());
-    const card = state.cards.get(target);
-    const session = card ? card.session : target;
-    if (!session) throw new UserError(`card ${target} does not say which session opened it (set one with: parawatch edit ${target} --session <id>)`);
-    const desk = findDesktopSession(session);
-    const name = sessionTitle(state.claims, session) ?? desk?.title ?? session.slice(0, 8);
-    if (o.copy && card) {
-      const line = `About parawatch card ${card.id} ("${card.title}"): `;
+    const g = resolveGoto(target, fold(readEvents()));
+    if (o.copy && g.card) {
+      const line = cardContextLine(g.card);
       try {
         execFileSync("pbcopy", { input: line });
       } catch {
         process.stderr.write(`parawatch: could not copy to the clipboard; the line is: ${line}\n`);
       }
     }
-    if (!desk) {
-      throw new UserError(`${name} is not a Claude desktop session. In a terminal: claude --resume ${session}`);
-    }
-    const url = desktopSessionUrl(desk);
+    if (!g.url) throw new UserError(`${g.name} is not a Claude desktop session. In a terminal: claude --resume ${g.session}`);
     if (o.print) {
-      process.stdout.write(url + "\n");
+      process.stdout.write(g.url + "\n");
       return;
     }
-    execFileSync("open", [url]);
-    process.stdout.write(`Opened ${name}${desk.archived ? " (archived)" : ""}\n`);
+    execFileSync("open", [g.url]);
+    process.stdout.write(`Opened ${g.name}${g.desktop?.archived ? " (archived)" : ""}\n`);
   });
 
 program
@@ -229,50 +222,7 @@ program
   .description("stream every new event as one JSON line (for plugins and monitors)")
   .option("--from <seq>", "replay events after this sequence number first", int)
   .action(async (o) => {
-    const file = eventsPath();
-    let offset = 0;
-    let lastSeq = o.from ?? Infinity;
-    try {
-      const text = fs.readFileSync(file, "utf8");
-      offset = Buffer.byteLength(text);
-      const events = parseEventLines(text);
-      if (o.from === undefined) lastSeq = events[events.length - 1]?.seq ?? 0;
-      else for (const ev of events) if (ev.seq > o.from) print(ev);
-      if (o.from !== undefined) lastSeq = Math.max(o.from, events[events.length - 1]?.seq ?? 0);
-    } catch {
-      lastSeq = o.from ?? 0;
-    }
-    const pump = () => {
-      let size = 0;
-      try {
-        size = fs.statSync(file).size;
-      } catch {
-        return;
-      }
-      if (size < offset) offset = 0; // file replaced
-      if (size === offset) return;
-      const fd = fs.openSync(file, "r");
-      const buf = Buffer.alloc(size - offset);
-      fs.readSync(fd, buf, 0, buf.length, offset);
-      fs.closeSync(fd);
-      const text = buf.toString("utf8");
-      const cut = text.lastIndexOf("\n");
-      if (cut < 0) return;
-      offset += Buffer.byteLength(text.slice(0, cut + 1));
-      for (const ev of parseEventLines(text.slice(0, cut + 1))) {
-        if (ev.seq > lastSeq) {
-          print(ev);
-          lastSeq = ev.seq;
-        }
-      }
-    };
-    fs.mkdirSync(homeDir(), { recursive: true });
-    try {
-      fs.watch(homeDir(), () => pump());
-    } catch {
-      // fall back to the timer alone
-    }
-    setInterval(pump, 1000);
+    followEvents(print, o.from);
     await new Promise(() => {});
   });
 
@@ -333,13 +283,12 @@ program
   .option("-w, --wide", "show runtime and ids")
   .option("--json", "JSON output")
   .action((o) => {
-    const state = fold(readEvents());
-    const cards = [...state.cards.values()].filter((c) => c.status !== "closed" && (!o.project || c.project === o.project));
-    const runs = collectRuns(state, { sinceHours: o.since, project: o.project });
+    const snap = snapshot({ sinceHours: o.since, project: o.project });
     if (o.json) {
-      print({ v: SCHEMA_VERSION, generatedAt: new Date().toISOString(), projects: [...state.projects.values()], cards, runs });
+      print(snap);
       return;
     }
+    const { cards, runs } = snap;
     const v = view({ wide: o.wide });
     const head = (title: string, n: number | string, ...extra: string[]) =>
       v.color ? `\x1b[1m${title}\x1b[0m  \x1b[2m${n}${extra.join("")}\x1b[0m` : `${title}  ${n}${extra.join("")}`;

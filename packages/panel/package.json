@@ -1,0 +1,21 @@
+{
+  "name": "@parawatch/panel",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The parawatch panel as plain DOM, shared by the Obsidian plugin and the desktop app.",
+  "license": "MIT",
+  "author": "penspanic",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./panel.css": "./panel.css",
+    "./theme.css": "./theme.css"
+  },
+  "scripts": {
+    "harness": "node harness/build.mjs",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}

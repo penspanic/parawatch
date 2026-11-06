@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { sessionTitle, UserError } from "./ops.js";
+import type { State } from "./state.js";
+import type { Card } from "./types.js";
 
 /**
  * Where the Claude desktop app keeps its Code sessions: one JSON file per session, named
@@ -67,4 +70,31 @@ export function findDesktopSession(cliSession: string, dir = desktopSessionsDir(
 /** A link that opens the session in the Claude desktop app. */
 export function desktopSessionUrl(s: DesktopSession): string {
   return `claude://code/continue?session=${encodeURIComponent(s.id)}&source=parawatch`;
+}
+
+export interface GotoTarget {
+  /** the name to show: the claimed title, else the app's title, else the id */
+  name: string;
+  session: string;
+  card?: Card;
+  /** set when the session lives in the Claude desktop app */
+  desktop?: DesktopSession;
+  url?: string;
+}
+
+/** Where `goto` leads for a card id or a session id (prefix). */
+export function resolveGoto(target: string, state: State): GotoTarget {
+  const card = state.cards.get(target);
+  const session = card ? card.session : target;
+  if (!session) {
+    throw new UserError(`card ${target} does not say which session opened it (set one with: parawatch edit ${target} --session <id>)`);
+  }
+  const desktop = findDesktopSession(session);
+  const name = sessionTitle(state.claims, session) ?? desktop?.title ?? session.slice(0, 8);
+  return { name, session, card, desktop, url: desktop ? desktopSessionUrl(desktop) : undefined };
+}
+
+/** A line to paste into the session so it knows which card the human means. */
+export function cardContextLine(card: Card): string {
+  return `About parawatch card ${card.id} ("${card.title}"): `;
 }
