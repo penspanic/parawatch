@@ -1,7 +1,7 @@
 import { ago, clean, groupRuns, type FoldNode, type RunNode } from "./tree";
 import type { Backend, Card, Reply, Run, Snapshot } from "./types";
 
-/** What the panel needs from its host (Obsidian, or the harness page). */
+/** What the panel needs from its host (the desktop app, or the harness page). */
 export interface PanelHost {
   renderMarkdown(md: string, el: HTMLElement): void;
   icon(el: HTMLElement, name: string): void;

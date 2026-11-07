@@ -1,9 +1,0 @@
-{
-  "id": "parawatch",
-  "name": "Parawatch",
-  "version": "0.1.0",
-  "minAppVersion": "1.5.0",
-  "description": "See what your AI agents are doing, what needs you, and answer them from a side panel. Uses the parawatch CLI.",
-  "author": "penspanic",
-  "isDesktopOnly": true
-}

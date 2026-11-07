@@ -39,8 +39,7 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/bin/cli.ts",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit && npm run typecheck -w @parawatch/panel -w @parawatch/obsidian -w @parawatch/desktop",
-    "build:obsidian": "npm run build -w @parawatch/obsidian",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit && npm run typecheck -w @parawatch/panel -w @parawatch/desktop",
     "prepublishOnly": "npm run build && npm test",
     "demo": "tsx scripts/demo.ts"
   },
@@ -55,7 +54,6 @@
   },
   "workspaces": [
     "packages/*",
-    "plugins/*",
     "apps/*"
   ]
 }

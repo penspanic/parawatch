@@ -17,7 +17,6 @@ Node 20 or newer. The repository is an npm workspace:
 | `src/` | The CLI and the store (`parawatch` on npm) |
 | `packages/panel` | The panel the app and the plugin share, as plain DOM |
 | `apps/desktop` | The Electron app |
-| `plugins/obsidian` | The Obsidian plugin |
 | `skills/parawatch` | The agent skill |
 
 ## Checks

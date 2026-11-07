@@ -30,7 +30,11 @@ npm run dist -w @parawatch/desktop       # installers in apps/desktop/release
 npm run dist:dir -w @parawatch/desktop   # just the app folder, quicker
 ```
 
-macOS builds are signed ad hoc by default. An ad hoc build runs on the machine that built it, but macOS gives it no notification permission, so alerts fall back to the system notifier and cannot open the card. Sign the build with a certificate from your keychain to get real notifications: `npx electron-builder --config builder.json --dir -c.mac.identity="Your Name (TEAMID)"`. The first card then makes macOS ask whether Parawatch may send notifications. Allow them, with badges on (System Settings → Notifications → Parawatch): once the app has asked, macOS hides the dock badge until you do. To hand the app to someone else, sign it with a Developer ID and notarize it (see the notarization variables electron-builder documents).
+macOS builds are signed ad hoc by default. An ad hoc build runs on the machine that built it, but macOS gives it no notification permission, so alerts fall back to the system notifier and cannot open the card. Sign the build with a certificate from your keychain to get real notifications: `npx electron-builder --config builder.json --dir -c.mac.identity="Your Name (TEAMID)"`. The first card then makes macOS ask whether Parawatch may send notifications. Allow them, with badges on (System Settings → Notifications → Parawatch): once the app has asked, macOS hides the dock badge until you do. To hand the app to someone else, sign it with a Developer ID and notarize it.
+
+### Releases
+
+`npm run release:mac -w @parawatch/desktop` builds the app for Apple silicon and Intel, signs it with `MAC_IDENTITY`, notarizes it with the `notarytool` keychain profile named by `NOTARY_PROFILE`, and uploads the two DMGs to a draft GitHub release for the version in `package.json`, with that version's CHANGELOG section as notes. See the top of [`scripts/release-mac.sh`](scripts/release-mac.sh) for the one-time setup.
 
 The macOS app icon is an Icon Composer document, [`icon/Parawatch.icon`](icon/Parawatch.icon): SVG layers and a JSON description, so the system renders it as Liquid Glass with its light, dark, clear and tinted looks. electron-builder compiles it with Xcode's `actool` (Xcode 26 or later). Edit it in Icon Composer, which comes with Xcode.
 

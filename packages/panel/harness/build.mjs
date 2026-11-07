@@ -1,5 +1,5 @@
 // Builds harness/out/: a plain page that renders the panel with sample cards, for working on it
-// outside Obsidian and the desktop app.
+// outside the desktop app.
 import fs from "node:fs";
 import esbuild from "esbuild";
 

@@ -1,6 +1,6 @@
 /*
- * Parawatch panel. Colors come from the host: the active Obsidian theme, or the desktop app's
- * theme.css, which defines the same variables. Words are kept for what a person must read (card
+ * Parawatch panel. Colors come from the host through theme.css, which the desktop app and the
+ * harness load. Words are kept for what a person must read (card
  * titles, options, names); counts and states are icons with numbers, worded in their tooltips.
  */
 
@@ -761,32 +761,6 @@ button.pw-round.pw-send:disabled {
 .pw-answer .pw-icon svg {
   width: 13px;
   height: 13px;
-}
-
-/* ---------------------------------------------------------------- status bar (Obsidian) */
-
-.pw-statusbar {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.pw-statusbar-icon {
-  display: inline-flex;
-}
-.pw-statusbar-icon svg {
-  width: 13px;
-  height: 13px;
-}
-.pw-statusbar.is-urgent {
-  color: var(--text-accent);
-  font-weight: var(--font-semibold, 600);
-}
-.pw-statusbar.is-error {
-  color: var(--text-error);
-}
-.pw-notice {
-  cursor: pointer;
-  white-space: pre-line;
 }
 
 /* the folded to-do line inside a project: the count sits next to its chevron */

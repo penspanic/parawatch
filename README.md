@@ -13,7 +13,7 @@ It answers three questions:
 - **What is running?** Every agent session, its subagents and its `codex exec` jobs, grouped by project, with what each one is doing right now.
 - **Did my answer reach the agent?** When you answer a card, the agent waiting on it wakes up. You do not go back to the chat to say "I decided".
 
-parawatch is a CLI first. Agents use the CLI, and so can you. There is no server and nothing leaves your machine. On top of the CLI, this repository has a [desktop app](apps/desktop/README.md) (the panel above, a menu bar count, a Dock badge and notifications) and an [Obsidian plugin](plugins/obsidian/README.md) with the same panel in a side pane.
+parawatch is a CLI first. Agents use the CLI, and so can you. There is no server and nothing leaves your machine. On top of the CLI, this repository has a [desktop app](apps/desktop/README.md) (the panel above, a menu bar count, a Dock badge and notifications).
 
 ```
 $ parawatch status
@@ -180,7 +180,6 @@ It reads only, reads only files touched since `sinceMs`, and reads only the head
 | | |
 |--|--|
 | [`apps/desktop`](apps/desktop/README.md) | The desktop app. Reads and writes the store directly, so it works without the CLI on `PATH`. |
-| [`plugins/obsidian`](plugins/obsidian/README.md) | The Obsidian plugin. Runs the CLI. |
 | [`packages/panel`](packages/panel) | The panel both of them show, as plain DOM, with a harness page for working on it. |
 
 Anything else can build on the same two commands:

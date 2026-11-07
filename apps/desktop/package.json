@@ -14,7 +14,8 @@
     "icon": "tsx scripts/icon.ts",
     "dist": "npm run build && npm run icon && electron-builder --config builder.json",
     "dist:dir": "npm run build && npm run icon && electron-builder --config builder.json --dir",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p .",
+    "release:mac": "scripts/release-mac.sh"
   },
   "dependencies": {
     "@parawatch/panel": "0.1.0",

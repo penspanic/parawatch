@@ -30,4 +30,3 @@ jobs:
       - run: npx vitest run
         working-directory: apps/desktop
       - run: npm run build
-      - run: npm run build:obsidian

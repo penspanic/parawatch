@@ -1,7 +1,5 @@
 /**
- * The line icons the panel asks for, as inline SVG on a 24 grid, for hosts that have no icon set of
- * their own (Obsidian has one; the desktop app and the harness use these). Names follow Lucide's,
- * so Obsidian draws the same icons from its own set.
+ * The line icons the panel asks for, as inline SVG on a 24 grid. Names follow Lucide's.
  */
 const PATHS: Record<string, string> = {
   "refresh-cw": '<path d="M20 11a8 8 0 0 0-14.6-4.5L3 9"/><path d="M3 4v5h5"/><path d="M4 13a8 8 0 0 0 14.6 4.5L21 15"/><path d="M21 20v-5h-5"/>',

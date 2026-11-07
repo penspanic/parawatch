@@ -1,4 +1,4 @@
-/* The theme variables the panel uses (Obsidian's names), for hosts that are not Obsidian. */
+/* The theme variables the panel uses. The names follow Obsidian's, where the panel started. */
 :root {
   color-scheme: light dark;
   --background-primary: #ffffff;
