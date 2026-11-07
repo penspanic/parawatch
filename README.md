@@ -2,44 +2,68 @@
 
 A control tower for people who run many AI coding agents at once, across several projects and several tasks inside each one.
 
-It answers three questions from one terminal command:
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/app-dark.png">
+  <img src="docs/app-light.png" alt="The parawatch desktop app: a chart of the last hour of agent activity per project, then the cards that need you, one with two screenshots and three options." width="560">
+</picture>
+
+It answers three questions:
 
 - **What needs me?** Decisions to make, builds or videos to try, things only you can do.
 - **What is running?** Every agent session, its subagents and its `codex exec` jobs, grouped by project, with what each one is doing right now.
 - **Did my answer reach the agent?** When you answer a card, the agent waiting on it wakes up. You do not go back to the chat to say "I decided".
 
-parawatch is a CLI first. Agents use the CLI, and so can you. There is no server. On top of it, this repository has a [desktop app](apps/desktop/README.md) for macOS, Windows and Linux (the panel in its own window, a menu bar count, a dock badge and notifications) and an [Obsidian plugin](plugins/obsidian/README.md) with the same panel in a side pane.
+parawatch is a CLI first. Agents use the CLI, and so can you. There is no server and nothing leaves your machine. On top of the CLI, this repository has a [desktop app](apps/desktop/README.md) (the panel above, a menu bar count, a Dock badge and notifications) and an [Obsidian plugin](plugins/obsidian/README.md) with the same panel in a side pane.
 
 ```
 $ parawatch status
 NEEDS YOU  3
-  c4   decide   game  Which ending for the shake box?       12m
-  c5   try      game  Try build 139: does the glass read?    3m
-  c6   blocked  app   Install the iPad simulator runtime     1h
+  c1   decide   game/139  Which ending for the shake box?                12m
+  c2   try      game/139  Try build 139: does the glass read as glass?    4m
+  c3   blocked  app       Install the iPad simulator runtime              1h
 
-AGENTS  4 working
+AGENTS  5 working
 app
-  ○ App Director                     25m  PR101 passed. Waiting for the runtime install.
-  ● PR101 CI, UI tests                6m
+  ● Interval lesson screen        1m  Bash: Build the app
+  ○ App Director                 24m  PR 18 passed. Waiting for the simulator runtime.
 game
-  ● Game Director                     6s  Bash: Wait for answers
-  ├ ● 139 shake round 2              42s  Bash: Run tests
-  ├ ● Generate only the TODO icons    1m  exec: swift test
-  └ ✓ 2 finished                      8m
+  ● Game Director                 1s  Bash: Wait for answers
+  ├ ● 139 shake round 2           1s  Bash: Run tests
+  ├ ● Generate the level icons    2m  exec: python3 make_icons.py
+  └ ● Glass shader pass           9m  Bash: Capture the tank
 ```
 
 One line per item, always inside the terminal width. Finished subagents fold into a count after five minutes (`parawatch runs --all` shows them). `--wide` adds the runtime and ids. Colors follow `NO_COLOR` and `FORCE_COLOR`.
 
 ## Install
 
+There are three parts. Most people want all three.
+
+**The CLI**, which agents and you use:
+
 ```
 npm install -g parawatch
+```
+
+**The agent skill**, so Claude Code and Codex agents learn the protocol on their own:
+
+```
 parawatch skill install
 ```
 
-Node 20 or newer. macOS and Linux.
+It links [`skills/parawatch`](skills/parawatch/SKILL.md) into `~/.claude/skills` and `~/.codex/skills`. The installed skill is a link to the copy in the package, so updating parawatch updates the skill.
 
-`parawatch skill install` links the agent skill in this repository ([`skills/parawatch`](skills/parawatch/SKILL.md)) into `~/.claude/skills` and `~/.codex/skills`, so Claude Code and Codex agents learn the protocol on their own. The repository copy is the source; the installed skill is a link to it, so updating parawatch updates the skill.
+**The desktop app**, to see and answer cards without a terminal. There is no download yet; [build it from source](apps/desktop/README.md#run-from-source). A build you make yourself is not signed, so on macOS it gets no notifications or Dock badge; the README there explains how to sign it with your own certificate.
+
+### Platforms
+
+| | macOS | Linux | Windows |
+|--|--|--|--|
+| CLI | used daily | tests pass in CI | not supported yet |
+| Desktop app | used daily | untested | untested |
+| Agent logs read | Claude Code, Codex | same | |
+
+Node 20 or newer.
 
 ## Concepts
 

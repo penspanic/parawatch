@@ -13,12 +13,21 @@
   ],
   "license": "MIT",
   "author": "penspanic",
+  "homepage": "https://github.com/penspanic/parawatch#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/penspanic/parawatch.git"
+  },
+  "bugs": {
+    "url": "https://github.com/penspanic/parawatch/issues"
+  },
   "type": "module",
   "bin": {
     "parawatch": "dist/bin/cli.js"
   },
   "files": [
     "dist",
+    "!dist/**/*.map",
     "skills",
     "README.md",
     "LICENSE"
@@ -31,7 +40,9 @@
     "dev": "tsx src/bin/cli.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit && npm run typecheck -w @parawatch/panel -w @parawatch/obsidian -w @parawatch/desktop",
-    "build:obsidian": "npm run build -w @parawatch/obsidian"
+    "build:obsidian": "npm run build -w @parawatch/obsidian",
+    "prepublishOnly": "npm run build && npm test",
+    "demo": "tsx scripts/demo.ts"
   },
   "dependencies": {
     "commander": "^12.1.0"

@@ -1,6 +1,6 @@
 # Parawatch desktop
 
-The [parawatch](../../README.md) panel in its own window, for macOS, Windows and Linux.
+The [parawatch](../../README.md) panel in its own window. It is used daily on macOS. The code has Windows and Linux paths, but nobody has built or run it there yet.
 
 - **Needs you**: every open card, one collapsible section per project, its kind shown as an icon. Pick an option, write a note, press the check (Done or Looks good) or send; paste or drop a screenshot to attach it. Your answer wakes the agent waiting on that card.
 - **To do**: cards that only you can do but nothing waits on. They fold at the end of their project, do not count toward the badge and never notify.
@@ -12,7 +12,7 @@ The [parawatch](../../README.md) panel in its own window, for macOS, Windows and
 - **Settings**: the button at the end of the status row, ⌘, or Settings… in the menu bar menu. Appearance (match the system, light, dark), notifications, open at login, how far back the agents list reaches, and how many closed cards to keep (none, 10, 20 or 50).
 - **Menu bar and dock**: the menu bar icon shows how many cards need you: the signal dot grows into an amber bubble with the number in it. It moves: the dots travel along their lanes while agents work. It stays still when nothing happens, or when the system asks for reduced motion; the dock icon carries the same number as a badge (a red dot on the taskbar on Windows). Closing the window keeps the app in the menu bar; Quit is in the menu bar menu.
 - **Notifications**: a new card that needs you, and a declared job that failed. Click one to open the card. Turn them off in Settings.
-- **Open at login**, from the menu bar menu. Started at login, the app waits in the menu bar without opening its window.
+- **Open at login**, in Settings. Started at login, the app waits in the menu bar without opening its window.
 
 The app reads and writes the same store as the CLI (`~/.local/state/parawatch`, or `$PARAWATCH_HOME`) using the CLI's own code, so it does not need the CLI on `PATH`. Agents still use the CLI. While the app runs, the CLI leaves notifications to it.
 
