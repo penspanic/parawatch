@@ -53,7 +53,7 @@ parawatch skill install
 
 It links [`skills/parawatch`](skills/parawatch/SKILL.md) into `~/.claude/skills` and `~/.codex/skills`. The installed skill is a link to the copy in the package, so updating parawatch updates the skill.
 
-**The desktop app**, to see and answer cards without a terminal. There is no download yet; [build it from source](apps/desktop/README.md#run-from-source). A build you make yourself is not signed, so on macOS it gets no notifications or Dock badge; the README there explains how to sign it with your own certificate.
+**The desktop app**, to see and answer cards without a terminal. On macOS, download the DMG from the [latest release](https://github.com/penspanic/parawatch/releases/latest): `arm64` for Apple silicon, `x64` for Intel. It is signed and notarized, so it opens without warnings. Elsewhere, [build it from source](apps/desktop/README.md#run-from-source).
 
 ### Platforms
 
