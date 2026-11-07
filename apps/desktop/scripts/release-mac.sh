@@ -32,9 +32,10 @@ rm -rf release
 npm run build
 npm run icon
 
-# electron-builder notarizes the app before it packs the DMG, so the app inside is stapled
-APPLE_KEYCHAIN="$HOME/Library/Keychains/login.keychain-db" APPLE_KEYCHAIN_PROFILE="$NOTARY_PROFILE" \
-  npx electron-builder --config builder.json --mac dmg --arm64 --x64 \
+# electron-builder notarizes the app before it packs the DMG, so the app inside is stapled.
+# Pass only the profile: notarytool keeps it outside the login keychain file, so naming that file
+# with APPLE_KEYCHAIN makes the lookup fail.
+APPLE_KEYCHAIN_PROFILE="$NOTARY_PROFILE" npx electron-builder --config builder.json --mac dmg --arm64 --x64 \
   -c.mac.identity="$MAC_IDENTITY" -c.mac.notarize=true
 
 for app in release/mac*/Parawatch.app; do
