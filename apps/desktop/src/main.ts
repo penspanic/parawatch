@@ -7,7 +7,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, net, Notification, protocol, shell, Tray } from "electron";
+import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, nativeTheme, net, Notification, protocol, shell, systemPreferences, Tray } from "electron";
 import { answerCard, UserError } from "../../../src/core/ops.js";
 import { cardContextLine, resolveGoto } from "../../../src/core/desktop.js";
 import { followEvents } from "../../../src/core/follow.js";
@@ -16,19 +16,19 @@ import { snapshot as takeSnapshot } from "../../../src/core/snapshot.js";
 import { fold } from "../../../src/core/state.js";
 import { homeDir, readEvents } from "../../../src/core/store.js";
 import type { PwEvent, Snapshot } from "../../../src/core/types.js";
-import { artPng } from "./art.js";
-import { alertFor, needsYou, summary, trayTitle } from "./rules.js";
+import { artPng, trayPng, type TrayState } from "./art.js";
+import { KEEP_CLOSED, SINCE_HOURS, THEMES, validPref, type Prefs, type Theme } from "./prefs.js";
+import { alertFor, agentsWorking, needsYou, summary } from "./rules.js";
 
 const MEDIA_SCHEME = "pwfile";
 const MAX_MEDIA_BYTES = 200 * 1024 * 1024;
 
-interface Settings {
-  sinceHours: number;
-  notify: boolean;
+/** Open at login lives with the system, not in this file. */
+interface Settings extends Omit<Prefs, "openAtLogin"> {
   bounds?: { x: number; y: number; width: number; height: number };
 }
 
-const DEFAULTS: Settings = { sinceHours: 6, notify: true };
+const DEFAULTS: Settings = { sinceHours: 6, notify: true, theme: "system", keepClosed: 20 };
 
 function settingsPath(): string {
   return path.join(app.getPath("userData"), "settings.json");
@@ -36,7 +36,12 @@ function settingsPath(): string {
 
 function loadSettings(): Settings {
   try {
-    return { ...DEFAULTS, ...(JSON.parse(fs.readFileSync(settingsPath(), "utf8")) as Partial<Settings>) };
+    const s = { ...DEFAULTS, ...(JSON.parse(fs.readFileSync(settingsPath(), "utf8")) as Partial<Settings>) };
+    if (!THEMES.includes(s.theme)) s.theme = DEFAULTS.theme;
+    if (!SINCE_HOURS.includes(s.sinceHours)) s.sinceHours = DEFAULTS.sinceHours;
+    if (!KEEP_CLOSED.includes(s.keepClosed)) s.keepClosed = DEFAULTS.keepClosed;
+    if (typeof s.notify !== "boolean") s.notify = DEFAULTS.notify;
+    return s;
   } catch {
     return { ...DEFAULTS };
   }
@@ -65,7 +70,7 @@ let stopFollowing: (() => void) | undefined;
 
 function refresh(): void {
   try {
-    latest = takeSnapshot({ sinceHours: settings.sinceHours });
+    latest = takeSnapshot({ sinceHours: settings.sinceHours, closed: settings.keepClosed });
     lastError = undefined;
   } catch (err) {
     lastError = err instanceof Error ? err.message : String(err);
@@ -121,53 +126,154 @@ let overlay: Electron.NativeImage | undefined;
 
 function paintCounts(): void {
   const n = needsYou(latest);
-  if (process.platform === "darwin") app.dock?.setBadge(n ? String(n) : "");
-  else if (process.platform === "linux") app.setBadgeCount(n);
+  if (process.platform === "darwin") {
+    // a number, not a label: once the app may send notifications, macOS keeps the dock badge as
+    // a count that outlives the app, and only setting the count to 0 clears it
+    app.setBadgeCount(n);
+    if (!n) app.dock?.setBadge("");
+  } else if (process.platform === "linux") app.setBadgeCount(n);
   else if (win && !win.isDestroyed()) {
     overlay ??= nativeImage.createFromBuffer(artPng("overlay", 32), { scaleFactor: 2 });
     win.setOverlayIcon(n ? overlay : null, n ? `${n} cards need you` : "");
   }
   if (tray) {
-    if (process.platform === "darwin") tray.setTitle(trayTitle(n), { fontType: "monospacedDigit" });
     tray.setToolTip(`Parawatch: ${summary(latest)}`);
     tray.setContextMenu(trayMenu());
+    paintTray();
   }
 }
 
 function trayMenu(): Menu {
-  const login = app.getLoginItemSettings().openAtLogin;
   return Menu.buildFromTemplate([
     { label: "Open Parawatch", click: () => showWindow() },
     { label: summary(latest), enabled: false },
     { type: "separator" },
-    {
-      label: "Notify on new cards",
-      type: "checkbox",
-      checked: settings.notify,
-      click: (item) => {
-        settings.notify = item.checked;
-        saveSettings();
-      },
-    },
-    {
-      label: "Open at login",
-      type: "checkbox",
-      checked: login,
-      // started at login, the app waits in the menu bar instead of opening its window
-      click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked, args: ["--hidden"] }),
-    },
+    { label: "Settings…", click: () => openSettings() },
     { type: "separator" },
     { label: "Quit Parawatch", role: "quit" },
   ]);
 }
 
+// The menu bar icon moves: dots travel along the lanes while agents work, and the middle dot
+// stops, grows and breathes while something needs you. Still when nothing happens, and when the
+// system asks for reduced motion.
+const TRAY_FPS = 12;
+const TRAY_LOOP = 48; // frames, four seconds
+const trayFrames = new Map<string, Electron.NativeImage>();
+let trayTimer: NodeJS.Timeout | undefined;
+let trayFrame = 0;
+let trayMode = "";
+
+/**
+ * The ink of the icon with a count. A template image is recoloured by the system, but that icon
+ * has an amber bubble, so it is drawn in colour. On macOS the menu bar takes its colour from the
+ * wallpaper, which an app cannot read, so the lanes are a grey that reads on light and dark bars.
+ */
+const MENU_BAR_GREY: [number, number, number] = [142, 142, 147];
+
+function trayImage(s: TrayState, count: number): Electron.NativeImage {
+  const mac = process.platform === "darwin";
+  const template = mac && count === 0;
+  const ink: [number, number, number] = template ? [0, 0, 0] : mac ? MENU_BAR_GREY : nativeTheme.shouldUseDarkColors ? [255, 255, 255] : [0, 0, 0];
+  const key = `${s.working}|${s.attention}|${s.phase.toFixed(4)}|${count}|${ink[0]}`;
+  let img = trayFrames.get(key);
+  if (!img) {
+    if (trayFrames.size > 600) trayFrames.clear();
+    img = nativeImage.createFromBuffer(trayPng(s, count, 2, ink), { scaleFactor: 2 });
+    if (template) img.setTemplateImage(true);
+    trayFrames.set(key, img);
+  }
+  return img;
+}
+
+function reducedMotion(): boolean {
+  try {
+    return systemPreferences.getAnimationSettings().prefersReducedMotion;
+  } catch {
+    return false;
+  }
+}
+
+function paintTray(): void {
+  if (!tray) return;
+  const working = agentsWorking(latest);
+  const count = needsYou(latest);
+  const attention = count > 0;
+  const still = (!working && !attention) || reducedMotion();
+  if (still) {
+    if (trayTimer) clearInterval(trayTimer);
+    trayTimer = undefined;
+    // a held dot at its largest, the others at rest
+    tray.setImage(trayImage({ phase: 0.125, working: false, attention }, count));
+    return;
+  }
+  const mode = `${working}|${attention}|${count}`;
+  if (trayTimer && mode === trayMode) return; // already moving this way; keep the loop smooth
+  trayMode = mode;
+  const tick = () => {
+    trayFrame = (trayFrame + 1) % TRAY_LOOP;
+    tray?.setImage(trayImage({ phase: trayFrame / TRAY_LOOP, working, attention }, count));
+  };
+  if (trayTimer) clearInterval(trayTimer);
+  trayTimer = setInterval(tick, 1000 / TRAY_FPS);
+  tick();
+}
+
 function createTray(): void {
-  const img = nativeImage.createFromBuffer(artPng("tray", 36), { scaleFactor: 2 });
-  if (process.platform === "darwin") img.setTemplateImage(true);
-  tray = new Tray(img);
+  tray = new Tray(trayImage({ phase: 0, working: false, attention: false }, 0));
   // on macOS a click opens the menu; elsewhere a click shows the window and the menu is on right-click
   if (process.platform !== "darwin") tray.on("click", () => showWindow());
+  const repaint = () => {
+    trayFrames.clear();
+    trayMode = "";
+    paintTray();
+  };
+  nativeTheme.on("updated", () => {
+    if (win && !win.isDestroyed()) win.setBackgroundColor(windowBackground());
+    repaint();
+  });
   paintCounts();
+}
+
+// ------------------------------------------------------------------ appearance
+
+// The window's own colours follow nativeTheme: the page's prefers-color-scheme comes from it.
+const WINDOW_BG = { light: "#f3f4f6", dark: "#131417" };
+
+function windowBackground(): string {
+  return nativeTheme.shouldUseDarkColors ? WINDOW_BG.dark : WINDOW_BG.light;
+}
+
+function prefs(): Prefs {
+  return {
+    theme: settings.theme,
+    notify: settings.notify,
+    openAtLogin: app.getLoginItemSettings().openAtLogin,
+    sinceHours: settings.sinceHours,
+    keepClosed: settings.keepClosed,
+  };
+}
+
+/** Change one setting from the window, then tell the window what the settings are now. */
+function setPref<K extends keyof Prefs>(key: K, value: unknown): void {
+  if (!validPref(key, value)) return;
+  if (key === "openAtLogin") {
+    // started at login, the app waits in the menu bar instead of opening its window
+    app.setLoginItemSettings({ openAtLogin: value as boolean, args: ["--hidden"] });
+  } else {
+    (settings as unknown as Record<string, unknown>)[key] = value;
+    saveSettings();
+  }
+  if (key === "theme") nativeTheme.themeSource = value as Theme;
+  if (key === "sinceHours" || key === "keepClosed") refresh();
+  if (win && !win.isDestroyed()) win.webContents.send("pw:prefs", prefs());
+}
+
+function openSettings(): void {
+  showWindow();
+  const send = () => win!.webContents.send("pw:open-settings");
+  if (win!.webContents.isLoading()) win!.webContents.once("did-finish-load", send);
+  else send();
 }
 
 // ------------------------------------------------------------------ window
@@ -201,7 +307,9 @@ function createWindow(): void {
     minHeight: 400,
     title: "Parawatch",
     show: false,
-    backgroundColor: "#f6f6f6",
+    backgroundColor: windowBackground(),
+    // on macOS the status row is the title bar, with the window buttons inset at its left
+    ...(process.platform === "darwin" ? { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { x: 16, y: 16 } } : {}),
     icon: process.platform === "darwin" ? undefined : nativeImage.createFromBuffer(artPng("app", 256)),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -263,6 +371,8 @@ function registerIpc(): void {
     return latest;
   });
   ipcMain.handle("pw:refresh", () => refresh());
+  ipcMain.handle("pw:prefs", () => prefs());
+  ipcMain.handle("pw:set-pref", (_e, key: keyof Prefs, value: unknown) => setPref(key, value));
   ipcMain.handle("pw:answer", (_e, card: string, reply: { choice?: number; comment?: string; attach?: string[] }) => {
     answerCard(card, { ...reply, by: "human" });
     refresh();
@@ -332,7 +442,9 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(() => {
     settings = loadSettings();
-    if (process.platform === "darwin") app.dock?.setIcon(nativeImage.createFromBuffer(artPng("app", 512)));
+    nativeTheme.themeSource = settings.theme;
+    // a packaged macOS app shows its Liquid Glass icon; only a development run needs a dock icon
+    if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(nativeImage.createFromBuffer(artPng("app", 512)));
     protocol.handle(MEDIA_SCHEME, (req) => {
       const p = decodeURIComponent(new URL(req.url).pathname.slice(1));
       if (!allowedMedia().has(path.resolve(p))) return new Response("not allowed", { status: 403 });

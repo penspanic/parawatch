@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { scanAll } from "../adapters/index.js";
+import { ACTIVITY_MINUTES, activeMinutes } from "../adapters/jsonl.js";
 import type { State } from "./state.js";
 import type { Project, Run } from "./types.js";
 
@@ -101,7 +102,17 @@ export function attribute(runs: Run[], state: State): Run[] {
   return runs;
 }
 
-export function declaredRuns(state: State): Run[] {
+/** A declared run is busy from its start until it ends (or now, while it runs). */
+function declaredActivity(start: string, end: string | undefined, now: number): number[] {
+  const from = Date.parse(start);
+  const to = end ? Date.parse(end) : now;
+  const times: number[] = [];
+  for (let t = Math.max(from, now - ACTIVITY_MINUTES * 60_000); t <= to; t += 60_000) times.push(t);
+  if (to >= from) times.push(to);
+  return activeMinutes(times, now);
+}
+
+export function declaredRuns(state: State, now = Date.now()): Run[] {
   return [...state.runs.values()].map((d) => ({
     id: d.id,
     runtime: "declared",
@@ -114,6 +125,7 @@ export function declaredRuns(state: State): Run[] {
     lastActivity: d.lastActivity,
     state: d.status === "running" ? ("working" as const) : d.status,
     action: d.note,
+    activity: declaredActivity(d.startedAt, d.status === "running" ? undefined : (d.endedAt ?? d.lastActivity), now),
   }));
 }
 
@@ -133,7 +145,7 @@ export function collectRuns(state: State, q: RunQuery, now = Date.now()): Run[] 
   // a log file can be touched (title records, snapshots) long after its last real activity
   const recent = (r: Run) => !r.lastActivity || Date.parse(r.lastActivity) >= sinceMs;
   let runs = attribute(scanAll({ sinceMs, now }, q.runtimes), state).filter(recent);
-  runs.push(...declaredRuns(state).filter(recent));
+  runs.push(...declaredRuns(state, now).filter(recent));
   if (q.project) runs = runs.filter((r) => r.project === q.project);
   if (!q.includeEnded) {
     // keep what is moving, plus things that finished in the last half hour and parents of live children

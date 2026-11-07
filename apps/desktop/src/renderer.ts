@@ -1,6 +1,7 @@
 import { Marked } from "marked";
 import { Panel, setIcon, type Backend, type Reply, type Snapshot } from "@parawatch/panel";
 import type { ParawatchApi } from "./preload";
+import { SettingsView } from "./settingsView";
 
 const api = (window as unknown as { parawatch: ParawatchApi }).parawatch;
 
@@ -58,11 +59,53 @@ const backend: Backend = {
   droppedPath: (file: File) => api.droppedPath(file),
 };
 
+/** The settings button at the end of the status row. */
+function settingsButton(row: HTMLElement): void {
+  const b = document.createElement("button");
+  b.className = "pw-icon-btn clickable-icon pw-settings-btn";
+  setIcon(b, "settings");
+  b.title = "Settings (⌘,)";
+  b.setAttribute("aria-label", "Settings");
+  b.onclick = () => showSettings(true);
+  row.appendChild(b);
+}
+
+document.body.classList.add(`is-${api.platform}`);
+
 const panel = new Panel(document.getElementById("panel")!, backend, {
   renderMarkdown,
   icon: setIcon,
   notice: toast,
   refresh: () => void api.refresh(),
+  decorateHead: settingsButton,
+});
+
+const settingsRoot = document.getElementById("settings")!;
+const settings = new SettingsView(
+  settingsRoot,
+  (key, value) => void call(api.setPref(key, value)).catch((err) => toast(plain(err).message)),
+  () => showSettings(false),
+);
+
+function showSettings(on: boolean): void {
+  document.body.classList.toggle("is-settings", on);
+  settingsRoot.hidden = !on;
+  if (on) {
+    void api.prefs().then((p) => settings.update(p));
+    settingsRoot.querySelector<HTMLElement>(".st-close")?.focus();
+  }
+}
+
+api.onPrefs((p) => settings.update(p));
+api.onOpenSettings(() => showSettings(true));
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+    e.preventDefault();
+    showSettings(true);
+  } else if (e.key === "Escape" && document.body.classList.contains("is-settings")) {
+    e.preventDefault();
+    showSettings(false);
+  }
 });
 
 api.onSnapshot((s) => panel.update(s as Snapshot));

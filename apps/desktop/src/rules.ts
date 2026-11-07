@@ -15,6 +15,11 @@ export function toDo(s: Snapshot | undefined): number {
   return s?.cards.filter((c) => c.status === "open" && c.kind === "todo").length ?? 0;
 }
 
+/** Some agent is busy right now, so the menu bar icon shows movement. */
+export function agentsWorking(s: Snapshot | undefined): boolean {
+  return s?.runs.some((r) => r.state === "working") ?? false;
+}
+
 export interface Alert {
   title: string;
   body: string;
@@ -39,11 +44,7 @@ export function alertFor(ev: PwEvent, state: { runTitle(id: string): string | un
   return undefined;
 }
 
-/** Menu bar text next to the icon: nothing when nothing needs the human. */
-export function trayTitle(n: number): string {
-  return n ? String(n) : "";
-}
-
+/** One line on what needs the human, for the menu bar menu and tooltip. */
 export function summary(s: Snapshot | undefined): string {
   const n = needsYou(s);
   const t = toDo(s);

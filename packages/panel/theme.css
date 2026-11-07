@@ -1,63 +1,68 @@
-/* The Obsidian theme variables the panel uses, for hosts that are not Obsidian. */
+/* The theme variables the panel uses (Obsidian's names), for hosts that are not Obsidian. */
 :root {
+  color-scheme: light dark;
   --background-primary: #ffffff;
-  --background-secondary: #f6f6f6;
-  --background-modifier-border: #e0e0e0;
-  --background-modifier-hover: rgba(0, 0, 0, 0.05);
-  --text-normal: #222222;
-  --text-muted: #5c5c5c;
-  --text-faint: #999999;
-  --text-accent: #7046e0;
-  --text-error: #d64545;
+  --background-secondary: #f3f4f6;
+  --background-modifier-border: #e2e4e8;
+  --background-modifier-hover: rgba(17, 24, 39, 0.045);
+  --text-normal: #16181c;
+  --text-muted: #5a6069;
+  --text-faint: #9399a2;
+  --text-accent: #2160dc;
+  --text-error: #d93a40;
   --interactive-normal: #ffffff;
-  --interactive-hover: #f0f0f0;
-  --interactive-accent: #7852ee;
+  --interactive-hover: #f3f4f6;
+  --interactive-accent: #2b6cf0;
   --text-on-accent: #ffffff;
-  --color-red: #e93147;
-  --color-yellow: #c99500;
-  --color-green: #08b94e;
-  --color-cyan: #00a5b8;
+  --color-red: #e5484d;
+  --color-yellow: #c98a00;
+  --color-green: #1f9d55;
+  --color-cyan: #0e9384;
   --font-ui-smaller: 12px;
   --font-ui-small: 13px;
   --font-ui-medium: 15px;
-  --font-monospace: ui-monospace, Menlo, monospace;
+  --font-monospace: ui-monospace, "SF Mono", Menlo, monospace;
   --font-semibold: 600;
   --font-normal: 400;
-  --radius-s: 4px;
-  --radius-m: 8px;
+  --radius-s: 6px;
+  --radius-m: 10px;
 }
 :root[data-theme="dark"] {
-  --background-primary: #1e1e1e;
-  --background-secondary: #262626;
-  --background-modifier-border: #363636;
-  --background-modifier-hover: rgba(255, 255, 255, 0.06);
-  --text-normal: #dadada;
-  --text-muted: #b3b3b3;
-  --text-faint: #7a7a7a;
-  --text-accent: #a68af9;
-  --interactive-normal: #2a2a2a;
-  --interactive-hover: #303030;
-  --color-yellow: #e0de71;
-  --color-cyan: #53dfdd;
-  --color-red: #fb464c;
-  --color-green: #44cf6e;
+  --background-primary: #1c1d21;
+  --background-secondary: #131417;
+  --background-modifier-border: #2c2e33;
+  --background-modifier-hover: rgba(255, 255, 255, 0.055);
+  --text-normal: #ececef;
+  --text-muted: #a3a8b0;
+  --text-faint: #6c717a;
+  --text-accent: #79a6ff;
+  --text-error: #ff6b70;
+  --interactive-normal: #1c1d21;
+  --interactive-hover: #26282d;
+  --interactive-accent: #4d86ff;
+  --color-red: #ff6369;
+  --color-yellow: #e2b33c;
+  --color-green: #3ccb7f;
+  --color-cyan: #2fc4b2;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --background-primary: #1e1e1e;
-    --background-secondary: #262626;
-    --background-modifier-border: #363636;
-    --background-modifier-hover: rgba(255, 255, 255, 0.06);
-    --text-normal: #dadada;
-    --text-muted: #b3b3b3;
-    --text-faint: #7a7a7a;
-    --text-accent: #a68af9;
-    --interactive-normal: #2a2a2a;
-    --interactive-hover: #303030;
-    --color-yellow: #e0de71;
-    --color-cyan: #53dfdd;
-    --color-red: #fb464c;
-    --color-green: #44cf6e;
+    --background-primary: #1c1d21;
+    --background-secondary: #131417;
+    --background-modifier-border: #2c2e33;
+    --background-modifier-hover: rgba(255, 255, 255, 0.055);
+    --text-normal: #ececef;
+    --text-muted: #a3a8b0;
+    --text-faint: #6c717a;
+    --text-accent: #79a6ff;
+    --text-error: #ff6b70;
+    --interactive-normal: #1c1d21;
+    --interactive-hover: #26282d;
+    --interactive-accent: #4d86ff;
+    --color-red: #ff6369;
+    --color-yellow: #e2b33c;
+    --color-green: #3ccb7f;
+    --color-cyan: #2fc4b2;
   }
 }
 

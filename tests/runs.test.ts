@@ -72,4 +72,11 @@ describe("declared runs", () => {
     const [r] = declaredRuns(fold(readEvents()));
     expect(r).toMatchObject({ id: "r1", runtime: "declared", state: "failed", action: "out of memory" });
   });
+
+  it("is busy from start to end", () => {
+    const now = Date.parse("2026-11-07T12:00:30Z");
+    const state = fold(readEvents());
+    state.runs.set("x", { id: "x", project: "game", title: "ci", startedAt: "2026-11-07T11:57:00Z", lastActivity: "2026-11-07T11:58:00Z", status: "running" });
+    expect(declaredRuns(state, now).find((r) => r.id === "x")?.activity).toEqual([0, 1, 2, 3]);
+  });
 });

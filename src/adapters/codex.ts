@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { Run } from "../core/types.js";
 import { applyStall } from "./claudeCode.js";
-import { isObj, oneLine, readHeadLines, readHeadText, readTailLines, str, textValues } from "./jsonl.js";
+import { isObj, logActivity, oneLine, readHeadLines, readHeadText, readTailLines, str, textValues } from "./jsonl.js";
 import type { Adapter, ScanOptions } from "./index.js";
 
 const HEAD_BYTES = 128 * 1024;
@@ -162,6 +162,7 @@ export const codex: Adapter = {
         try {
           if (fs.statSync(file).mtimeMs < opts.sinceMs) continue;
           const run: Run = { ...readCodexLog(readHeadLines(file, HEAD_BYTES), readTailLines(file, TAIL_BYTES), () => readHeadText(file, RAW_HEAD_BYTES)), source: file };
+          run.activity = logActivity(file, opts.now);
           applyStall(run, undefined, opts.now);
           runs.push(run);
         } catch (err) {

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { Run, RunState } from "../core/types.js";
-import { isObj, oneLine, readHeadLines, readTailLines, str } from "./jsonl.js";
+import { isObj, logActivity, oneLine, readHeadLines, readTailLines, str } from "./jsonl.js";
 import type { Adapter, ScanOptions } from "./index.js";
 
 const HEAD_BYTES = 96 * 1024;
@@ -191,6 +191,7 @@ function readSession(file: string, now: number): Run {
       state: tail.state,
       action: tail.action,
       prompt: head.prompt ? oneLine(head.prompt, 400) : undefined,
+      activity: logActivity(file, now),
     };
     applyStall(run, tail.pendingTimeoutMs, now);
     return run;
@@ -217,6 +218,7 @@ function readSubagent(file: string, now: number): Run {
       state: tail.state,
       action: tail.action,
       prompt: head.prompt ? oneLine(head.prompt, 400) : undefined,
+      activity: logActivity(file, now),
     };
     applyStall(run, tail.pendingTimeoutMs, now);
     return run;

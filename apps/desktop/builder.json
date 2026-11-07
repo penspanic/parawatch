@@ -16,7 +16,7 @@
       "dmg",
       "zip"
     ],
-    "icon": "build/icon.png",
+    "icon": "icon/Parawatch.icon",
     "identity": "-"
   },
   "win": {

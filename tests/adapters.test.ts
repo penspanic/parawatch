@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readClaudeTail } from "../src/adapters/claudeCode.js";
 import { parentFromCwd, promptFromRaw, readCodexLog } from "../src/adapters/codex.js";
-import { textValues } from "../src/adapters/jsonl.js";
+import { activeMinutes, timestampsIn, textValues } from "../src/adapters/jsonl.js";
 
 const ts = (m: number) => new Date(Date.UTC(2026, 10, 7, 1, m)).toISOString();
 
@@ -64,5 +64,22 @@ describe("codex logs", () => {
 
   it("parent only comes from a scratch path that carries a session id", () => {
     expect(parentFromCwd("/Users/me/dev/app")).toBeUndefined();
+  });
+});
+
+describe("activity", () => {
+  it("lists the minutes in the last hour that saw records, ascending", () => {
+    const now = Date.parse("2026-11-07T12:00:30Z");
+    const text = [
+      { timestamp: "2026-11-07T12:00:10Z" },
+      { timestamp: "2026-11-07T11:59:50Z" },
+      { timestamp: "2026-11-07T11:58:00Z" },
+      { timestamp: "2026-11-07T11:30:00Z", message: { content: 'quoted "timestamp":"x" inside text' } },
+      { timestamp: "2026-11-07T10:30:00Z" },
+      { note: "no timestamp" },
+    ]
+      .map((r) => JSON.stringify(r))
+      .join("\n");
+    expect(activeMinutes(timestampsIn(text), now)).toEqual([0, 2, 30]);
   });
 });

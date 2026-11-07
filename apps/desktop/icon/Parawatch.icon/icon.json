@@ -1,0 +1,35 @@
+{
+  "fill" : {
+    "linear-gradient" : [
+      "display-p3:0.20000,0.66000,0.58000,1.00000",
+      "display-p3:0.01000,0.24000,0.25000,1.00000"
+    ],
+    "orientation" : {
+      "start" : { "x" : 0.25, "y" : 0 },
+      "stop" : { "x" : 0.75, "y" : 1 }
+    }
+  },
+  "groups" : [
+    {
+      "layers" : [
+        { "glass" : true, "image-name" : "Signal.svg", "name" : "Signal" },
+        { "glass" : false, "image-name" : "Glow.svg", "name" : "Glow", "blend-mode" : "plus-lighter" },
+        { "glass" : true, "image-name" : "Dots.svg", "name" : "Dots" }
+      ],
+      "shadow" : { "kind" : "layer-color", "opacity" : 0.5 },
+      "specular" : true,
+      "translucency" : { "enabled" : false, "value" : 0 }
+    },
+    {
+      "layers" : [
+        { "glass" : true, "image-name" : "Lanes.svg", "name" : "Lanes", "opacity" : 0.55 }
+      ],
+      "shadow" : { "kind" : "neutral", "opacity" : 0.45 },
+      "specular" : true,
+      "translucency" : { "enabled" : true, "value" : 0.6 }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [ "macOS" ]
+  }
+}

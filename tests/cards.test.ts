@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { beforeEach, describe, expect, it } from "vitest";
 import { answerCard, claimSession, closeCard, commentCard, editCard, openCard, readInbox, UserError, waitInbox } from "../src/core/ops.js";
 import { desktopSessionUrl, findDesktopSession } from "../src/core/desktop.js";
+import { recentlyClosed, snapshot } from "../src/core/snapshot.js";
 import { fold } from "../src/core/state.js";
 import { readEvents } from "../src/core/store.js";
 import { freshHome } from "./helpers.js";
@@ -36,6 +37,19 @@ describe("cards", () => {
     expect(() => answerCard("c1", {})).toThrow(UserError);
     expect(() => answerCard("c9", { comment: "x" })).toThrow(UserError);
     expect(() => openCard({ kind: "decide", project: "demo", title: "x", options: ["a"], recommend: 2 })).toThrow(UserError);
+  });
+
+  it("keeps the most recently closed cards in the snapshot only when asked", () => {
+    ask("one");
+    ask("two");
+    ask("three");
+    closeCard("c1");
+    closeCard("c2");
+    expect(snapshot().cards.map((c) => c.id)).toEqual(["c3"]);
+    expect(snapshot({ closed: 1 }).cards.map((c) => c.id)).toHaveLength(2);
+    expect(snapshot({ closed: 10 }).cards.map((c) => c.id).sort()).toEqual(["c1", "c2", "c3"]);
+    const at = (id: string, closedAt: string) => ({ ...fold(readEvents()).cards.get(id)!, closedAt });
+    expect(recentlyClosed([at("c1", "2026-01-02"), at("c2", "2026-01-03")], 1).map((c) => c.id)).toEqual(["c2"]);
   });
 });
 

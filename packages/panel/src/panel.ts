@@ -8,6 +8,8 @@ export interface PanelHost {
   notice(message: string): void;
   /** Ask for a fresh snapshot now. */
   refresh(): void;
+  /** Add the host's own controls to the end of the status row (the desktop app's settings). */
+  decorateHead?(row: HTMLElement): void;
 }
 
 interface Draft {
@@ -16,6 +18,9 @@ interface Draft {
 }
 
 const KIND_LABEL: Record<Card["kind"], string> = { decide: "Decide", try: "Try", block: "Blocked", todo: "To do" };
+const KIND_ICON: Record<Card["kind"], string> = { decide: "split", try: "eye", block: "hand", todo: "list-checks" };
+/** The agent chart covers the last hour, a minute per step (the runs' `activity`). */
+const CHART_MINUTES = 60;
 const KIND_ORDER: Card["kind"][] = ["block", "decide", "try", "todo"];
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -67,6 +72,8 @@ export class Panel {
   private drafts = new Map<string, Draft>();
   private busy = new Set<string>();
   private expanded = new Set<string>();
+  /** answered and closed cards the human opened to read again */
+  private reopened = new Set<string>();
   private collapsed = loadCollapsed();
   private cardsSig = "";
   private head: HTMLElement;
@@ -81,8 +88,9 @@ export class Panel {
     root.classList.add("pw-panel");
     root.replaceChildren();
     this.head = el("div", "pw-head", undefined, root);
-    this.cardsEl = el("div", "pw-cards", undefined, root);
+    // what the agents are doing sits on top, as a chart; what needs you follows
     this.agentsEl = el("div", "pw-agents", undefined, root);
+    this.cardsEl = el("div", "pw-cards", undefined, root);
     this.renderHead();
     el("div", "pw-empty", "Loading…", this.cardsEl);
   }
@@ -103,6 +111,11 @@ export class Panel {
     this.renderAgents(now);
   }
 
+  /** Draw the status row again, for when the host's own controls in it change. */
+  redrawHead(): void {
+    this.renderHead();
+  }
+
   /** Bring one card into view, opening any folded section it sits in. */
   focusCard(id: string): void {
     const box = this.cardsEl.querySelector<HTMLElement>(`[data-card-id="${CSS.escape(id)}"]`);
@@ -115,6 +128,25 @@ export class Panel {
     window.setTimeout(() => box.classList.remove("is-flash"), 1600);
   }
 
+  // ---------------------------------------------------------------- small parts
+
+  private icon(parent: HTMLElement, name: string, cls = "pw-icon"): HTMLElement {
+    const span = el("span", cls, undefined, parent);
+    this.host.icon(span, name);
+    span.setAttribute("aria-hidden", "true");
+    return span;
+  }
+
+  /** An icon with a number, worded only for the tooltip and screen readers. */
+  private badge(parent: HTMLElement, icon: string, n: number, label: string, cls = ""): HTMLElement {
+    const b = el("span", `pw-badge ${cls}`.trim(), undefined, parent);
+    this.icon(b, icon);
+    el("span", "pw-badge-n", String(n), b);
+    b.title = label;
+    b.setAttribute("aria-label", label);
+    return b;
+  }
+
   // ---------------------------------------------------------------- head
 
   private renderHead(): void {
@@ -124,19 +156,17 @@ export class Panel {
     const open = s?.cards.filter((c) => c.status === "open" && c.kind !== "todo").length ?? 0;
     const todo = s?.cards.filter((c) => c.status === "open" && c.kind === "todo").length ?? 0;
     const working = s?.runs.filter((r) => r.state === "working" || r.state === "waiting").length ?? 0;
-    const line = el("div", "pw-summary", undefined, h);
-    const need = el("span", open ? "pw-summary-need is-urgent" : "pw-summary-need", open ? `${open} need${open === 1 ? "s" : ""} you` : "Nothing needs you", line);
+    const row = el("div", "pw-status", undefined, h);
+    const need = this.badge(row, "inbox", open, open ? `${open} card${open === 1 ? "" : "s"} need${open === 1 ? "s" : ""} you` : "Nothing needs you", open ? "pw-need is-urgent" : "pw-need");
     need.setAttribute("aria-live", "polite");
-    if (todo) {
-      el("span", "pw-summary-sep", "·", line);
-      el("span", "pw-summary-todo", `${todo} to do`, line);
-    }
-    el("span", "pw-summary-sep", "·", line);
-    el("span", "pw-summary-agents", `${working} working`, line);
-    const btn = el("button", "pw-icon-btn clickable-icon", undefined, line);
+    this.badge(row, "list-checks", todo, `${todo} to do`, todo ? "" : "is-zero");
+    this.badge(row, "activity", working, `${working} agent${working === 1 ? "" : "s"} working`, working ? "" : "is-zero");
+    const btn = el("button", "pw-icon-btn clickable-icon", undefined, row);
     btn.setAttribute("aria-label", "Refresh");
+    btn.title = "Refresh";
     this.host.icon(btn, "refresh-cw");
     btn.onclick = () => this.host.refresh();
+    this.host.decorateHead?.(row);
     if (this.error) {
       const e = el("div", "pw-error", undefined, h);
       el("div", "pw-error-title", "parawatch did not answer", e);
@@ -149,7 +179,7 @@ export class Panel {
 
   private signature(): string {
     const cards = this.snapshot?.cards ?? [];
-    return JSON.stringify([cards.map((c) => [c.id, c.status, c.kind, c.title, c.since, c.from, c.session, c.answers.length, c.comments.length]), [...this.busy]]);
+    return JSON.stringify([cards.map((c) => [c.id, c.status, c.kind, c.title, c.since, c.from, c.session, c.answers.length, c.comments.length, c.closedAt]), [...this.busy], [...this.reopened]]);
   }
 
   private renderCards(now: number): void {
@@ -165,9 +195,13 @@ export class Panel {
       .filter((c) => c.status === "open")
       .sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || cardStart(a).localeCompare(cardStart(b)));
     const answered = cards.filter((c) => c.status === "answered");
+    const closed = cards.filter((c) => c.status === "closed");
 
-    this.section(root, "Needs you", open.filter((c) => c.kind !== "todo").length);
-    if (!open.length) el("div", "pw-empty", this.snapshot ? "Nothing needs you right now." : "Loading…", root);
+    if (!open.length) {
+      const empty = el("div", "pw-empty pw-all-clear", undefined, root);
+      this.icon(empty, "check");
+      el("span", undefined, this.snapshot ? "Nothing needs you" : "Loading…", empty);
+    }
     // one light section per project, the project with the oldest card first
     const byProject = new Map<string, Card[]>();
     for (const c of open) {
@@ -175,25 +209,38 @@ export class Panel {
       byProject.get(c.project)!.push(c);
     }
     for (const [project, list] of byProject) {
-      const kinds = KIND_ORDER.map((k) => [k, list.filter((c) => c.kind === k).length] as const)
-        .filter(([, n]) => n)
-        .map(([k, n]) => `${n} ${KIND_LABEL[k].toLowerCase()}`)
-        .join(" · ");
       const now_ = list.filter((c) => c.kind !== "todo");
       const later = list.filter((c) => c.kind === "todo");
-      const body = this.foldGroup(root, `cards:${project}`, project, now_.length ? String(now_.length) : undefined, kinds);
+      const body = this.foldGroup(root, `cards:${project}`, project, false, (head) => {
+        for (const k of KIND_ORDER) {
+          const n = list.filter((c) => c.kind === k).length;
+          if (n) this.badge(head, KIND_ICON[k], n, `${n} ${KIND_LABEL[k].toLowerCase()}`, `pw-kind-${k}`);
+        }
+      });
       for (const c of now_) body.appendChild(this.card(c, now));
       if (later.length) {
         // nothing waits on these, so they start folded under a quiet line
-        const todo = this.foldGroup(body, `todo:${project}`, "To do", String(later.length), "nothing waits on these", true);
+        const todo = this.foldGroup(body, `todo:${project}`, "", true, (head) => {
+          this.badge(head, KIND_ICON.todo, later.length, `${later.length} to do, nothing waits on these`, "pw-kind-todo");
+        });
         todo.parentElement!.classList.add("pw-todo-group");
         for (const c of later) todo.appendChild(this.card(c, now));
       }
     }
 
     if (answered.length) {
-      this.section(root, "Waiting for the agent", answered.length);
-      for (const c of answered) root.appendChild(this.answeredCard(c, now));
+      const s = el("div", "pw-section", undefined, root);
+      this.badge(s, "hourglass", answered.length, `${answered.length} answered, waiting for the agent`);
+      for (const c of answered) root.appendChild(this.pastCard(c, now));
+    }
+
+    if (closed.length) {
+      // done with, kept so their builds, videos and pictures can be opened again; starts folded
+      const body = this.foldGroup(root, "closed", "", true, (head) => {
+        this.badge(head, "archive", closed.length, `${closed.length} closed, newest first`);
+      });
+      body.parentElement!.classList.add("pw-closed-group");
+      for (const c of closed) body.appendChild(this.pastCard(c, now));
     }
 
     if (focusId) {
@@ -205,28 +252,25 @@ export class Panel {
     }
   }
 
-  private section(parent: HTMLElement, title: string, count?: number, hint?: string): HTMLElement {
-    const s = el("div", "pw-section", undefined, parent);
-    el("span", "pw-section-title", title, s);
-    if (count !== undefined) el("span", "pw-section-count", String(count), s);
-    if (hint) el("span", "pw-section-hint", hint, s);
-    return s;
-  }
-
   /** A light, collapsible section; returns the element to put its rows in. */
-  private foldGroup(parent: HTMLElement, key: string, name: string, count?: string, hint?: string, startCollapsed = false): HTMLElement {
+  private foldGroup(parent: HTMLElement, key: string, name: string, startCollapsed = false, decorate?: (head: HTMLElement) => void): HTMLElement {
     const box = el("div", "pw-fold-group", undefined, parent);
     const head = el("div", "pw-fold-head", undefined, box);
     head.setAttribute("role", "button");
     head.tabIndex = 0;
     const chevron = el("span", "pw-chevron", undefined, head);
     this.host.icon(chevron, "chevron-down");
-    el("span", "pw-fold-name", name, head);
-    if (count) el("span", "pw-fold-count", count, head);
-    if (hint) el("span", "pw-fold-hint", hint, head);
+    if (name) el("span", "pw-fold-name", name, head);
+    if (decorate) decorate(el("span", "pw-fold-badges", undefined, head));
     const body = el("div", "pw-fold-body", undefined, box);
     // a group that starts collapsed remembers being opened instead of being closed
     const stored = startCollapsed ? `open:${key}` : key;
+    this.foldable(box, head, stored, startCollapsed);
+    return body;
+  }
+
+  /** Make `head` open and shut `box`, remembering the choice under `stored`. */
+  private foldable(box: HTMLElement, head: HTMLElement, stored: string, startCollapsed = false): void {
     const isShut = () => (startCollapsed ? !this.collapsed.has(stored) : this.collapsed.has(stored));
     const apply = () => {
       const shut = isShut();
@@ -239,7 +283,10 @@ export class Panel {
       saveCollapsed(this.collapsed);
       apply();
     };
-    head.onclick = toggle;
+    head.onclick = (e) => {
+      if ((e.target as HTMLElement).closest("button, a")) return;
+      toggle();
+    };
     head.onkeydown = (e) => {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
@@ -247,29 +294,36 @@ export class Panel {
       }
     };
     apply();
-    return body;
   }
 
   /** `grouped`: the card sits under its project's section, so the head shows only the task. */
   private cardHead(c: Card, box: HTMLElement, now: number, grouped = false): void {
     const head = el("div", "pw-card-head", undefined, box);
-    el("span", `pw-kind pw-kind-${c.kind}`, KIND_LABEL[c.kind], head);
-    el("span", "pw-card-project", grouped ? (c.task ?? "") : c.project + (c.task ? ` / ${c.task}` : ""), head);
+    const kind = this.icon(head, KIND_ICON[c.kind], `pw-kind pw-kind-${c.kind}`);
+    kind.removeAttribute("aria-hidden");
+    kind.setAttribute("role", "img");
+    kind.setAttribute("aria-label", KIND_LABEL[c.kind]);
+    kind.title = KIND_LABEL[c.kind];
+    const where = grouped ? (c.task ?? "") : c.project + (c.task ? ` / ${c.task}` : "");
+    if (where) el("span", "pw-card-project", where, head);
+    this.fromLine(c, head);
     const start = cardStart(c);
-    const opened = `Card opened ${new Date(c.openedAt).toLocaleString()}`;
+    const opened = `Card ${c.id}, opened ${new Date(c.openedAt).toLocaleString()}`;
+    const meta = el("span", "pw-meta pw-card-age", undefined, head);
+    this.icon(meta, "clock");
+    let age: HTMLElement;
     if (start !== c.openedAt) {
       // moved from somewhere else: show when it first came up, not when the card was made
-      const age = el("span", "pw-card-age", `since ${shortDate(start)}`, head);
-      age.title = `First came up ${new Date(start).toLocaleDateString()}\n${opened}`;
+      age = el("span", undefined, shortDate(start), meta);
+      meta.title = `First came up ${new Date(start).toLocaleDateString()}\n${opened}`;
     } else if (now - Date.parse(start) > 2 * DAY) {
-      const age = el("span", "pw-card-age", shortDate(start), head);
-      age.title = opened;
+      age = el("span", undefined, shortDate(start), meta);
+      meta.title = opened;
     } else {
-      const age = el("span", "pw-card-age", ago(start, now), head);
+      age = el("span", undefined, ago(start, now), meta);
       age.dataset.since = start;
-      age.title = opened;
+      meta.title = opened;
     }
-    el("span", "pw-card-id", c.id, head);
   }
 
   private card(c: Card, now: number): HTMLElement {
@@ -279,48 +333,56 @@ export class Panel {
     if (busy) box.classList.add("is-busy");
     this.cardHead(c, box, now, true);
     el("div", "pw-card-title", c.title, box);
-    if (c.body) this.host.renderMarkdown(c.body, el("div", "pw-card-body markdown-rendered", undefined, box));
-    if (c.look) {
-      const look = el("div", "pw-look", undefined, box);
-      el("span", "pw-look-label", "Look at", look);
-      el("span", "pw-look-text", c.look, look);
-    }
-    if (c.open?.length) {
-      const row = el("div", "pw-opens", undefined, box);
-      for (const target of c.open) {
-        const b = el("button", "pw-open-btn", undefined, row);
-        this.host.icon(el("span", "pw-btn-icon", undefined, b), "external-link");
-        el("span", undefined, `Open ${basename(target)}`, b);
-        b.title = target;
-        b.onclick = () => this.backend.open(target);
-      }
-    }
-    if (c.attach?.length) this.media(c.attach, el("div", "pw-media", undefined, box));
-    if (c.comments.length) {
-      const log = el("div", "pw-comments", undefined, box);
-      for (const m of c.comments) el("div", `pw-comment pw-by-${m.by === "human" ? "human" : "agent"}`, `${m.by === "human" ? "You" : "Agent"}: ${m.text}`, log);
-    }
-    this.fromLine(c, box);
+    this.cardDetail(c, box);
     this.reply(c, box, busy);
     return box;
   }
 
-  /** Who asked, with a link that opens their session and puts a line about the card on the clipboard. */
-  private fromLine(c: Card, box: HTMLElement): void {
-    if (!c.from && !c.session) return;
-    const row = el("div", "pw-from", undefined, box);
-    el("span", undefined, "from ", row);
-    const who = c.from ?? `session ${c.session!.slice(0, 8)}`;
-    if (!c.session) {
-      el("span", "pw-from-name", who, row);
-      return;
+  /** What the card says and carries: body, what to look at, things to open, media, comments. */
+  private cardDetail(c: Card, box: HTMLElement): void {
+    if (c.body) this.host.renderMarkdown(c.body, el("div", "pw-card-body markdown-rendered", undefined, box));
+    if (c.look) {
+      const look = el("div", "pw-look", undefined, box);
+      this.icon(look, "eye").title = "Look at";
+      el("span", "pw-look-text", c.look, look);
     }
-    const link = el("a", "pw-from-link", who, row);
+    const refs = el("div", "pw-refs", undefined, box);
+    for (const target of c.open ?? []) {
+      const b = el("button", "pw-ref", undefined, refs);
+      this.icon(b, "external-link", "pw-btn-icon");
+      el("span", undefined, basename(target), b);
+      b.title = `Open ${target}`;
+      b.onclick = () => this.backend.open(target);
+    }
+    const media = (c.attach ?? []).filter((f) => IMAGE.test(f) || VIDEO.test(f));
+    for (const f of (c.attach ?? []).filter((x) => !media.includes(x))) refs.appendChild(this.fileLink(f));
+    if (!refs.childElementCount) refs.remove();
+    if (media.length) this.media(media, el("div", "pw-media", undefined, box));
+    if (c.comments.length) {
+      const log = el("div", "pw-comments", undefined, box);
+      for (const m of c.comments) {
+        const human = m.by === "human";
+        const line = el("div", `pw-comment pw-by-${human ? "human" : "agent"}`, undefined, log);
+        this.icon(line, human ? "user" : "bot").title = human ? "You" : "Agent";
+        el("span", undefined, m.text, line);
+      }
+    }
+  }
+
+  /** Who asked, with a link that opens their session and puts a line about the card on the clipboard. */
+  private fromLine(c: Card, head: HTMLElement): void {
+    if (!c.from && !c.session) return;
+    const who = c.from ?? `session ${c.session!.slice(0, 8)}`;
+    const row = el(c.session ? "a" : "span", "pw-meta pw-from", undefined, head);
+    this.icon(row, "bot");
+    el("span", "pw-from-name", who, row);
+    if (!c.session) return;
+    const link = row as HTMLAnchorElement;
     link.href = "#";
     link.title = `Open this session in Claude and copy a line about ${c.id} to paste there`;
-    this.host.icon(el("span", "pw-from-icon", undefined, link), "arrow-up-right");
     link.onclick = (e) => {
       e.preventDefault();
+      e.stopPropagation();
       void this.backend
         .goto(c.id)
         .then(() => this.host.notice(`Opened ${who}. A line about ${c.id} is on your clipboard; paste it to talk about this card.`))
@@ -339,38 +401,45 @@ export class Panel {
       const opts = el("div", "pw-options", undefined, wrap);
       c.options.forEach((o, i) => {
         const n = i + 1;
-        const b = el("button", c.recommend === n ? "pw-option is-recommended" : "pw-option", undefined, opts);
+        const rec = c.recommend === n;
+        const b = el("button", rec ? "pw-option is-recommended" : "pw-option", undefined, opts);
         el("span", "pw-option-n", String(n), b);
         el("span", "pw-option-text", o, b);
-        if (c.recommend === n) el("span", "pw-option-rec", "Recommended", b);
+        if (rec) {
+          this.icon(b, "check", "pw-option-rec");
+          b.title = "Recommended";
+        }
         b.onclick = () => send({ choice: n });
         buttons.push(b);
       });
     }
 
-    const note = el("textarea", "pw-note", undefined, wrap);
+    const line = el("div", "pw-reply-line", undefined, wrap);
+    const note = el("textarea", "pw-note", undefined, line);
     note.dataset.card = c.id;
     note.rows = 1;
-    note.placeholder =
-      c.kind === "decide" ? (c.options?.length ? "Add a note to your choice (optional)" : "Your answer") : c.kind === "try" ? "What did you see?" : "Anything to add? (optional)";
+    note.placeholder = c.kind === "decide" ? (c.options?.length ? "Note" : "Answer") : c.kind === "try" ? "What did you see?" : "Note";
+    note.title = "Paste or drop an image to attach. ⌘↩ sends.";
     note.value = draft.note;
-    const chips = el("div", "pw-chips", undefined, wrap);
-    const actions = el("div", "pw-actions", undefined, wrap);
-
-    const sendNote = el("button", "pw-btn", "Send note", actions);
     let primary: HTMLButtonElement | undefined;
-    if (c.kind === "try") primary = el("button", "pw-btn mod-cta", "Looks good", actions);
-    if (c.kind === "block" || c.kind === "todo") primary = el("button", "pw-btn mod-cta", "Done", actions);
-    if (c.kind === "decide" && !c.options?.length) {
-      sendNote.textContent = "Send";
-      sendNote.classList.add("mod-cta");
+    if (c.kind === "try" || c.kind === "block" || c.kind === "todo") {
+      const label = c.kind === "try" ? "Looks good" : "Done";
+      primary = el("button", "pw-round pw-done", undefined, line);
+      this.icon(primary, "check");
+      primary.title = label;
+      primary.setAttribute("aria-label", label);
+      primary.dataset.say = label;
     }
+    const sendNote = el("button", "pw-round pw-send", undefined, line);
+    this.icon(sendNote, "arrow-up");
+    sendNote.title = "Send note (⌘↩)";
+    sendNote.setAttribute("aria-label", "Send note");
+    const chips = el("div", "pw-chips", undefined, wrap);
     buttons.push(sendNote);
     if (primary) {
       buttons.push(primary);
-      primary.onclick = () => send({ comment: draft.note.trim() || primary!.textContent! });
+      primary.onclick = () => send({ comment: draft.note.trim() || primary!.dataset.say! });
     }
-    el("div", "pw-reply-hint", "Paste or drop an image to attach · ⌘↩ sends the note", wrap);
 
     const sync = () => {
       const empty = !draft.note.trim() && !draft.attach.length;
@@ -380,7 +449,9 @@ export class Panel {
       note.disabled = busy;
       chips.replaceChildren();
       for (const f of draft.attach) {
-        const chip = el("span", "pw-chip", basename(f), chips);
+        const chip = el("span", "pw-chip", undefined, chips);
+        this.icon(chip, "paperclip");
+        el("span", undefined, basename(f), chip);
         chip.title = f;
         const x = el("button", "pw-chip-x", "×", chip);
         x.setAttribute("aria-label", `Remove ${basename(f)}`);
@@ -454,16 +525,66 @@ export class Panel {
     }
   }
 
-  private answeredCard(c: Card, now: number): HTMLElement {
-    const box = el("div", "pw-card pw-card-answered");
-    this.cardHead(c, box, now);
-    el("div", "pw-card-title", c.title, box);
+  /**
+   * An answered or closed card: its title and your answer, folded. Click it to read the whole card
+   * again and open what it carried.
+   */
+  private pastCard(c: Card, now: number): HTMLElement {
+    const box = el("div", `pw-card pw-card-past pw-card-${c.status}`);
+    box.dataset.cardId = c.id;
+    const open = this.reopened.has(c.id);
+    box.classList.toggle("is-open", open);
+    const top = el("div", "pw-past-top", undefined, box);
+    top.setAttribute("role", "button");
+    top.tabIndex = 0;
+    top.setAttribute("aria-expanded", String(open));
+    this.cardHead(c, top, now);
+    const title = el("div", "pw-past-title", undefined, top);
+    el("div", "pw-card-title", c.title, title);
+    this.icon(title, "chevron-down", "pw-chevron");
     for (const a of c.answers.filter((x) => x.by === "human")) {
       const parts: string[] = [];
-      if (a.choice !== undefined) parts.push(`chose ${a.choice}${c.options?.[a.choice - 1] ? ` (${c.options[a.choice - 1]})` : ""}`);
+      if (a.choice !== undefined) parts.push(`${a.choice}${c.options?.[a.choice - 1] ? `. ${c.options[a.choice - 1]}` : ""}`);
       if (a.comment) parts.push(`“${a.comment}”`);
       if (a.attach?.length) parts.push(`${a.attach.length} attached`);
-      el("div", "pw-answer", `You ${parts.join(", ")}`, box);
+      const line = el("div", "pw-answer", undefined, top);
+      this.icon(line, "corner-down-right").title = "Your answer";
+      el("span", undefined, parts.join(", "), line);
+    }
+    if (c.status === "closed" && c.closeNote) {
+      const line = el("div", "pw-answer pw-close-note", undefined, top);
+      this.icon(line, "archive").title = "Closed";
+      el("span", undefined, c.closeNote, line);
+    }
+    const toggle = () => {
+      if (this.reopened.has(c.id)) this.reopened.delete(c.id);
+      else this.reopened.add(c.id);
+      this.cardsSig = "";
+      this.update(undefined, this.error);
+    };
+    top.onclick = (e) => {
+      if ((e.target as HTMLElement).closest("button, a")) return;
+      toggle();
+    };
+    top.onkeydown = (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        toggle();
+      }
+    };
+    if (open) {
+      // built only when opened, so a long list does not load every video
+      const detail = el("div", "pw-past-detail", undefined, box);
+      this.cardDetail(c, detail);
+      const sent = c.answers.filter((x) => x.by === "human").flatMap((a) => a.attach ?? []);
+      if (sent.length) {
+        const media = sent.filter((f) => IMAGE.test(f) || VIDEO.test(f));
+        const refs = el("div", "pw-refs", undefined, detail);
+        for (const f of sent.filter((x) => !media.includes(x))) refs.appendChild(this.fileLink(f));
+        if (!refs.childElementCount) refs.remove();
+        if (media.length) this.media(media, el("div", "pw-media", undefined, detail));
+      }
+      if (!detail.childElementCount) el("div", "pw-meta pw-past-empty", "Nothing more on this card", detail);
     }
     return box;
   }
@@ -489,39 +610,70 @@ export class Panel {
   }
 
   private fileLink(f: string): HTMLElement {
-    const b = el("button", "pw-file");
-    this.host.icon(el("span", "pw-btn-icon", undefined, b), URL_RE.test(f) ? "link" : "file");
+    const b = el("button", "pw-ref pw-file");
+    this.icon(b, URL_RE.test(f) ? "link" : "paperclip", "pw-btn-icon");
     el("span", undefined, basename(f), b);
+    b.title = f;
     b.onclick = () => this.backend.open(f);
     return b;
   }
 
   // ---------------------------------------------------------------- agents
 
+  /**
+   * The agents as a chart: one lane per run over the last hour, its active minutes drawn as
+   * segments, now at the right edge. The whole block folds away to one line of counts.
+   */
   private renderAgents(now: number): void {
     const root = this.agentsEl;
     root.replaceChildren();
     const runs = this.snapshot?.runs ?? [];
-    const groups = groupRuns(runs, now, this.expanded);
-    this.section(root, "Agents", runs.length ? undefined : 0);
+    const working = runs.filter((r) => r.state === "working" || r.state === "waiting").length;
+    const head = el("div", "pw-agents-head", undefined, root);
+    head.setAttribute("role", "button");
+    head.tabIndex = 0;
+    const lead = el("div", "pw-agents-title", undefined, head);
+    const chevron = el("span", "pw-chevron", undefined, lead);
+    this.host.icon(chevron, "chevron-down");
+    this.badge(lead, "activity", working, `${working} agent${working === 1 ? "" : "s"} working, ${runs.length} in the last hours`, working ? "" : "is-zero");
+    const axis = el("div", "pw-axis", undefined, head);
+    axis.setAttribute("aria-hidden", "true");
+    el("span", undefined, `−${CHART_MINUTES}m`, axis);
+    el("span", undefined, `−${CHART_MINUTES / 2}m`, axis);
+    el("span", undefined, "now", axis);
+    const body = el("div", "pw-agents-body", undefined, root);
+    this.foldable(root, head, "agents");
     if (!runs.length) {
-      el("div", "pw-empty", this.snapshot ? "No agent activity in the last hours." : "Loading…", root);
+      el("div", "pw-empty", this.snapshot ? "No agent activity in the last hours." : "Loading…", body);
       return;
     }
-    for (const g of groups) {
+    // minutes in the chart count back from when the snapshot was taken
+    const at = this.snapshot ? Date.parse(this.snapshot.generatedAt) : now;
+    for (const g of groupRuns(runs, now, this.expanded)) {
       const other = g.name === "other";
-      const hint = other ? "not in a registered project" : g.working ? `${g.working} working` : "idle";
-      const body = this.foldGroup(root, `agents:${g.name}`, other ? "Other" : g.name, undefined, hint);
-      for (const row of g.rows) body.appendChild("run" in row ? this.runRow(row, now) : this.foldRow(row, now));
+      const rows = this.foldGroup(body, `agents:${g.name}`, other ? "Other" : g.name, false, (h) => {
+        if (other) h.title = "Not in a registered project";
+        if (g.working) this.badge(h, "activity", g.working, `${g.working} working`);
+      });
+      for (const row of g.rows) rows.appendChild("run" in row ? this.runRow(row, now, at) : this.foldRow(row, now));
     }
   }
 
-  private runRow({ run: r, depth }: RunNode, now: number): HTMLElement {
+  private runIcon(r: Run): string {
+    if (r.role === "lead") return "network";
+    if (r.kind === "declared") return "timer";
+    if (r.kind === "subagent") return "corner-down-right";
+    return "terminal";
+  }
+
+  private runRow({ run: r, depth }: RunNode, now: number, at: number): HTMLElement {
     const row = el("div", `pw-run pw-state-${r.state}${r.role === "lead" ? " is-lead" : ""}${depth ? " is-child" : ""}`);
     row.style.setProperty("--pw-depth", String(depth));
-    const top = el("div", "pw-run-top", undefined, row);
-    el("span", "pw-dot", undefined, top).setAttribute("aria-label", STATE_LABEL[r.state]);
-    const title = el("span", "pw-run-title", r.title, top);
+    const who = el("div", "pw-run-who", undefined, row);
+    const icon = this.icon(who, this.runIcon(r), "pw-run-icon");
+    icon.title = r.role === "lead" ? `lead · ${STATE_LABEL[r.state]}` : STATE_LABEL[r.state];
+    const text = el("div", "pw-run-text", undefined, who);
+    const title = el("span", "pw-run-title", r.title, text);
     if (r.runtime === "claude-code" && r.kind === "session") {
       title.classList.add("is-link");
       title.setAttribute("role", "link");
@@ -533,11 +685,11 @@ export class Panel {
         if (e.key === "Enter") go();
       };
     }
-    if (r.role === "lead") el("span", "pw-run-role", "lead", top);
-    el("span", "pw-run-age", ago(r.lastActivity, now), top);
     const what = r.error ? `unreadable: ${r.error}` : clean(r.action);
-    const text = r.state === "stalled" ? `stalled${what ? ` · ${what}` : ""}` : what || STATE_LABEL[r.state];
-    el("div", "pw-run-action", text, row);
+    const sub = el("div", "pw-run-sub", undefined, text);
+    el("span", "pw-run-age", ago(r.lastActivity, now), sub);
+    if (what || r.state === "stalled") el("span", "pw-run-action", r.state === "stalled" ? `stalled${what ? ` · ${what}` : ""}` : what, sub);
+    row.appendChild(this.lane(r, at, now));
     row.title = [
       `${r.title}`,
       `${STATE_LABEL[r.state]}${r.lastActivity ? `, last activity ${new Date(r.lastActivity).toLocaleTimeString()}` : ""}`,
@@ -550,14 +702,40 @@ export class Panel {
     return row;
   }
 
+  /** One lane of the chart: the run's active minutes, merged into segments. */
+  private lane(r: Run, at: number, now: number): HTMLElement {
+    const lane = el("div", "pw-lane");
+    lane.setAttribute("aria-hidden", "true");
+    // the snapshot may be a little old; slide the chart so its right edge stays at now
+    const shift = Math.max(0, Math.floor((now - at) / 60_000));
+    const mins = (r.activity ?? []).map((m) => m + shift).filter((m) => m < CHART_MINUTES);
+    const live = r.state === "working" || r.state === "waiting";
+    const bad = r.state === "stalled" || r.state === "failed";
+    for (let i = 0; i < mins.length; ) {
+      let j = i;
+      while (j + 1 < mins.length && mins[j + 1] === mins[j]! + 1) j++;
+      const newest = mins[i]!;
+      const oldest = mins[j]!;
+      const seg = el("i", undefined, undefined, lane);
+      seg.style.left = `${((CHART_MINUTES - 1 - oldest) / CHART_MINUTES) * 100}%`;
+      seg.style.width = `${((oldest - newest + 1) / CHART_MINUTES) * 100}%`;
+      if (i === 0 && newest <= 1 && live) seg.className = "is-live";
+      if (i === 0 && bad) seg.className = "is-bad";
+      i = j + 1;
+    }
+    return lane;
+  }
+
   private foldRow(f: FoldNode, now: number): HTMLElement {
     const row = el("div", "pw-run pw-fold is-child");
     row.style.setProperty("--pw-depth", String(f.depth));
-    const top = el("div", "pw-run-top", undefined, row);
-    el("span", "pw-dot", undefined, top);
-    el("span", "pw-run-title", `${f.folded.length} finished`, top);
+    const who = el("div", "pw-run-who", undefined, row);
+    this.icon(who, "chevrons-down", "pw-run-icon");
+    const text = el("div", "pw-run-text", undefined, who);
+    el("span", "pw-run-title", `${f.folded.length} finished`, text);
     const newest = f.folded.map((r) => r.lastActivity ?? "").sort().pop();
-    el("span", "pw-run-age", ago(newest, now), top);
+    el("div", "pw-run-sub", ago(newest, now), text);
+    el("div", "pw-lane", undefined, row).setAttribute("aria-hidden", "true");
     row.title = f.folded.map((r) => r.title).join("\n");
     row.setAttribute("role", "button");
     row.tabIndex = 0;

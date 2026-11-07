@@ -1,7 +1,7 @@
 import zlib from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { artPng, draw } from "../src/art.js";
-import { alertFor, needsYou, summary, toDo, trayTitle } from "../src/rules.js";
+import { artPng, countLabel, draw, drawTray, TRAY_IDLE, trayWidth } from "../src/art.js";
+import { agentsWorking, alertFor, needsYou, summary, toDo } from "../src/rules.js";
 import type { Card, PwEvent, Snapshot } from "../../../src/core/types.js";
 
 const card = (id: string, kind: Card["kind"], status: Card["status"] = "open"): Card => ({
@@ -25,8 +25,12 @@ describe("what needs the human", () => {
     expect(toDo(s)).toBe(1);
     expect(summary(s)).toBe("2 need you · 1 to do");
     expect(summary(snap([]))).toBe("Nothing needs you");
-    expect(trayTitle(0)).toBe("");
-    expect(trayTitle(3)).toBe("3");
+  });
+
+  it("sees agents at work from their runs", () => {
+    const run = (state: "working" | "idle") => ({ id: "r", runtime: "codex", kind: "exec", title: "r", state }) as const;
+    expect(agentsWorking({ ...snap([]), runs: [run("idle")] })).toBe(false);
+    expect(agentsWorking({ ...snap([]), runs: [run("idle"), run("working")] })).toBe(true);
   });
 
   it("notifies for new cards and failed jobs, never for to-dos or answers", () => {
@@ -54,6 +58,18 @@ describe("icons drawn in code", () => {
     expect(tray.some((v, i) => i % 4 === 3 && v === 255)).toBe(true);
   });
 
+  it("moves the tray dots only while agents work, and holds the one that needs you", () => {
+    const opaque = (px: Uint8Array) => px.filter((v, i) => i % 4 === 3 && v === 255).length;
+    const idle = (phase: number) => draw("tray", 36, { phase, working: false, attention: false });
+    expect(idle(0.3)).toEqual(idle(0.7));
+    const work = (phase: number) => draw("tray", 36, { phase, working: true, attention: false });
+    expect(work(0.3)).not.toEqual(work(0.7));
+    const held = draw("tray", 36, { phase: 0.125, working: false, attention: true });
+    expect(opaque(held)).toBeGreaterThan(opaque(idle(0.125)));
+    const white = draw("tray", 36, TRAY_IDLE, [255, 255, 255]);
+    expect([white[0], white[1], white[2]]).toEqual([255, 255, 255]);
+  });
+
   it("encodes a valid PNG", () => {
     const buf = artPng("overlay", 16);
     expect(buf.subarray(1, 4).toString("ascii")).toBe("PNG");
@@ -61,5 +77,29 @@ describe("icons drawn in code", () => {
     const idat = buf.indexOf("IDAT");
     const len = buf.readUInt32BE(idat - 4);
     expect(zlib.inflateSync(buf.subarray(idat + 4, idat + 4 + len)).length).toBe(16 * (16 * 4 + 1));
+  });
+
+  it("draws the count inside the menu bar icon", () => {
+    expect(countLabel(7)).toBe("7");
+    expect(countLabel(140)).toBe("99+");
+    expect(trayWidth(0)).toBe(18);
+    expect(trayWidth(12)).toBeGreaterThan(trayWidth(1));
+    const plain = drawTray(TRAY_IDLE, 0, 2);
+    expect(plain.width).toBe(36);
+    const one = drawTray(TRAY_IDLE, 1, 2);
+    const twelve = drawTray(TRAY_IDLE, 12, 2);
+    expect(twelve.width).toBeGreaterThan(one.width);
+    // amber bubble pixels, and dark digit pixels inside it
+    const px = (img: { rgba: Uint8Array }, test: (r: number, g: number, b: number, a: number) => boolean) => {
+      let n = 0;
+      for (let i = 0; i < img.rgba.length; i += 4) if (test(img.rgba[i]!, img.rgba[i + 1]!, img.rgba[i + 2]!, img.rgba[i + 3]!)) n++;
+      return n;
+    };
+    const amber = (r: number, g: number, b: number, a: number) => a > 250 && r > 240 && g > 160 && b < 80;
+    const digit = (r: number, g: number, b: number, a: number) => a > 250 && r < 80 && g < 50;
+    expect(px(plain, amber)).toBe(0);
+    expect(px(one, amber)).toBeGreaterThan(50);
+    expect(px(one, digit)).toBeGreaterThan(10);
+    expect(px(twelve, digit)).toBeGreaterThan(px(one, digit));
   });
 });

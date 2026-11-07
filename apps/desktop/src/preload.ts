@@ -1,5 +1,6 @@
 // The only bridge between the page and the app: a small, typed API on window.parawatch.
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+import type { Prefs } from "./prefs";
 
 type Listener<T> = (value: T) => void;
 
@@ -12,6 +13,11 @@ function on<T>(channel: string, fn: Listener<T>): () => void {
 const api = {
   snapshot: () => ipcRenderer.invoke("pw:snapshot"),
   refresh: () => ipcRenderer.invoke("pw:refresh"),
+  platform: process.platform,
+  prefs: () => ipcRenderer.invoke("pw:prefs") as Promise<Prefs>,
+  setPref: <K extends keyof Prefs>(key: K, value: Prefs[K]) => ipcRenderer.invoke("pw:set-pref", key, value) as Promise<void>,
+  onPrefs: (fn: Listener<Prefs>) => on("pw:prefs", fn),
+  onOpenSettings: (fn: Listener<void>) => on("pw:open-settings", fn),
   answer: (card: string, reply: unknown) => ipcRenderer.invoke("pw:answer", card, reply),
   goto: (target: string) => ipcRenderer.invoke("pw:goto", target),
   open: (target: string) => ipcRenderer.invoke("pw:open", target),
