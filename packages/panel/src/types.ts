@@ -33,4 +33,6 @@ export interface Backend {
   saveAttachment(data: ArrayBuffer, ext: string): Promise<string>;
   /** Path of a file dropped from Finder, if the platform exposes it. */
   droppedPath(file: File): string | undefined;
+  /** The system's menu for a file, app or URL the card carries (open, show in Finder, copy path). */
+  targetMenu?(target: string): void;
 }

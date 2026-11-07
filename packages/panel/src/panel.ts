@@ -66,6 +66,49 @@ function basename(p: string): string {
   return parts[parts.length - 1] || p;
 }
 
+const MEDIA_GAP = 6;
+
+/**
+ * A justified gallery: items keep their aspect ratio and share rows of one height that fill the
+ * width. A row that is still too tall takes the item that brings it closest to the target height,
+ * preferring the next one in order, so a tall video gets a neighbour instead of empty space and
+ * nothing shrinks to a sliver. A lone item is capped so it does not take the whole window.
+ */
+export function layoutMedia(row: HTMLElement): void {
+  const width = row.clientWidth;
+  const items = Array.from(row.children) as HTMLElement[];
+  if (!width || !items.length) return;
+  const target = Math.max(200, Math.min(300, width * 0.55));
+  const cap = items.length === 1 ? 520 : target * 1.35;
+  const ratio = (i: HTMLElement) => Number(i.dataset.ar) || 1.6;
+  const height = (line: HTMLElement[]) => (width - MEDIA_GAP * (line.length - 1)) / line.reduce((n, i) => n + ratio(i), 0);
+  const rest = [...items];
+  while (rest.length) {
+    const line = [rest.shift()!];
+    while (rest.length) {
+      const now = Math.min(height(line), cap);
+      if (now <= target * 1.15) break;
+      let pick = -1;
+      let best = Math.abs(now - target);
+      rest.forEach((c, k) => {
+        const score = Math.abs(height([...line, c]) - target) + k * 8;
+        if (score < best) {
+          best = score;
+          pick = k;
+        }
+      });
+      if (pick < 0) break;
+      line.push(rest.splice(pick, 1)[0]!);
+    }
+    const h = Math.min(height(line), cap);
+    for (const i of line) {
+      i.style.width = `${Math.floor(ratio(i) * h)}px`;
+      i.style.height = `${Math.floor(h)}px`;
+      row.appendChild(i); // rows are placed in order, so a pulled-forward item moves up
+    }
+  }
+}
+
 export class Panel {
   private snapshot?: Snapshot;
   private error?: string;
@@ -74,6 +117,10 @@ export class Panel {
   private expanded = new Set<string>();
   /** answered and closed cards the human opened to read again */
   private reopened = new Set<string>();
+  /** lays the media rows out again when the window changes width */
+  private mediaSize = new ResizeObserver((entries) => {
+    for (const e of entries) layoutMedia(e.target as HTMLElement);
+  });
   private collapsed = loadCollapsed();
   private cardsSig = "";
   private head: HTMLElement;
@@ -190,6 +237,7 @@ export class Panel {
     const caret = focusId ? [active!.selectionStart, active!.selectionEnd] : undefined;
 
     root.replaceChildren();
+    this.mediaSize.disconnect();
     const cards = this.snapshot?.cards ?? [];
     const open = cards
       .filter((c) => c.status === "open")
@@ -353,6 +401,7 @@ export class Panel {
       el("span", undefined, basename(target), b);
       b.title = `Open ${target}`;
       b.onclick = () => this.backend.open(target);
+      this.withMenu(b, target);
     }
     const media = (c.attach ?? []).filter((f) => IMAGE.test(f) || VIDEO.test(f));
     for (const f of (c.attach ?? []).filter((x) => !media.includes(x))) refs.appendChild(this.fileLink(f));
@@ -589,16 +638,28 @@ export class Panel {
     return box;
   }
 
+  /** Pictures and videos at their own shape, in rows that fill the card (see layoutMedia). */
   private media(files: string[], row: HTMLElement): void {
+    this.mediaSize.observe(row);
     for (const f of files) {
       const item = el("div", "pw-media-item", undefined, row);
       item.title = f;
+      this.withMenu(item, f);
+      const fit = (w: number, h: number) => {
+        if (!(w > 0 && h > 0)) return;
+        item.dataset.ar = String(w / h);
+        layoutMedia(row);
+      };
       if (IMAGE.test(f) || VIDEO.test(f)) {
         const video = VIDEO.test(f);
         const m = video ? el("video", "pw-media-video", undefined, item) : el("img", "pw-media-img", undefined, item);
+        if (video) m.addEventListener("loadedmetadata", () => fit((m as HTMLVideoElement).videoWidth, (m as HTMLVideoElement).videoHeight));
+        else m.addEventListener("load", () => fit((m as HTMLImageElement).naturalWidth, (m as HTMLImageElement).naturalHeight));
         if (video) {
           (m as HTMLVideoElement).controls = true;
           (m as HTMLVideoElement).preload = "metadata";
+          // the file is already on this machine; its own menu (right click) has the file actions
+          m.setAttribute("controlslist", "nodownload noremoteplayback");
         } else (m as HTMLImageElement).alt = basename(f);
         void this.backend.mediaUrl(f).then((url) => {
           if (url) m.src = url;
@@ -615,7 +676,19 @@ export class Panel {
     el("span", undefined, basename(f), b);
     b.title = f;
     b.onclick = () => this.backend.open(f);
+    this.withMenu(b, f);
     return b;
+  }
+
+  /** Right click shows the host's menu for the file instead of the page's own. */
+  private withMenu(target: HTMLElement, file: string): void {
+    const menu = this.backend.targetMenu;
+    if (!menu) return;
+    target.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      menu.call(this.backend, file);
+    });
   }
 
   // ---------------------------------------------------------------- agents

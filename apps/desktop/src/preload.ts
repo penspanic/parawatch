@@ -22,6 +22,7 @@ const api = {
   goto: (target: string) => ipcRenderer.invoke("pw:goto", target),
   open: (target: string) => ipcRenderer.invoke("pw:open", target),
   mediaUrl: (file: string) => ipcRenderer.invoke("pw:media-url", file),
+  targetMenu: (target: string) => ipcRenderer.invoke("pw:target-menu", target),
   saveAttachment: (data: ArrayBuffer, ext: string) => ipcRenderer.invoke("pw:save-attachment", data, ext),
   droppedPath: (file: File) => webUtils.getPathForFile(file) || undefined,
   onSnapshot: (fn: Listener<unknown>) => on("pw:snapshot", fn),

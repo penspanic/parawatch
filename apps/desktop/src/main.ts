@@ -364,6 +364,35 @@ function allowedMedia(): Set<string> {
   return out;
 }
 
+let shownMenu: Menu | undefined;
+const URL_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
+
+/**
+ * The menu for a file, app or URL a card carries, like the one Finder shows: open, Quick Look,
+ * show in Finder, copy the path, share. A card's files are on this machine, so there is no download.
+ */
+function targetMenu(target: string): Menu {
+  const mac = process.platform === "darwin";
+  if (URL_RE.test(target)) {
+    return Menu.buildFromTemplate([
+      { label: "Open Link", click: () => void shell.openExternal(target) },
+      { label: "Copy Link", click: () => clipboard.writeText(target) },
+      ...(mac ? [{ type: "separator" as const }, { role: "shareMenu" as const, sharingItem: { urls: [target] } }] : []),
+    ]);
+  }
+  const file = path.resolve(target);
+  const there = fs.existsSync(file);
+  const show = mac ? "Show in Finder" : process.platform === "win32" ? "Show in File Explorer" : "Show in Folder";
+  return Menu.buildFromTemplate([
+    { label: there ? "Open" : "File not found", enabled: there, click: () => void shell.openPath(file) },
+    ...(mac ? [{ label: "Quick Look", enabled: there, click: () => win?.previewFile(file) }] : []),
+    { label: show, enabled: there, click: () => shell.showItemInFolder(file) },
+    { type: "separator" },
+    { label: "Copy Path", click: () => clipboard.writeText(file) },
+    ...(mac && there ? [{ type: "separator" as const }, { role: "shareMenu" as const, sharingItem: { filePaths: [file] } }] : []),
+  ]);
+}
+
 function registerIpc(): void {
   ipcMain.handle("pw:snapshot", () => {
     if (!latest) refresh();
@@ -393,6 +422,13 @@ function registerIpc(): void {
       const err = await shell.openPath(target);
       if (err) throw new Error(err);
     }
+  });
+  ipcMain.handle("pw:target-menu", (e, target: string) => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    if (!owner) return;
+    // keep the menu alive while it is open; a menu only the popup refers to can be collected
+    shownMenu = targetMenu(target);
+    shownMenu.popup({ window: owner, callback: () => (shownMenu = undefined) });
   });
   ipcMain.handle("pw:media-url", (_e, file: string) => {
     const p = path.resolve(file);

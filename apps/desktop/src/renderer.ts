@@ -57,6 +57,7 @@ const backend: Backend = {
   mediaUrl: (file: string) => call(api.mediaUrl(file) as Promise<string | undefined>),
   saveAttachment: (data: ArrayBuffer, ext: string) => call(api.saveAttachment(data, ext) as Promise<string>),
   droppedPath: (file: File) => api.droppedPath(file),
+  targetMenu: (target: string) => void call(api.targetMenu(target)).catch((err) => toast(plain(err).message)),
 };
 
 /** The settings button at the end of the status row. */
