@@ -47,7 +47,8 @@ npm start -w @parawatch/desktop
 
 - **English everywhere.** Code, comments, commit messages, docs, test data.
 - **Read only from agent logs.** An adapter never writes to another tool's files and never sends them anywhere.
-- **No server, and no network of our own.** Everything stays in the local store. The one thing read from outside is pull requests, through the user's own `gh`, and only when it is installed and signed in. Agent logs and cards are never sent anywhere.
+- **No server, and no network of our own.** Everything stays in the local store. Only two things are read from outside: pull requests, through the user's own `gh` and only when it is installed and signed in, and the latest version (the npm registry for the CLI, GitHub Releases for the app), which the user can turn off. Agent logs and cards are never sent anywhere, and nothing is sent about the user.
+- **A release holds only the app.** The desktop build bundles everything into `dist/`; `scripts/check-package.cjs` fails a release that carries anything else or names the building machine's home folder.
 - **Test data is made up.** No real project names, paths or card text from your own machine.
 - Keep the store format backward compatible. A new event type is fine; changing what an old one means is not.
 

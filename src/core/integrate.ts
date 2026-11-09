@@ -52,6 +52,41 @@ export function writeInstructions(file: string, project?: string): boolean {
   return true;
 }
 
+/** Take the parawatch block out of an instruction file. Returns true when the file changed. */
+export function removeInstructions(file: string): boolean {
+  let text: string;
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw err;
+  }
+  const a = text.indexOf(BEGIN);
+  const b = text.indexOf(END);
+  if (a < 0 || b < a) return false;
+  const before = text.slice(0, a).replace(/\n+$/, "");
+  const after = text.slice(b + END.length).replace(/^\n+/, "");
+  const next = before && after ? `${before}\n\n${after}` : before ? `${before}\n` : after;
+  fs.writeFileSync(file, next);
+  return true;
+}
+
+/** Whether a file has the parawatch block, and whether it is the one this version writes. */
+export function instructionState(file: string): "current" | "outdated" | "absent" {
+  let text: string;
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch {
+    return "absent";
+  }
+  const a = text.indexOf(BEGIN);
+  const b = text.indexOf(END);
+  if (a < 0 || b < a) return "absent";
+  const block = text.slice(a, b + END.length);
+  const project = /--project (\S+)/.exec(block)?.[1];
+  return block === instructions(project === "<project>" ? undefined : project) ? "current" : "outdated";
+}
+
 /**
  * Claude Code hook: given the hook's JSON on stdin, return text to add to the turn
  * when the human has answered something for this session's project. Peeks only;

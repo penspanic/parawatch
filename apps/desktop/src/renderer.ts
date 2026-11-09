@@ -86,6 +86,11 @@ const settings = new SettingsView(
   settingsRoot,
   (key, value) => void call(api.setPref(key, value)).catch((err) => toast(plain(err).message)),
   () => showSettings(false),
+  {
+    checkUpdates: () => void api.checkUpdates().then((u) => settings.setUpdate(u)),
+    installUpdate: () => void api.installUpdate(),
+    openLink: (which) => void api.openLink(which),
+  },
 );
 
 function showSettings(on: boolean): void {
@@ -93,11 +98,14 @@ function showSettings(on: boolean): void {
   settingsRoot.hidden = !on;
   if (on) {
     void api.prefs().then((p) => settings.update(p));
+    void api.about().then((a) => settings.setAbout(a));
+    void api.updateState().then((u) => settings.setUpdate(u));
     settingsRoot.querySelector<HTMLElement>(".st-close")?.focus();
   }
 }
 
 api.onPrefs((p) => settings.update(p));
+api.onUpdate((u) => settings.setUpdate(u));
 api.onOpenSettings(() => showSettings(true));
 document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === ",") {

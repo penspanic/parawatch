@@ -34,7 +34,9 @@ macOS builds are signed ad hoc by default. An ad hoc build runs on the machine t
 
 ### Releases
 
-`npm run release:mac -w @parawatch/desktop` builds the app for Apple silicon and Intel, signs it with `MAC_IDENTITY`, notarizes it with the `notarytool` keychain profile named by `NOTARY_PROFILE`, and uploads the two DMGs to a draft GitHub release for the version in `package.json`, with that version's CHANGELOG section as notes. See the top of [`scripts/release-mac.sh`](scripts/release-mac.sh) for the one-time setup.
+`npm run release:mac -w @parawatch/desktop` builds the app for Apple silicon and Intel, signs it with `MAC_IDENTITY`, notarizes it with the `notarytool` keychain profile named by `NOTARY_PROFILE`, and checks that each app holds only `dist/` (`scripts/check-package.cjs`), and uploads to a draft GitHub release for the version in `package.json`, with that version's CHANGELOG section as notes: the two DMGs for people to download, and the two zips with their blockmaps and `latest-mac.yml`, which installed copies update themselves from. See the top of [`scripts/release-mac.sh`](scripts/release-mac.sh) for the one-time setup.
+
+Updates go through `electron-updater` with the GitHub provider in `builder.json`. Only signed, packaged macOS builds update themselves; a development run says so in Settings. `PARAWATCH_DESKTOP_DATA=<folder>` gives a second copy its own settings and single-instance lock, for trying a build next to the one you use (pair it with `PARAWATCH_HOME` for its own store).
 
 The macOS app icon is an Icon Composer document, [`icon/Parawatch.icon`](icon/Parawatch.icon): SVG layers and a JSON description, so the system renders it as Liquid Glass with its light, dark, clear and tinted looks. electron-builder compiles it with Xcode's `actool` (Xcode 26 or later). Edit it in Icon Composer, which comes with Xcode.
 
@@ -44,10 +46,13 @@ The other icons are drawn in code ([`src/art.ts`](src/art.ts)) with the same lay
 
 | | |
 |--|--|
-| `src/main.ts` | Window, menu bar, badge, notifications, and the bridge to the store |
+| `src/main.ts` | Window, menus, menu bar icon, badge, notifications, and the bridge to the store |
 | `src/preload.ts` | The small API the page gets on `window.parawatch` |
 | `src/renderer.ts` | The page: the shared panel from [`packages/panel`](../../packages/panel), Markdown, toasts |
 | `src/settingsView.ts` | The settings screen |
 | `src/prefs.ts` | The settings and the values each may take, shared by the window and the app |
 | `src/rules.ts` | What counts toward the badge and what deserves a notification |
+| `src/updater.ts` | Checking for, downloading and installing new versions |
+| `src/logger.ts` | The log file in the system's log folder |
+| `scripts/check-package.cjs` | Fails a release whose app holds more than `dist/` |
 | `src/art.ts` | App, menu bar and overlay icons, and a small PNG encoder |

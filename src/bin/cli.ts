@@ -34,8 +34,12 @@ import { followEvents } from "../core/follow.js";
 import { fold } from "../core/state.js";
 import { collectRuns } from "../core/runs.js";
 import { askRows, cardDetail, cardLine, cardRows, inboxLine, prRows, runsTree, view } from "../core/format.js";
-import { hookContext, notify, writeInstructions } from "../core/integrate.js";
-import { installSkill, skillSource, skillTargets } from "../core/skill.js";
+import { hookContext, notify, removeInstructions, writeInstructions } from "../core/integrate.js";
+import { installSkill, skillSource, skillTargets, uninstallSkill } from "../core/skill.js";
+import { recordClient, runningDesktop, versionSkew } from "../core/clients.js";
+import { doctor, doctorText } from "../core/doctor.js";
+import { checkUpdate, updateLine } from "../core/update.js";
+import { packageVersion } from "../core/version.js";
 import { cardContextLine, resolveGoto } from "../core/desktop.js";
 import { snapshot } from "../core/snapshot.js";
 import { SCHEMA_VERSION, type Card } from "../core/types.js";
@@ -53,11 +57,24 @@ function currentSession(): string | undefined {
   return process.env.CLAUDE_CODE_SESSION_ID || process.env.CODEX_THREAD_ID || undefined;
 }
 
+const VERSION = packageVersion();
+
+/** Where this command line is installed, for the note other copies read. */
+function binPath(): string | undefined {
+  try {
+    return fs.realpathSync(process.argv[1] ?? "");
+  } catch {
+    return process.argv[1];
+  }
+}
+
+recordClient({ name: "cli", version: VERSION, path: binPath() });
+
 const program = new Command();
 program
   .name("parawatch")
   .description("See what your agents are doing, what needs you, and wake the right agent when you answer.")
-  .version("0.2.0");
+  .version(VERSION);
 
 /** Read GitHub when the last reading is old; never fails the command. */
 async function refreshGithub(force = false): Promise<void> {
@@ -392,6 +409,8 @@ program
   .option("-w, --wide", "show runtime and ids")
   .option("--json", "JSON output")
   .action(async (o) => {
+    // the update check runs beside the GitHub reading, and only for a person at a terminal
+    const asking = !o.offline && !o.json && process.stdout.isTTY ? checkUpdate(VERSION).catch(() => undefined) : undefined;
     if (!o.offline) await refreshGithub();
     const snap = snapshot({ sinceHours: o.since, project: o.project });
     if (o.json) {
@@ -407,16 +426,16 @@ program
     const open = cards.filter((c) => c.status === "open" && c.kind !== "todo");
     const todo = cards.filter((c) => c.status === "open" && c.kind === "todo");
     const answered = cards.filter((c) => c.status === "answered");
-    const asking = runs.filter((r) => r.asks);
+    const askers = runs.filter((r) => r.asks);
     const reviews = prs.filter((p) => p.reviewRequested && !p.mine);
     const waiting = prs.filter((p) => !(p.reviewRequested && !p.mine));
     const ls = snap.listeners ?? [];
     const out: string[] = [];
     out.push(head("NEEDS YOU", open.length || "nothing"));
     out.push(...cardRows(open, v, now, "  "));
-    if (asking.length) {
-      out.push("", head("ASKED IN CHAT, NO CARD", asking.length, "  (read from the log)"));
-      out.push(...askRows(asking, v, now, "  "));
+    if (askers.length) {
+      out.push("", head("ASKED IN CHAT, NO CARD", askers.length, "  (read from the log)"));
+      out.push(...askRows(askers, v, now, "  "));
     }
     if (reviews.length) {
       out.push("", head("REVIEWS ASKED OF YOU", reviews.length));
@@ -440,7 +459,14 @@ program
     const working = runs.filter((r) => r.state === "working" || r.state === "waiting").length;
     out.push("", head("AGENTS", runs.length ? `${working} working` : "nothing running"));
     if (runs.length) out.push(runsTree(runs, v));
-    if (snap.github?.error && snap.github.enabled) out.push("", v.color ? `\x1b[2mGitHub: ${snap.github.error}\x1b[0m` : `GitHub: ${snap.github.error}`);
+    const dim = (t: string) => (v.color ? `\x1b[2m${t}\x1b[0m` : t);
+    const notes: string[] = [];
+    if (snap.github?.error && snap.github.enabled) notes.push(`GitHub: ${snap.github.error}`);
+    const skew = versionSkew(VERSION, runningDesktop()?.version);
+    if (skew) notes.push(skew.text);
+    const update = updateLine(await asking);
+    if (update) notes.push(update);
+    if (notes.length) out.push("", ...notes.map(dim));
     process.stdout.write(out.join("\n") + "\n");
   });
 
@@ -461,6 +487,16 @@ skill
   .action((o) => {
     for (const r of installSkill(skillTargets(), { only: o.runtime, force: o.force })) {
       process.stdout.write(`${r.runtime.padEnd(12)} ${r.result.padEnd(15)} ${r.path}${r.note ? `  (${r.note})` : ""}\n`);
+    }
+  });
+
+skill
+  .command("uninstall")
+  .description("remove the skill links that install made")
+  .option("--runtime <name>", "only this runtime: claude-code or codex (repeatable)", collect)
+  .action((o) => {
+    for (const r of uninstallSkill(skillTargets(), { only: o.runtime })) {
+      process.stdout.write(`${r.runtime.padEnd(12)} ${r.result.padEnd(14)} ${r.path}${r.note ? `  (${r.note})` : ""}\n`);
     }
   });
 
@@ -486,9 +522,26 @@ program
   .description("add parawatch instructions for agents to an instruction file")
   .option("-f, --file <path>", "file to write", "AGENTS.md")
   .option("-p, --project <name>", "project name to put in the examples")
+  .option("--remove", "take the parawatch block out of the file instead")
   .action((o) => {
+    if (o.remove) {
+      process.stdout.write(removeInstructions(o.file) ? `Removed the parawatch block from ${o.file}\n` : `${o.file} has no parawatch block\n`);
+      return;
+    }
     const changed = writeInstructions(o.file, o.project);
     process.stdout.write(changed ? `Updated ${o.file}\n` : `${o.file} already up to date\n`);
+  });
+
+program
+  .command("doctor")
+  .description("how parawatch is set up here: versions, store, desktop app, skill, GitHub; paste it into bug reports")
+  .option("--offline", "do not ask the npm registry for the latest version")
+  .option("--json", "JSON output")
+  .action(async (o) => {
+    const update = o.offline ? undefined : await checkUpdate(VERSION, { force: true }).catch(() => undefined);
+    const checks = await doctor({ version: VERSION, bin: binPath(), update });
+    if (o.json) print({ v: SCHEMA_VERSION, version: VERSION, platform: `${process.platform}-${process.arch}`, checks });
+    else process.stdout.write(`${doctorText(checks, view({}).color)}\n`);
   });
 
 program

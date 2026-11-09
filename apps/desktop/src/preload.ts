@@ -1,6 +1,6 @@
 // The only bridge between the page and the app: a small, typed API on window.parawatch.
 import { contextBridge, ipcRenderer, webUtils } from "electron";
-import type { Prefs } from "./prefs";
+import type { AboutInfo, Prefs, UpdateState } from "./prefs";
 
 type Listener<T> = (value: T) => void;
 
@@ -18,6 +18,12 @@ const api = {
   setPref: <K extends keyof Prefs>(key: K, value: Prefs[K]) => ipcRenderer.invoke("pw:set-pref", key, value) as Promise<void>,
   onPrefs: (fn: Listener<Prefs>) => on("pw:prefs", fn),
   onOpenSettings: (fn: Listener<void>) => on("pw:open-settings", fn),
+  about: () => ipcRenderer.invoke("pw:about") as Promise<AboutInfo>,
+  updateState: () => ipcRenderer.invoke("pw:update-state") as Promise<UpdateState>,
+  checkUpdates: () => ipcRenderer.invoke("pw:check-updates") as Promise<UpdateState>,
+  installUpdate: () => ipcRenderer.invoke("pw:install-update") as Promise<void>,
+  openLink: (which: "repo" | "releases" | "issue" | "logs" | "data") => ipcRenderer.invoke("pw:open-link", which) as Promise<void>,
+  onUpdate: (fn: Listener<UpdateState>) => on("pw:update", fn),
   answer: (card: string, reply: unknown) => ipcRenderer.invoke("pw:answer", card, reply),
   goto: (target: string) => ipcRenderer.invoke("pw:goto", target),
   open: (target: string) => ipcRenderer.invoke("pw:open", target),

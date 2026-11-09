@@ -79,3 +79,65 @@ export function installSkill(targets: SkillTarget[], opts: { only?: string[]; fo
   }
   return out;
 }
+
+export interface UninstallResult {
+  runtime: string;
+  path: string;
+  result: "removed" | "not installed" | "skipped";
+  note?: string;
+}
+
+/** Where a skill link points, or undefined when `dest` is not a link. */
+function linkTarget(dest: string): string | undefined {
+  try {
+    if (!fs.lstatSync(dest).isSymbolicLink()) return undefined;
+    return path.resolve(path.dirname(dest), fs.readlinkSync(dest));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Remove the skill links `installSkill` made. Only links to a parawatch skill go; a real folder is
+ * left alone, since it may be someone's own copy.
+ */
+export function uninstallSkill(targets: SkillTarget[], opts: { only?: string[] } = {}): UninstallResult[] {
+  const out: UninstallResult[] = [];
+  for (const t of targets) {
+    if (opts.only && !opts.only.includes(t.runtime)) continue;
+    const dest = path.join(t.dir, "parawatch");
+    let exists = true;
+    try {
+      fs.lstatSync(dest);
+    } catch {
+      exists = false;
+    }
+    if (!exists) {
+      out.push({ runtime: t.runtime, path: dest, result: "not installed" });
+      continue;
+    }
+    const target = linkTarget(dest);
+    if (!target) {
+      out.push({ runtime: t.runtime, path: dest, result: "skipped", note: "a folder, not a link parawatch made; remove it yourself if it is a copy" });
+      continue;
+    }
+    if (path.basename(target) !== "parawatch" || path.basename(path.dirname(target)) !== "skills") {
+      out.push({ runtime: t.runtime, path: dest, result: "skipped", note: `links to ${target}, not a parawatch skill` });
+      continue;
+    }
+    fs.unlinkSync(dest);
+    out.push({ runtime: t.runtime, path: dest, result: "removed", note: target === skillSource() ? undefined : `was ${target}` });
+  }
+  return out;
+}
+
+export type SkillState = "linked" | "linked elsewhere" | "folder" | "missing" | "no runtime";
+
+/** How the skill is installed for one runtime. */
+export function skillState(t: SkillTarget): { state: SkillState; target?: string } {
+  const dest = path.join(t.dir, "parawatch");
+  const target = linkTarget(dest);
+  if (target) return { state: target === skillSource() ? "linked" : "linked elsewhere", target };
+  if (fs.existsSync(dest)) return { state: "folder" };
+  return { state: fs.existsSync(t.home) ? "missing" : "no runtime" };
+}

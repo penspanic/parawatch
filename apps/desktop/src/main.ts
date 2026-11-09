@@ -7,7 +7,8 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, nativeTheme, net, Notification, protocol, shell, systemPreferences, Tray } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, Notification, protocol, shell, systemPreferences, Tray } from "electron";
+import { readClient, recordClient, versionSkew } from "../../../src/core/clients.js";
 import { answerCard, UserError } from "../../../src/core/ops.js";
 import { cardContextLine, resolveGoto } from "../../../src/core/desktop.js";
 import { followEvents } from "../../../src/core/follow.js";
@@ -18,8 +19,10 @@ import { fold } from "../../../src/core/state.js";
 import { homeDir, readEvents } from "../../../src/core/store.js";
 import type { PwEvent, Snapshot } from "../../../src/core/types.js";
 import { artPng, trayPng, type TrayState } from "./art.js";
-import { KEEP_CLOSED, SINCE_HOURS, THEMES, validPref, type Prefs, type Theme } from "./prefs.js";
-import { alertFor, agentsWorking, needsYou, newlyStuck, summary } from "./rules.js";
+import { logger, logPath } from "./logger.js";
+import { KEEP_CLOSED, SINCE_HOURS, THEMES, validPref, type AboutInfo, type Prefs, type Theme, type UpdateState } from "./prefs.js";
+import { alertFor, agentsWorking, issueUrl, needsYou, newlyStuck, summary } from "./rules.js";
+import { checkNow, installNow, RELEASES_URL, scheduleUpdates, stopUpdates, updateState } from "./updater.js";
 
 const MEDIA_SCHEME = "pwfile";
 const MAX_MEDIA_BYTES = 200 * 1024 * 1024;
@@ -29,7 +32,8 @@ interface Settings extends Omit<Prefs, "openAtLogin"> {
   bounds?: { x: number; y: number; width: number; height: number };
 }
 
-const DEFAULTS: Settings = { sinceHours: 6, notify: true, theme: "system", keepClosed: 20 };
+const DEFAULTS: Settings = { sinceHours: 6, notify: true, theme: "system", keepClosed: 20, checkUpdates: true };
+const REPO_URL = "https://github.com/penspanic/parawatch";
 
 function settingsPath(): string {
   return path.join(app.getPath("userData"), "settings.json");
@@ -42,6 +46,7 @@ function loadSettings(): Settings {
     if (!SINCE_HOURS.includes(s.sinceHours)) s.sinceHours = DEFAULTS.sinceHours;
     if (!KEEP_CLOSED.includes(s.keepClosed)) s.keepClosed = DEFAULTS.keepClosed;
     if (typeof s.notify !== "boolean") s.notify = DEFAULTS.notify;
+    if (typeof s.checkUpdates !== "boolean") s.checkUpdates = DEFAULTS.checkUpdates;
     return s;
   } catch {
     return { ...DEFAULTS };
@@ -52,8 +57,8 @@ function saveSettings(): void {
   try {
     fs.mkdirSync(path.dirname(settingsPath()), { recursive: true });
     fs.writeFileSync(settingsPath(), JSON.stringify(settings, null, 2));
-  } catch {
-    // settings are a convenience; the app works without them
+  } catch (err) {
+    logger.warn("could not save settings:", err); // a convenience; the app works without them
   }
 }
 
@@ -81,7 +86,9 @@ function refresh(): void {
     if (stuckPrimed && settings.notify) for (const a of alerts) notifyHuman(a);
     stuckPrimed = true;
   } catch (err) {
-    lastError = err instanceof Error ? err.message : String(err);
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg !== lastError) logger.error("reading the store failed:", err);
+    lastError = msg;
   }
   paintCounts();
   if (win && !win.isDestroyed()) {
@@ -110,7 +117,7 @@ function watchGithub(): void {
       const after = fs.existsSync(path.join(homeDir(), "github.json")) ? fs.statSync(path.join(homeDir(), "github.json")).mtimeMs : 0;
       if (after !== before) refresh();
     } catch (err) {
-      console.warn(`parawatch: reading GitHub failed: ${err instanceof Error ? err.message : String(err)}`);
+      logger.warn("reading GitHub failed:", err instanceof Error ? err.message : String(err));
     }
   };
   void tick();
@@ -141,7 +148,7 @@ function notifyHuman(alert: { title: string; body: string; card?: string }): voi
   const n = new Notification({ title: alert.title, body: alert.body, silent: false });
   n.on("click", () => showWindow(alert.card));
   n.on("failed", (_e, error) => {
-    console.warn(`parawatch: system notification refused (${error}); using the fallback notifier`);
+    logger.warn(`system notification refused (${error}); using the fallback notifier`);
     fallback();
   });
   n.show();
@@ -171,14 +178,147 @@ function paintCounts(): void {
 }
 
 function trayMenu(): Menu {
+  const u = updateState();
   return Menu.buildFromTemplate([
     { label: "Open Parawatch", click: () => showWindow() },
     { label: summary(latest), enabled: false },
     { type: "separator" },
+    ...(u.status === "ready" ? [{ label: `Restart to Update to ${u.version}`, click: () => installNow() }, { type: "separator" as const }] : []),
     { label: "Settings…", click: () => openSettings() },
+    { label: "Check for Updates…", click: () => void checkForUpdatesByHand() },
     { type: "separator" },
     { label: "Quit Parawatch", role: "quit" },
   ]);
+}
+
+// ------------------------------------------------------------------ versions and updates
+
+function aboutInfo(): AboutInfo {
+  const cli = readClient("cli");
+  return {
+    version: app.getVersion(),
+    electron: process.versions.electron ?? "",
+    platform: `${process.platform}-${process.arch} ${process.getSystemVersion?.() ?? ""}`.trim(),
+    ...(cli ? { cli: { version: cli.version, at: cli.at, path: cli.path } } : {}),
+    skew: versionSkew(cli?.version, app.getVersion())?.text,
+    logPath: logPath(),
+    dataPath: homeDir(),
+  };
+}
+
+/** The app bundle on macOS, the program folder elsewhere, the source folder in development. */
+function installedAt(): string {
+  if (!app.isPackaged) return app.getAppPath();
+  const exe = app.getPath("exe");
+  return process.platform === "darwin" ? path.resolve(exe, "..", "..", "..") : path.dirname(exe);
+}
+
+let toldReady: string | undefined;
+
+function onUpdate(s: UpdateState): void {
+  if (win && !win.isDestroyed()) win.webContents.send("pw:update", s);
+  if (tray) tray.setContextMenu(trayMenu());
+  buildAppMenu();
+  if (s.status === "ready" && s.version && toldReady !== s.version) {
+    toldReady = s.version;
+    logger.info(`update ${s.version} downloaded`);
+    const n = settings.notify && Notification.isSupported() ? new Notification({ title: `Parawatch ${s.version} is ready`, body: "Restart Parawatch to use it. It also updates when you quit." }) : undefined;
+    n?.on("click", () => openSettings());
+    n?.show();
+  }
+}
+
+/** The menu item: look now and say what came of it, even when nothing is new. */
+async function checkForUpdatesByHand(): Promise<void> {
+  const s = await checkNow();
+  const owner = win && !win.isDestroyed() && win.isVisible() ? win : undefined;
+  const box = (o: Electron.MessageBoxOptions) => (owner ? dialog.showMessageBox(owner, o) : dialog.showMessageBox(o));
+  if (s.status === "ready") {
+    const r = await box({ type: "info", message: `Parawatch ${s.version} is ready`, detail: "Restart now to use it, or it updates the next time you quit.", buttons: ["Restart Now", "Later"], defaultId: 0, cancelId: 1 });
+    if (r.response === 0) installNow();
+  } else if (s.status === "available" || s.status === "downloading") {
+    await box({ type: "info", message: `Parawatch ${s.version ?? ""} is downloading`.replace("  ", " "), detail: "You will be asked to restart when it is ready.", buttons: ["OK"] });
+  } else if (s.status === "latest") {
+    await box({ type: "info", message: "Parawatch is up to date", detail: `${app.getVersion()} is the newest version.`, buttons: ["OK"] });
+  } else if (s.status === "off") {
+    const r = await box({ type: "info", message: "This copy does not update itself", detail: `${s.reason ?? ""}. You have ${app.getVersion()}.`, buttons: ["Open Releases", "OK"], defaultId: 1, cancelId: 1 });
+    if (r.response === 0) void shell.openExternal(RELEASES_URL);
+  } else if (s.status === "error") {
+    const r = await box({ type: "warning", message: "Could not check for updates", detail: s.error ?? "", buttons: ["Open Releases", "OK"], defaultId: 1, cancelId: 1 });
+    if (r.response === 0) void shell.openExternal(RELEASES_URL);
+  }
+}
+
+function openLink(which: string): void {
+  if (which === "repo") void shell.openExternal(REPO_URL);
+  else if (which === "releases") void shell.openExternal(`${RELEASES_URL}/tag/v${app.getVersion()}`);
+  else if (which === "issue") void shell.openExternal(issueUrl(aboutInfo()));
+  else if (which === "logs") {
+    if (fs.existsSync(logPath())) shell.showItemInFolder(logPath());
+    else void shell.openPath(path.dirname(logPath()));
+  } else if (which === "data") void shell.openPath(homeDir());
+}
+
+/**
+ * The menu bar's menus. On macOS they are the app's own, with About, updates and help that lead to
+ * this project; elsewhere the window has no menu bar and the tray menu and settings cover the same.
+ */
+function buildAppMenu(): void {
+  if (process.platform !== "darwin") {
+    Menu.setApplicationMenu(null);
+    return;
+  }
+  const u = updateState();
+  const dev = !app.isPackaged;
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      {
+        label: app.name,
+        submenu: [
+          { role: "about" },
+          u.status === "ready"
+            ? { label: `Restart to Update to ${u.version}`, click: () => installNow() }
+            : { label: "Check for Updates…", click: () => void checkForUpdatesByHand() },
+          { type: "separator" },
+          { label: "Settings…", accelerator: "Cmd+,", click: () => openSettings() },
+          { type: "separator" },
+          { role: "services" },
+          { type: "separator" },
+          { role: "hide" },
+          { role: "hideOthers" },
+          { role: "unhide" },
+          { type: "separator" },
+          { role: "quit" },
+        ],
+      },
+      { role: "editMenu" },
+      {
+        label: "View",
+        submenu: [
+          { label: "Refresh", accelerator: "Cmd+R", click: () => refresh() },
+          ...(dev ? [{ role: "toggleDevTools" as const }] : []),
+          { type: "separator" },
+          { role: "resetZoom" },
+          { role: "zoomIn" },
+          { role: "zoomOut" },
+          { type: "separator" },
+          { role: "togglefullscreen" },
+        ],
+      },
+      { role: "windowMenu" },
+      {
+        role: "help",
+        submenu: [
+          { label: "Parawatch on GitHub", click: () => openLink("repo") },
+          { label: `What's New in ${app.getVersion()}`, click: () => openLink("releases") },
+          { label: "Report an Issue…", click: () => openLink("issue") },
+          { type: "separator" },
+          { label: "Show Log File", click: () => openLink("logs") },
+          { label: "Show Data Folder", click: () => openLink("data") },
+        ],
+      },
+    ]),
+  );
 }
 
 // The menu bar icon moves: dots travel along the lanes while agents work, and the middle dot
@@ -278,6 +418,7 @@ function prefs(): Prefs {
     openAtLogin: app.getLoginItemSettings().openAtLogin,
     sinceHours: settings.sinceHours,
     keepClosed: settings.keepClosed,
+    checkUpdates: settings.checkUpdates,
   };
 }
 
@@ -293,6 +434,7 @@ function setPref<K extends keyof Prefs>(key: K, value: unknown): void {
   }
   if (key === "theme") nativeTheme.themeSource = value as Theme;
   if (key === "sinceHours" || key === "keepClosed") refresh();
+  if (key === "checkUpdates") scheduleUpdates(settings.checkUpdates, onUpdate);
   if (win && !win.isDestroyed()) win.webContents.send("pw:prefs", prefs());
 }
 
@@ -457,6 +599,11 @@ function registerIpc(): void {
     shownMenu = targetMenu(target);
     shownMenu.popup({ window: owner, callback: () => (shownMenu = undefined) });
   });
+  ipcMain.handle("pw:about", () => aboutInfo());
+  ipcMain.handle("pw:update-state", () => updateState());
+  ipcMain.handle("pw:check-updates", () => checkNow());
+  ipcMain.handle("pw:install-update", () => installNow());
+  ipcMain.handle("pw:open-link", (_e, which: string) => openLink(String(which)));
   ipcMain.handle("pw:media-url", (_e, file: string) => {
     const p = path.resolve(file);
     if (!allowedMedia().has(p)) return undefined;
@@ -480,6 +627,12 @@ function registerIpc(): void {
 
 // ------------------------------------------------------------------ lifecycle
 
+// A second copy for testing can keep its own settings and lock: PARAWATCH_DESKTOP_DATA=<folder>.
+if (process.env.PARAWATCH_DESKTOP_DATA) app.setPath("userData", path.resolve(process.env.PARAWATCH_DESKTOP_DATA));
+
+process.on("uncaughtException", (err) => logger.error("uncaught:", err));
+process.on("unhandledRejection", (err) => logger.error("unhandled rejection:", err));
+
 protocol.registerSchemesAsPrivileged([{ scheme: MEDIA_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 
 if (!app.requestSingleInstanceLock()) {
@@ -494,8 +647,16 @@ if (!app.requestSingleInstanceLock()) {
   app.on("window-all-closed", () => {
     // stay in the menu bar
   });
+  app.on("render-process-gone", (_e, contents, details) => {
+    logger.error(`the window's page stopped: ${details.reason} (exit ${details.exitCode})`);
+    if (details.reason !== "clean-exit" && win && !win.isDestroyed() && contents === win.webContents) win.reload();
+  });
+  app.on("child-process-gone", (_e, details) => {
+    if (details.reason !== "clean-exit") logger.warn(`${details.type} process stopped: ${details.reason}`);
+  });
   app.on("will-quit", () => {
     stopFollowing?.();
+    stopUpdates();
     if (githubTimer) clearInterval(githubTimer);
     try {
       if (fs.readFileSync(desktopPidPath(), "utf8").trim() === String(process.pid)) fs.unlinkSync(desktopPidPath());
@@ -506,7 +667,17 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(() => {
     settings = loadSettings();
+    logger.info(`Parawatch ${app.getVersion()} starting (electron ${process.versions.electron}, ${process.platform}-${process.arch} ${process.getSystemVersion?.() ?? ""}, packaged ${app.isPackaged})`);
     nativeTheme.themeSource = settings.theme;
+    app.setAboutPanelOptions({
+      applicationName: "Parawatch",
+      applicationVersion: app.getVersion(),
+      version: "",
+      copyright: "© 2026 penspanic · MIT License",
+      credits: "github.com/penspanic/parawatch",
+      website: REPO_URL,
+    });
+    buildAppMenu();
     // a packaged macOS app shows its Liquid Glass icon; only a development run needs a dock icon
     if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(nativeImage.createFromBuffer(artPng("app", 512)));
     protocol.handle(MEDIA_SCHEME, (req) => {
@@ -517,15 +688,17 @@ if (!app.requestSingleInstanceLock()) {
     try {
       fs.mkdirSync(homeDir(), { recursive: true });
       fs.writeFileSync(desktopPidPath(), String(process.pid));
-    } catch {
-      // the CLI will notify as well; harmless
+    } catch (err) {
+      logger.warn("could not write the pid file (the CLI will notify as well):", err);
     }
+    recordClient({ name: "desktop", version: app.getVersion(), pid: process.pid, log: logPath(), path: installedAt() });
     registerIpc();
     createWindow();
     createTray();
     refresh();
     stopFollowing = followEvents(onEvent);
     watchGithub();
+    scheduleUpdates(settings.checkUpdates, onUpdate);
     Notification.isSupported(); // touch the API early so macOS asks for permission on first run
   });
 }

@@ -259,3 +259,56 @@ body.is-settings #panel {
     background: color-mix(in srgb, var(--text-normal) 18%, var(--background-primary));
   }
 }
+
+/* the About group: a plain button, the warning tint for a version mismatch, a row of links */
+.st-btn {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 550;
+  padding: 5px 12px;
+  border-radius: 7px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.st-btn:hover:not(:disabled) {
+  background: var(--background-modifier-hover);
+}
+.st-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.st-btn.is-primary {
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+.st-btn:focus-visible,
+.st-link:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+.st-row.is-warn .st-sub {
+  color: var(--color-yellow);
+}
+.st-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 10px 14px 12px 43px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+.st-link {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-accent);
+  cursor: pointer;
+}
+.st-link:hover {
+  text-decoration: underline;
+}

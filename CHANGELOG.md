@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.1 (2026-11-09)
+
+Versions, updates and housekeeping.
+
+- The desktop app updates itself from GitHub Releases: it checks a little after start and every few hours, downloads in the background, and offers Restart to Update (also in the menu bar menu). Settings has Update automatically. Coming from 0.2.0, download this version once by hand.
+- The app has its own macOS menus: About Parawatch with the version, Check for Updates, Settings (⌘,), and Help with What's New, Report an Issue (versions filled in), Show Log File and Show Data Folder. The Electron defaults that led to electronjs.org are gone.
+- Settings shows the app's version, where its update stands, and the CLI version beside it, with a warning when they differ.
+- The app keeps a log in `~/Library/Logs/Parawatch/main.log`: start-up, errors it survived, update checks.
+- `parawatch doctor [--json] [--offline]`: versions, store, desktop app, skill links, instruction files, hook, GitHub, with what to run for each problem.
+- `status` ends with a line when a newer CLI is out (the npm registry, at most once a day; `PARAWATCH_UPDATE_CHECK=0` or `"updates": { "check": false }` turns it off) or when the app and the CLI are different versions.
+- `parawatch skill uninstall` and `parawatch init --remove`, and the README says how to remove the rest.
+- A copy refuses to write to a log a newer copy wrote, instead of mixing formats.
+- The CLI reads its version from package.json.
+- Fix: the 0.1.0 and 0.2.0 app packages carried the panel's test files, among them a saved board snapshot. 0.1.0's held real cards from the machine that built it, so that release has been withdrawn. The app package now holds only the app, and the release script checks it.
+
 ## 0.2.0 (2026-11-09)
 
 From running parawatch on a work machine where every session starts in one notes folder and most waiting is on pull requests.

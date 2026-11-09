@@ -1,7 +1,7 @@
 {
   "name": "@parawatch/desktop",
   "productName": "Parawatch",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Parawatch as a desktop app: what needs you, what your agents are doing, with notifications and a badge.",
   "license": "MIT",
@@ -12,18 +12,18 @@
     "start": "node build.mjs && electron .",
     "dev": "node build.mjs --watch",
     "icon": "tsx scripts/icon.ts",
-    "dist": "npm run build && npm run icon && electron-builder --config builder.json",
-    "dist:dir": "npm run build && npm run icon && electron-builder --config builder.json --dir",
+    "dist": "npm run build && npm run icon && electron-builder --config builder.json --publish never",
+    "dist:dir": "npm run build && npm run icon && electron-builder --config builder.json --dir --publish never",
     "typecheck": "tsc --noEmit -p .",
     "release:mac": "scripts/release-mac.sh"
   },
-  "dependencies": {
-    "@parawatch/panel": "0.2.0",
-    "marked": "^18.1.3"
-  },
   "devDependencies": {
+    "@electron/asar": "^3.4.1",
+    "@parawatch/panel": "0.2.1",
     "electron": "45.2.3",
     "electron-builder": "^26.18.0",
-    "esbuild": "^0.28.2"
+    "electron-updater": "^6.8.11",
+    "esbuild": "^0.28.2",
+    "marked": "^18.1.3"
   }
 }

@@ -1,7 +1,7 @@
 import zlib from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { artPng, countLabel, draw, drawTray, TRAY_IDLE, trayWidth } from "../src/art.js";
-import { agentsWorking, alertFor, needsYou, summary, toDo } from "../src/rules.js";
+import { agentsWorking, alertFor, issueUrl, needsYou, summary, toDo, updateLabel } from "../src/rules.js";
 import type { Card, PwEvent, Snapshot } from "../../../src/core/types.js";
 
 const card = (id: string, kind: Card["kind"], status: Card["status"] = "open"): Card => ({
@@ -123,5 +123,25 @@ describe("pull requests and stuck work", () => {
     expect(newlyStuck(s, seen)).toEqual([]);
     expect(newlyStuck({ ...s, prs: [{ ...view, stalled: false }], runs: [] }, seen)).toEqual([]);
     expect(newlyStuck(s, seen)).toHaveLength(2);
+  });
+});
+
+describe("versions and updates", () => {
+  const now = Date.parse("2026-11-09T12:00:00Z");
+  it("says where the app's own update stands", () => {
+    expect(updateLabel({ status: "latest", checkedAt: "2026-11-09T11:50:00Z" }, now)).toBe("Up to date · checked 10 min ago");
+    expect(updateLabel({ status: "downloading", version: "0.2.2", percent: 40 }, now)).toBe("Downloading 0.2.2 · 40%");
+    expect(updateLabel({ status: "ready", version: "0.2.2" }, now)).toBe("0.2.2 is ready · restart to use it");
+    expect(updateLabel({ status: "off", reason: "a development build does not update itself" }, now)).toBe("A development build does not update itself");
+    expect(updateLabel({ status: "error", error: "could not reach GitHub" }, now)).toBe("Could not check: could not reach GitHub");
+  });
+
+  it("opens an issue with the versions filled in and nothing else", () => {
+    const url = issueUrl({ version: "0.2.1", electron: "45.2.3", platform: "darwin-arm64 27.2", cli: { version: "0.2.0", at: "" }, logPath: "/Users/someone/Library/Logs/Parawatch/main.log", dataPath: "/Users/someone/.local/state/parawatch" });
+    expect(url.startsWith("https://github.com/penspanic/parawatch/issues/new?body=")).toBe(true);
+    const body = decodeURIComponent(url.split("body=")[1]!);
+    expect(body).toContain("Parawatch app 0.2.1 (Electron 45.2.3)");
+    expect(body).toContain("parawatch CLI 0.2.0");
+    expect(body).not.toContain("/Users/someone");
   });
 });

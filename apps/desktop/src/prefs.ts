@@ -13,6 +13,38 @@ export interface Prefs {
   openAtLogin: boolean;
   sinceHours: number;
   keepClosed: number;
+  /** look for a new version now and then, download it, and offer a restart */
+  checkUpdates: boolean;
+}
+
+/** Where the app's own update stands, for the settings screen and the menus. */
+export interface UpdateState {
+  /**
+   * off: this build cannot update itself (a development run, or a platform without an update feed);
+   * idle: nothing checked yet; latest: this is the newest; available and downloading: a new version
+   * is on its way; ready: restart to use it; error: the last check failed
+   */
+  status: "off" | "idle" | "checking" | "latest" | "available" | "downloading" | "ready" | "error";
+  /** the new version, once one is found */
+  version?: string;
+  percent?: number;
+  error?: string;
+  checkedAt?: string;
+  /** why updates are off */
+  reason?: string;
+}
+
+/** What the settings screen shows about this copy and the command line beside it. */
+export interface AboutInfo {
+  version: string;
+  electron: string;
+  platform: string;
+  /** the command line's note, when it has been used with this store */
+  cli?: { version: string; at: string; path?: string };
+  /** set when the app and the command line are different versions */
+  skew?: string;
+  logPath: string;
+  dataPath: string;
 }
 
 /** Whether `value` is something `key` may be set to. */
@@ -22,6 +54,7 @@ export function validPref<K extends keyof Prefs>(key: K, value: unknown): value 
       return THEMES.includes(value as Theme);
     case "notify":
     case "openAtLogin":
+    case "checkUpdates":
       return typeof value === "boolean";
     case "sinceHours":
       return SINCE_HOURS.includes(value as number);

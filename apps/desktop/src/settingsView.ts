@@ -3,7 +3,8 @@
  * each with a switch or a segmented choice. Changes apply at once; there is nothing to save.
  */
 import { setIcon } from "@parawatch/panel";
-import { KEEP_CLOSED, SINCE_HOURS, type Prefs, type Theme } from "./prefs";
+import { KEEP_CLOSED, SINCE_HOURS, type AboutInfo, type Prefs, type Theme, type UpdateState } from "./prefs";
+import { updateLabel } from "./rules";
 
 interface Choice<T> {
   value: T;
@@ -26,14 +27,24 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return e;
 }
 
+/** What the About group can ask the app to do. */
+export interface AboutActions {
+  checkUpdates(): void;
+  installUpdate(): void;
+  openLink(which: "repo" | "releases" | "issue" | "logs" | "data"): void;
+}
+
 export class SettingsView {
   private prefs?: Prefs;
+  private about?: AboutInfo;
+  private updateState?: UpdateState;
   private body: HTMLElement;
 
   constructor(
     private root: HTMLElement,
     private change: <K extends keyof Prefs>(key: K, value: Prefs[K]) => void,
     private close: () => void,
+    private actions: AboutActions,
   ) {
     const head = el("div", "st-head", undefined, root);
     el("span", "st-title", "Settings", head);
@@ -47,6 +58,16 @@ export class SettingsView {
 
   update(prefs: Prefs): void {
     this.prefs = prefs;
+    this.render();
+  }
+
+  setAbout(about: AboutInfo): void {
+    this.about = about;
+    this.render();
+  }
+
+  setUpdate(u: UpdateState): void {
+    this.updateState = u;
     this.render();
   }
 
@@ -77,6 +98,38 @@ export class SettingsView {
         (v) => this.change("keepClosed", v),
       ),
     );
+
+    const a = this.about;
+    const u = this.updateState;
+    const about = this.group();
+    this.row(about, "info", a ? `Parawatch ${a.version}` : "Parawatch", updateLabel(u), (c) => {
+      if (u?.status === "ready") this.button(c, "Restart to Update", () => this.actions.installUpdate(), true);
+      else if (u?.status !== "off") this.button(c, "Check Now", () => this.actions.checkUpdates(), false, u?.status === "checking" || u?.status === "downloading" || u?.status === "available");
+      else this.button(c, "Releases", () => this.actions.openLink("releases"));
+    });
+    if (u?.status !== "off") this.row(about, "download", "Update automatically", "Downloads in the background, asks to restart", (c) => this.toggle(c, p.checkUpdates, (v) => this.change("checkUpdates", v)));
+    if (a) {
+      const cli = a.cli ? `parawatch ${a.cli.version}` : "Not used with this Mac's data yet";
+      this.row(about, "terminal", "Command line", a.skew ?? cli, (c) => {
+        if (a.skew) c.parentElement?.classList.add("is-warn");
+      });
+    }
+    const links = el("div", "st-links", undefined, about);
+    for (const [label, which] of [
+      ["What's new", "releases"],
+      ["Report an issue", "issue"],
+      ["Log file", "logs"],
+      ["Data folder", "data"],
+    ] as const) {
+      const b = el("button", "st-link", label, links);
+      b.onclick = () => this.actions.openLink(which);
+    }
+  }
+
+  private button(cell: HTMLElement, label: string, onClick: () => void, primary = false, disabled = false): void {
+    const b = el("button", primary ? "st-btn is-primary" : "st-btn", label, cell);
+    b.disabled = disabled;
+    b.onclick = onClick;
   }
 
   private group(): HTMLElement {

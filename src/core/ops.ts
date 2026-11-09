@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
+import { UserError } from "./errors.js";
 import { appendEvent, eventsPath, homeDir, readCursor, readEvents, writeCursor } from "./store.js";
 import { fold, nextId } from "./state.js";
 import { CARD_KINDS, HUMAN, PR_CHANGES, type Card, type CardEdit, type CardKind, type Claim, type Listener, type PrChange, type PrRef, type PwEvent } from "./types.js";
 
-export class UserError extends Error {}
+export { UserError };
 
 function cleanList(xs: string[] | undefined): string[] | undefined {
   const out = (xs ?? []).map((x) => x.trim()).filter(Boolean);

@@ -1,6 +1,6 @@
 # Security
 
-parawatch runs only on your machine. It has no server and makes no network requests. It reads agent logs under your home folder, never writes to them, and keeps its own state in `~/.local/state/parawatch` (or `$PARAWATCH_HOME`). Cards can hold paths and links that the desktop app and plugin open when you click them.
+parawatch runs only on your machine. It has no server. Its only network requests are reading your pull requests through your own `gh`, and checking for a new version (the CLI asks the npm registry at most once a day, the app asks GitHub Releases every few hours); both send nothing about you and can be turned off. It reads agent logs under your home folder, never writes to them, and keeps its own state in `~/.local/state/parawatch` (or `$PARAWATCH_HOME`). Cards can hold paths and links that the desktop app and plugin open when you click them.
 
 ## Reporting a vulnerability
 

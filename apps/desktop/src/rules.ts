@@ -3,6 +3,7 @@
  * badge counts, and which events become a system notification.
  */
 import type { Card, PwEvent, Snapshot } from "../../../src/core/types.js";
+import type { AboutInfo, UpdateState } from "./prefs.js";
 
 const KIND_WORD: Record<Card["kind"], string> = { decide: "Decide", try: "Try", block: "Blocked", todo: "To do" };
 
@@ -89,4 +90,51 @@ export function summary(s: Snapshot | undefined): string {
   const parts = [n ? `${n} need${n === 1 ? "s" : ""} you` : "Nothing needs you"];
   if (t) parts.push(`${t} to do`);
   return parts.join(" · ");
+}
+
+/** One line on where the app's own update stands, for the settings screen. */
+export function updateLabel(u: UpdateState | undefined, now = Date.now()): string {
+  if (!u) return "";
+  const ago = (iso?: string) => {
+    if (!iso) return "";
+    const m = Math.round((now - Date.parse(iso)) / 60_000);
+    return m < 1 ? " just now" : m < 60 ? ` ${m} min ago` : m < 48 * 60 ? ` ${Math.round(m / 60)} h ago` : ` ${Math.round(m / 1440)} days ago`;
+  };
+  switch (u.status) {
+    case "off":
+      return u.reason ? u.reason.charAt(0).toUpperCase() + u.reason.slice(1) : "Updates are off";
+    case "idle":
+      return "Not checked yet";
+    case "checking":
+      return "Checking…";
+    case "latest":
+      return `Up to date · checked${ago(u.checkedAt)}`;
+    case "available":
+      return `${u.version} found, downloading…`;
+    case "downloading":
+      return `Downloading ${u.version ?? "the update"}${u.percent !== undefined ? ` · ${u.percent}%` : ""}`;
+    case "ready":
+      return `${u.version} is ready · restart to use it`;
+    case "error":
+      return `Could not check: ${u.error ?? "unknown error"}`;
+  }
+}
+
+/** A new GitHub issue with the versions filled in; the rest is for the human to write. */
+export function issueUrl(a: AboutInfo): string {
+  const body = [
+    "**What happened**",
+    "",
+    "",
+    "**What you expected**",
+    "",
+    "",
+    "**Versions**",
+    `- Parawatch app ${a.version} (Electron ${a.electron})`,
+    `- ${a.cli ? `parawatch CLI ${a.cli.version}` : "parawatch CLI not used"}`,
+    `- ${a.platform}`,
+    "",
+    "If you can, paste the output of `parawatch doctor` and attach the log file (Help > Show Log File); look through both for anything private first.",
+  ].join("\n");
+  return `https://github.com/penspanic/parawatch/issues/new?body=${encodeURIComponent(body)}`;
 }

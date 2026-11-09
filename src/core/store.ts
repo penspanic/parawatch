@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { UserError } from "./errors.js";
 import { SCHEMA_VERSION, type EventBody, type PwEvent } from "./types.js";
 
 /** Directory holding all parawatch state for this user. */
@@ -92,9 +93,22 @@ export function appendEvent(build: (events: PwEvent[]) => EventBody): PwEvent {
   return withLock(() => appendLocked((events) => [build(events)])[0]!);
 }
 
+/** The newest event format in the log. A reader may skip what it does not know; a writer may not. */
+export function storeFormat(events: PwEvent[]): number {
+  let v = 0;
+  for (const e of events) if (typeof e.v === "number" && e.v > v) v = e.v;
+  return v;
+}
+
 /** Append events while already holding the lock (inside `withLock`). */
 export function appendLocked(build: (events: PwEvent[]) => EventBody[]): PwEvent[] {
   const events = readEvents();
+  const format = storeFormat(events);
+  if (format > SCHEMA_VERSION) {
+    throw new UserError(
+      `${eventsPath()} was written by a newer parawatch (format ${format}; this one knows ${SCHEMA_VERSION}). Update this copy before it writes: npm i -g parawatch@latest, or update the app.`,
+    );
+  }
   let seq = events[events.length - 1]?.seq ?? 0;
   const ts = new Date().toISOString();
   const out = build(events).map((body) => ({ v: SCHEMA_VERSION, seq: ++seq, ts, ...body }) as PwEvent);
