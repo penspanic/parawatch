@@ -20,7 +20,8 @@ const env = {
 };
 Object.assign(process.env, env);
 
-const { addProject, answerCard, claimSession, closeCard, commentCard, openCard } = await import("../src/core/ops.js");
+const { addProject, answerCard, claimSession, closeCard, commentCard, linkPr, openCard, startRun, noteRun } = await import("../src/core/ops.js");
+const { prRef } = await import("../src/core/github.js");
 const { eventsPath } = await import("../src/core/store.js");
 
 const now = Date.now();
@@ -191,6 +192,34 @@ at(150, () =>
 at(140, () => answerCard("c6", { choice: 2, by: "human" }));
 at(120, () => closeCard("c6", "40 marbles, tuned for the small box"));
 
+// an approval: the exact step and the text it sends
+const note = path.join(root, "notes", "release-note-1.4.md");
+write(note, "Ear Trainer 1.4\n\n- Interval lessons, two minutes each\n- Count-in before every drill\n");
+at(9, () =>
+  openCard({
+    kind: "decide",
+    project: "app",
+    task: "PR 21",
+    title: "Merge PR 21 and post the 1.4 release note?",
+    body: "CI passed and the review is in. Merging ships the interval lessons in the next build.",
+    action: "gh pr merge 21 --squash && gh release create v1.4 -F release-note-1.4.md",
+    preview: note,
+    from: "App Director",
+    session: APP_LEAD,
+  }),
+);
+
+// work claimed by ticket, a worker that finished, a job that stopped beating, PRs owned by sessions
+const WORKER = "5f1e2d3c-4b5a-4968-8776-655443322110";
+const SITE = "9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d";
+at(50, () => claimSession({ session: WORKER, project: "app", task: "PR 21", title: "Interval lesson screen" }));
+at(2, () => claimSession({ session: WORKER, done: "PR 21 is green and reviewed; waiting on the merge" }));
+let bench = "";
+at(52, () => (bench = startRun({ project: "game", title: "Overnight physics benchmark", parent: GAME_LEAD, heartbeat: 600 })));
+at(24, () => noteRun(bench, "scene 5 of 8"));
+at(200, () => linkPr({ pr: prRef("github.com", "demo/marble-box", 139), session: GAME_LEAD, project: "game", task: "139" }));
+at(60, () => linkPr({ pr: prRef("github.com", "demo/ear-trainer", 21), session: WORKER, project: "app", task: "PR 21" }));
+
 // rewrite the times so the board looks lived in
 const lines = fs.readFileSync(eventsPath(), "utf8").trim().split("\n");
 if (lines.length !== ages.length) throw new Error(`expected ${ages.length} events, found ${lines.length}`);
@@ -242,12 +271,32 @@ claudeLog(path.join(appDir, `${APP_LEAD}.jsonl`), {
   spans: [[60, 52], [35, 31], [26, 24]],
   last: said("PR 18 passed. Waiting for the simulator runtime."),
 });
-claudeLog(path.join(appDir, "5f1e2d3c-4b5a-4968-8776-655443322110.jsonl"), {
+// a session started in a notes folder that edits the site: it belongs to the site
+const notes = path.join(root, "notes");
+claudeLog(path.join(claude, "-notes", `${SITE}.jsonl`), {
+  cwd: notes,
+  prompt: "Update the pricing page from the notes",
+  title: "Pricing page",
+  spans: [[30, 22], [9, 6]],
+  last: {
+    type: "assistant",
+    message: {
+      role: "assistant",
+      content: [
+        { type: "tool_use", id: "e1", name: "Edit", input: { file_path: path.join(site, "src", "pricing.md") } },
+        { type: "tool_use", id: "w1", name: "mcp__ccd_turn__wrap_up", input: { recap: "The pricing page is rewritten and builds.", ask: "Publish it now, or wait for the new photos?" } },
+      ],
+    },
+  },
+});
+fs.appendFileSync(path.join(claude, "-notes", `${SITE}.jsonl`), JSON.stringify({ type: "assistant", timestamp: ago(6), cwd: notes, message: { role: "assistant", content: [{ type: "text", text: "Rewritten. Publish now, or wait for the photos?" }] } }) + "\n");
+
+claudeLog(path.join(appDir, `${WORKER}.jsonl`), {
   cwd: app,
   prompt: "Interval lesson screen",
   title: "Interval lesson screen",
   spans: [[47, 20], [12, 1]],
-  last: bash("Build the app"),
+  last: said("PR 21 is green and reviewed."),
 });
 
 // a codex exec job started from the game lead's scratch folder
@@ -261,5 +310,50 @@ const codexRecs: object[] = [
   ...stamps([[26, 8], [6, 2]]).map((m) => ({ type: "response_item", timestamp: ago(m), payload: { type: "custom_tool_call", name: "exec", input: '{"cmd":"python3 make_icons.py"}' } })),
 ];
 write(path.join(day, "rollout-demo-icons.jsonl"), codexRecs.map((r) => JSON.stringify(r)).join("\n") + "\n");
+
+// ---------- GitHub, as `gh` would have reported it ----------
+
+const pr = (repo: string, number: number, title: string, o: Record<string, unknown>) => ({
+  key: `github.com/${repo}#${number}`,
+  url: `https://github.com/${repo}/pull/${number}`,
+  host: "github.com",
+  repo,
+  number,
+  title,
+  author: "you",
+  state: "open",
+  draft: false,
+  mergeable: "MERGEABLE",
+  pending: [],
+  reviews: [],
+  comments: 0,
+  autoMerge: false,
+  updatedAt: ago(30),
+  mine: true,
+  reviewRequested: false,
+  ...o,
+});
+const prs = [
+  pr("demo/marble-box", 139, "Shake round 2 and the top-box ending", { reviewDecision: "APPROVED", ci: "SUCCESS", queue: { state: "QUEUED", position: 4 } }),
+  pr("demo/ear-trainer", 21, "Interval lessons and the count-in", { reviewDecision: "APPROVED", ci: "SUCCESS" }),
+  pr("demo/ear-trainer", 22, "Settings screen", { reviewDecision: "REVIEW_REQUIRED", ci: "SUCCESS", pending: ["mina"] }),
+  pr("demo/site", 7, "New footer", { author: "mina", mine: false, reviewRequested: true, reviewDecision: "REVIEW_REQUIRED", ci: "SUCCESS", pending: ["you"] }),
+];
+write(
+  path.join(env.PARAWATCH_HOME, "github.json"),
+  JSON.stringify({
+    fetchedAt: ago(0),
+    hosts: ["github.com"],
+    prs,
+    since: {
+      "github.com/demo/marble-box#139": { waitingOn: "merge queue", since: ago(60 * 9) },
+      "github.com/demo/ear-trainer#21": { waitingOn: "merge", since: ago(20) },
+      "github.com/demo/ear-trainer#22": { waitingOn: "review", since: ago(60 * 5) },
+      "github.com/demo/site#7": { waitingOn: "review", since: ago(60 * 3) },
+    },
+  }),
+);
+// never read the real GitHub from the demo
+write(path.join(env.PARAWATCH_HOME, "config.json"), JSON.stringify({ github: { intervalMinutes: 1e9 } }));
 
 for (const [k, v] of Object.entries(env)) console.log(`export ${k}=${v}`);

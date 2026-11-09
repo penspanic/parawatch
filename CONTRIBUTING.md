@@ -47,7 +47,7 @@ npm start -w @parawatch/desktop
 
 - **English everywhere.** Code, comments, commit messages, docs, test data.
 - **Read only from agent logs.** An adapter never writes to another tool's files and never sends them anywhere.
-- **No server and no network.** Everything stays in the local store.
+- **No server, and no network of our own.** Everything stays in the local store. The one thing read from outside is pull requests, through the user's own `gh`, and only when it is installed and signed in. Agent logs and cards are never sent anywhere.
 - **Test data is made up.** No real project names, paths or card text from your own machine.
 - Keep the store format backward compatible. A new event type is fine; changing what an old one means is not.
 
