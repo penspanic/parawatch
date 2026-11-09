@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0 (unreleased)
+
+More than one machine.
+
+- `parawatch sync setup <folder> --device <name> [--adapter syncthing|folder]` shares cards and answers with your other machines through a folder something else keeps in step. Each machine writes only `events/<device>.jsonl`; every machine reads them all, in time order. This machine's log moves there whole, so ids, cursors and open cards carry on.
+- A machine that does not share keeps the single `events.jsonl` in format 1, exactly as before.
+- Shared ids carry the machine (`pc-c3`); the short form works while it is unique.
+- Two machines answering one card at once: the earlier answer stands, the other is kept on the card as not used and wakes nobody.
+- Paths written on another machine are read as the same place here (its home, the shared folder, and folders named with `parawatch sync root`). Pasted pictures go to the shared folder.
+- Waits running on any machine show on cards. The same GitHub news read by two machines is delivered once.
+- Sync adapters report how the sync tool is doing: `syncthing` (its REST API) and `folder`. `parawatch sync`, `doctor` and the app's settings show the other machines, the last time the folder was in step and conflict copies.
+- The panel shows which machine a card or an answer came from.
+
 ## 0.2.1 (2026-11-09)
 
 Versions, updates and housekeeping.

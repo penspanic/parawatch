@@ -19,7 +19,9 @@ import {
   noteRun,
   openCard,
   prEvent,
+  findCard,
   readInbox,
+  readState,
   removeProject,
   startListening,
   startRun,
@@ -29,9 +31,10 @@ import {
 } from "../core/ops.js";
 import { githubConfig, readCache, resolvePrRef, syncGithub, prViews } from "../core/github.js";
 import { digest, digestText, localDate } from "../core/digest.js";
-import { readEvents } from "../core/store.js";
+import { everywhere, readEvents } from "../core/store.js";
 import { followEvents } from "../core/follow.js";
-import { fold } from "../core/state.js";
+import { adapterNames, setRoot, setupSync, syncAdapter, syncStatus, touchDevice } from "../core/sync.js";
+import { syncText } from "../core/format.js";
 import { collectRuns } from "../core/runs.js";
 import { askRows, cardDetail, cardLine, cardRows, inboxLine, prRows, runsTree, view } from "../core/format.js";
 import { hookContext, notify, removeInstructions, writeInstructions } from "../core/integrate.js";
@@ -69,6 +72,7 @@ function binPath(): string | undefined {
 }
 
 recordClient({ name: "cli", version: VERSION, path: binPath() });
+touchDevice(VERSION);
 
 const program = new Command();
 program
@@ -79,7 +83,7 @@ program
 /** Read GitHub when the last reading is old; never fails the command. */
 async function refreshGithub(force = false): Promise<void> {
   try {
-    await syncGithub({ state: fold(readEvents()), force });
+    await syncGithub({ state: readState(), force });
   } catch (err) {
     if (force) throw err;
   }
@@ -164,7 +168,7 @@ program
   .option("--copy", "also put a line about the card on the clipboard, to paste into that session")
   .option("--print", "print the link instead of opening it")
   .action((target: string, o) => {
-    const g = resolveGoto(target, fold(readEvents()));
+    const g = resolveGoto(target, readState());
     if (o.copy && g.card) {
       const line = cardContextLine(g.card);
       try {
@@ -208,7 +212,7 @@ program
   .description("show one card with its answers")
   .option("--json", "JSON output")
   .action((id: string, o) => {
-    const card = fold(readEvents()).cards.get(id);
+    const card = findCard(readState(), id);
     if (!card) throw new UserError(`no card "${id}"`);
     if (o.json) {
       print(card);
@@ -231,7 +235,7 @@ program
   .option("-a, --all", "include closed cards")
   .option("--json", "JSON output")
   .action((o) => {
-    const cards = [...fold(readEvents()).cards.values()].filter((c) => (o.all || c.status !== "closed") && (!o.project || c.project === o.project));
+    const cards = [...readState().cards.values()].filter((c) => (o.all || c.status !== "closed") && (!o.project || c.project === o.project));
     if (o.json) print({ v: SCHEMA_VERSION, cards });
     else process.stdout.write(cards.length ? cardRows(cards, view()).join("\n") + "\n" : "No cards.\n");
   });
@@ -276,9 +280,9 @@ inboxOptions(program.command("inbox").description("print unhandled answers witho
 program
   .command("watch")
   .description("stream every new event as one JSON line (for plugins and monitors)")
-  .option("--from <seq>", "replay events after this sequence number first", int)
+  .option("--from <seq>", "replay events after this sequence number first (in every machine's log)", int)
   .action(async (o) => {
-    followEvents(print, o.from);
+    followEvents(print, o.from === undefined ? undefined : everywhere(o.from, readEvents()));
     await new Promise(() => {});
   });
 
@@ -295,7 +299,7 @@ program
   .option("-w, --wide", "show runtime and ids")
   .option("--json", "JSON output")
   .action((o) => {
-    const runs = collectRuns(fold(readEvents()), { sinceHours: o.since, project: o.project, includeEnded: o.all, runtimes: o.runtime, keepRepeats: o.every });
+    const runs = collectRuns(readState(), { sinceHours: o.since, project: o.project, includeEnded: o.all, runtimes: o.runtime, keepRepeats: o.every });
     if (o.json) print({ v: SCHEMA_VERSION, runs });
     else process.stdout.write((runs.length ? runsTree(runs, view({ wide: o.wide, all: o.all })) : "Nothing running.") + "\n");
   });
@@ -360,7 +364,7 @@ pr.command("list")
   .option("--json", "JSON output")
   .action(async (o) => {
     if (!o.offline) await refreshGithub();
-    const state = fold(readEvents());
+    const state = readState();
     const runs = collectRuns(state, { sinceHours: 72 });
     let prs = prViews(readCache(), state, runs);
     if (o.project) prs = prs.filter((p) => p.project === o.project);
@@ -370,7 +374,7 @@ pr.command("list")
 pr.command("sync")
   .description("read GitHub now")
   .action(async () => {
-    const c = await syncGithub({ state: fold(readEvents()), force: true });
+    const c = await syncGithub({ state: readState(), force: true });
     if (c.error) process.stderr.write(`parawatch: ${c.error}\n`);
     process.stdout.write(`${c.prs.filter((p) => p.state === "open").length} open pull requests on ${(c.hosts ?? []).join(", ") || "no host"}\n`);
   });
@@ -512,7 +516,7 @@ project
   .command("list")
   .option("--json", "JSON output")
   .action((o) => {
-    const ps = [...fold(readEvents()).projects.values()];
+    const ps = [...readState().projects.values()];
     if (o.json) print({ v: SCHEMA_VERSION, projects: ps });
     else process.stdout.write(ps.map((p) => `${p.name}  ${p.paths.join(", ")}`).join("\n") + (ps.length ? "\n" : "No projects.\n"));
   });
@@ -542,6 +546,44 @@ program
     const checks = await doctor({ version: VERSION, bin: binPath(), update });
     if (o.json) print({ v: SCHEMA_VERSION, version: VERSION, platform: `${process.platform}-${process.arch}`, checks });
     else process.stdout.write(`${doctorText(checks, view({}).color)}\n`);
+  });
+
+// ------------------------------------------------------------------ sharing between machines
+
+const sync = program.command("sync").description("share cards and answers with your other machines through a synced folder");
+
+sync
+  .command("status", { isDefault: true })
+  .description("how sharing is doing: this machine, the others, the sync tool")
+  .option("--json", "JSON output")
+  .action(async (o) => {
+    const st = await syncStatus();
+    if (o.json) print({ v: SCHEMA_VERSION, sync: st ?? null });
+    else process.stdout.write(syncText(st, view({}).color) + "\n");
+  });
+
+sync
+  .command("setup <folder>")
+  .description("start writing to a shared folder; this machine's log moves there, nothing is lost")
+  .option("-d, --device <name>", "this machine's name in the folder (a-z, 0-9, -); defaults to the host name")
+  .option("-a, --adapter <name>", `the tool that carries the folder: ${adapterNames().join(", ")}`)
+  .action((folder: string, o) => {
+    const r = setupSync({ dir: folder, device: o.device, adapter: o.adapter, version: VERSION });
+    const lines = [
+      `This machine writes to ${r.dir} as "${r.device}" (adapter: ${r.adapter}, ${syncAdapter(r.adapter).about}).`,
+      r.moved ? `Moved ${r.moved} events from this machine's log; the old file is kept at ${r.backup}.` : "",
+      r.others.length ? `Other machines already here: ${r.others.join(", ")}.` : "No other machine has written here yet. Run the same command on the next one with its own --device.",
+      "Older parawatch copies (before 0.3) on this machine stop writing until they are updated.",
+    ];
+    process.stdout.write(lines.filter(Boolean).join("\n") + "\n");
+  });
+
+sync
+  .command("root <name> [folder]")
+  .description("name a folder on this machine (a cloud drive, say) so paths under it open on the others; no folder removes it")
+  .action((name: string, folder: string | undefined) => {
+    const d = setRoot(name, folder, VERSION);
+    process.stdout.write(Object.entries(d.roots ?? {}).map(([k, v]) => `${k}  ${v}`).join("\n") + (d.roots ? "\n" : "No named folders.\n"));
   });
 
 program

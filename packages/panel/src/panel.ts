@@ -465,13 +465,22 @@ export class Panel {
   }
 
   /** Who asked, with a link that opens their session and puts a line about the card on the clipboard. */
+  /** The machine a card came from, when it is not this one (shared logs only). */
+  private elsewhere(c: { dev?: string }): string | undefined {
+    const me = this.snapshot?.devices?.me;
+    return me && c.dev && c.dev !== me ? c.dev : undefined;
+  }
+
   private fromLine(c: Card, head: HTMLElement): void {
-    if (!c.from && !c.session) return;
-    const who = c.from ?? `session ${c.session!.slice(0, 8)}`;
-    const row = el(c.session ? "a" : "span", "pw-meta pw-from", undefined, head);
-    this.icon(row, "bot");
-    el("span", "pw-from-name", who, row);
-    if (!c.session) return;
+    const away = this.elsewhere(c);
+    if (!c.from && !c.session && !away) return;
+    const who = c.from ?? (c.session ? `session ${c.session.slice(0, 8)}` : "");
+    // a session on another machine cannot be opened from here
+    const row = el(c.session && !away ? "a" : "span", "pw-meta pw-from", undefined, head);
+    this.icon(row, away ? "monitor" : "bot");
+    el("span", "pw-from-name", [who, away ? `on ${away}` : ""].filter(Boolean).join(" "), row);
+    if (away) row.title = `Asked on ${away}`;
+    if (!c.session || away) return;
     const link = row as HTMLAnchorElement;
     link.href = "#";
     link.title = `Open this session in Claude and copy a line about ${c.id} to paste there`;
@@ -642,9 +651,14 @@ export class Panel {
       if (a.choice !== undefined) parts.push(`${a.choice}${c.options?.[a.choice - 1] ? `. ${c.options[a.choice - 1]}` : ""}`);
       if (a.comment) parts.push(`“${a.comment}”`);
       if (a.attach?.length) parts.push(`${a.attach.length} attached`);
-      const line = el("div", "pw-answer", undefined, top);
+      const line = el("div", a.late ? "pw-answer is-late" : "pw-answer", undefined, top);
       this.icon(line, "corner-down-right").title = "Your answer";
       el("span", undefined, parts.join(", "), line);
+      const away = this.elsewhere(a);
+      if (a.late) {
+        const n = el("span", "pw-meta", ` · not used: answered${a.dev ? ` on ${a.dev}` : ""} at the same time as the answer above`, line);
+        n.title = "Two machines answered before either saw the other. The earlier answer stands.";
+      } else if (away) el("span", "pw-meta", ` · on ${away}`, line);
     }
     if (c.status === "answered" && !waitingFor(c, this.snapshot?.listeners ?? []).length) {
       const n = el("div", "pw-delivery", "No agent is waiting. It gets your answer on its next turn.", top);

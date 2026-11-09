@@ -1,8 +1,8 @@
 import { prViews, keyOf, parsePrRef, readCache, githubConfig } from "./github.js";
-import { linkPr, listeners } from "./ops.js";
+import { linkPr, listeners, readState } from "./ops.js";
 import { collectRuns } from "./runs.js";
-import { fold, type State } from "./state.js";
-import { readEvents } from "./store.js";
+import type { State } from "./state.js";
+import { deviceName, eventFiles, sharedDir } from "./store.js";
 import { SCHEMA_VERSION, type Card, type Run, type Snapshot } from "./types.js";
 
 export type { Snapshot };
@@ -14,9 +14,9 @@ export type { Snapshot };
  * GitHub is read from the last reading only; `syncGithub` refreshes it.
  */
 export function snapshot(opts: { sinceHours?: number; project?: string; closed?: number; keepRepeats?: boolean } = {}): Snapshot {
-  let state = fold(readEvents());
+  let state = readState();
   const runs = collectRuns(state, { sinceHours: opts.sinceHours ?? 6, project: opts.project, keepRepeats: opts.keepRepeats });
-  if (linkCreatedPrs(runs, state)) state = fold(readEvents());
+  if (linkCreatedPrs(runs, state)) state = readState();
   const all = [...state.cards.values()].filter((c) => !opts.project || c.project === opts.project);
   const cards = [...all.filter((c) => c.status !== "closed"), ...recentlyClosed(all, opts.closed ?? 0)];
   quietAnsweredAsks(runs, all);
@@ -33,6 +33,7 @@ export function snapshot(opts: { sinceHours?: number; project?: string; closed?:
     prs,
     github: { enabled, fetchedAt: cache.fetchedAt, error: cache.error },
     listeners: listeners(),
+    devices: sharedDir() ? { me: deviceName(), others: eventFiles().map((f) => f.device).filter((d) => d !== deviceName()) } : undefined,
   };
 }
 

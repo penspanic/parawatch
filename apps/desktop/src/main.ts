@@ -9,14 +9,14 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, Notification, protocol, shell, systemPreferences, Tray } from "electron";
 import { readClient, recordClient, versionSkew } from "../../../src/core/clients.js";
-import { answerCard, UserError } from "../../../src/core/ops.js";
+import { answerCard, readState, UserError } from "../../../src/core/ops.js";
 import { cardContextLine, resolveGoto } from "../../../src/core/desktop.js";
 import { followEvents } from "../../../src/core/follow.js";
 import { syncGithub } from "../../../src/core/github.js";
 import { desktopPidPath } from "../../../src/core/integrate.js";
 import { snapshot as takeSnapshot } from "../../../src/core/snapshot.js";
-import { fold } from "../../../src/core/state.js";
-import { homeDir, readEvents } from "../../../src/core/store.js";
+import { attachmentsDir, deviceName, homeDir } from "../../../src/core/store.js";
+import { syncStatus, touchDevice } from "../../../src/core/sync.js";
 import type { PwEvent, Snapshot } from "../../../src/core/types.js";
 import { artPng, trayPng, type TrayState } from "./art.js";
 import { logger, logPath } from "./logger.js";
@@ -113,7 +113,8 @@ function watchGithub(): void {
   const tick = async () => {
     try {
       const before = fs.existsSync(path.join(homeDir(), "github.json")) ? fs.statSync(path.join(homeDir(), "github.json")).mtimeMs : 0;
-      await syncGithub({ state: fold(readEvents()) });
+      touchDevice(app.getVersion());
+      await syncGithub({ state: readState() });
       const after = fs.existsSync(path.join(homeDir(), "github.json")) ? fs.statSync(path.join(homeDir(), "github.json")).mtimeMs : 0;
       if (after !== before) refresh();
     } catch (err) {
@@ -125,8 +126,10 @@ function watchGithub(): void {
 }
 
 function onEvent(ev: PwEvent): void {
-  const alert = settings.notify
-    ? alertFor(ev, { runTitle: (id) => fold(readEvents()).runs.get(id)?.title })
+  // every machine reads GitHub itself, so news another machine logged is told here already
+  const echo = ev.type === "pr.change" && !!ev.dev && ev.dev !== deviceName();
+  const alert = settings.notify && !echo
+    ? alertFor(ev, { runTitle: (id) => readState().runs.get(id)?.title })
     : undefined;
   if (alert) notifyHuman(alert);
   if (debounce) clearTimeout(debounce);
@@ -193,8 +196,18 @@ function trayMenu(): Menu {
 
 // ------------------------------------------------------------------ versions and updates
 
-function aboutInfo(): AboutInfo {
+/** One line on sharing for the settings: the other machines and whether the sync tool is fine. */
+async function syncLine(): Promise<AboutInfo["sync"]> {
+  const st = await syncStatus().catch(() => undefined);
+  if (!st) return undefined;
+  const peers = st.peers.map((p) => `${p.name} ${p.connected === true ? "connected" : p.connected === false ? "not connected" : "seen"}`).join(", ") || "no other machine yet";
+  const problems = [st.error, st.conflicts.length ? `${st.conflicts.length} conflict copies` : ""].filter(Boolean).join(" · ");
+  return { device: st.device, text: `${st.adapter} · ${peers}${problems ? ` · ${problems}` : ""}`, warn: !st.ok || !!problems };
+}
+
+async function aboutInfo(): Promise<AboutInfo> {
   const cli = readClient("cli");
+  const sync = await syncLine();
   return {
     version: app.getVersion(),
     electron: process.versions.electron ?? "",
@@ -203,6 +216,7 @@ function aboutInfo(): AboutInfo {
     skew: versionSkew(cli?.version, app.getVersion())?.text,
     logPath: logPath(),
     dataPath: homeDir(),
+    ...(sync ? { sync } : {}),
   };
 }
 
@@ -252,7 +266,7 @@ async function checkForUpdatesByHand(): Promise<void> {
 function openLink(which: string): void {
   if (which === "repo") void shell.openExternal(REPO_URL);
   else if (which === "releases") void shell.openExternal(`${RELEASES_URL}/tag/v${app.getVersion()}`);
-  else if (which === "issue") void shell.openExternal(issueUrl(aboutInfo()));
+  else if (which === "issue") void aboutInfo().then((a) => shell.openExternal(issueUrl(a)));
   else if (which === "logs") {
     if (fs.existsSync(logPath())) shell.showItemInFolder(logPath());
     else void shell.openPath(path.dirname(logPath()));
@@ -576,7 +590,7 @@ function registerIpc(): void {
     refresh();
   });
   ipcMain.handle("pw:goto", async (_e, target: string) => {
-    const g = resolveGoto(target, fold(readEvents()));
+    const g = resolveGoto(target, readState());
     if (g.card) clipboard.writeText(cardContextLine(g.card));
     if (!g.url) {
       clipboard.writeText(`claude --resume ${g.session}`);
@@ -616,7 +630,7 @@ function registerIpc(): void {
     return `${MEDIA_SCHEME}://media/${encodeURIComponent(p)}`;
   });
   ipcMain.handle("pw:save-attachment", async (_e, data: ArrayBuffer, ext: string) => {
-    const dir = path.join(homeDir(), "attachments");
+    const dir = attachmentsDir();
     await fs.promises.mkdir(dir, { recursive: true });
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     const file = path.join(dir, `pasted-${stamp}.${ext.replace(/[^a-z0-9]/gi, "") || "png"}`);

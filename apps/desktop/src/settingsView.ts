@@ -113,6 +113,10 @@ export class SettingsView {
       this.row(about, "terminal", "Command line", a.skew ?? cli, (c) => {
         if (a.skew) c.parentElement?.classList.add("is-warn");
       });
+      if (a.sync)
+        this.row(about, "network", `Shared as ${a.sync.device}`, a.sync.text, (c) => {
+          if (a.sync?.warn) c.parentElement?.classList.add("is-warn");
+        });
     }
     const links = el("div", "st-links", undefined, about);
     for (const [label, which] of [

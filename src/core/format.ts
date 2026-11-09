@@ -1,4 +1,5 @@
 import type { InboxItem } from "./ops.js";
+import type { SyncStatus } from "./sync.js";
 import type { Card, PrView, Run } from "./types.js";
 
 export function ago(iso: string | undefined, now = Date.now()): string {
@@ -153,9 +154,12 @@ export function cardDetail(c: Card): string {
   for (const a of c.attach ?? []) out.push(`Attached: ${a}`);
   if (c.from || c.session) out.push(`From: ${[c.from, c.session ? `session ${c.session.slice(0, 8)}` : ""].filter(Boolean).join(", ")}`);
   out.push(`Opened: ${new Date(c.openedAt).toLocaleString()}${c.since ? `, first came up ${new Date(c.since).toLocaleDateString()}` : ""}`);
+  if (c.dev) out.push(`Machine: ${c.dev}`);
   for (const a of c.answers) {
     const choice = a.choice !== undefined ? ` chose ${a.choice}${c.options?.[a.choice - 1] ? ` (${c.options[a.choice - 1]})` : ""}` : "";
-    out.push("", `${a.by}${choice}${a.comment ? `: ${a.comment}` : ""}`);
+    const where = a.dev ? ` on ${a.dev}` : "";
+    const late = a.late ? "  (not used: given at the same time as the answer before it, which stands)" : "";
+    out.push("", `${a.by}${where}${choice}${a.comment ? `: ${a.comment}` : ""}${late}`);
     for (const f of a.attach ?? []) out.push(`  attached ${f}`);
   }
   for (const m of c.comments) out.push(`${m.by}: ${m.text}`);
@@ -370,4 +374,24 @@ export function runsTree(runs: Run[], v: View = PLAIN, now = Date.now(), indent 
     }
   }
   return out.join("\n");
+}
+
+// ------------------------------------------------------------------ sharing
+
+/** `parawatch sync status` as text. */
+export function syncText(st: SyncStatus | undefined, color = false, now = Date.now()): string {
+  const v: View = { ...PLAIN, color };
+  if (!st) return "This machine keeps its log to itself. To share it with another machine: parawatch sync setup <folder> --device <name>";
+  const lines = [
+    `${paint(v, st.device, "bold")} writes to ${st.dir}`,
+    `adapter  ${st.adapter}${st.ok ? "" : paint(v, " (not reachable)", "yellow")}${st.lastSync ? ` · last in step ${ago(st.lastSync, now)} ago` : ""}${st.pending ? ` · ${st.pending} file(s) on the way` : ""}`,
+  ];
+  if (!st.peers.length) lines.push("peers    none yet");
+  for (const p of st.peers) {
+    const state = p.connected === true ? paint(v, "connected", "green") : p.connected === false ? paint(v, "not connected", "yellow") : "seen";
+    lines.push(`peer     ${p.name}  ${state}${p.lastSeen && p.connected !== true ? ` · last ${ago(p.lastSeen, now)} ago` : ""}${p.address ? ` · ${p.address}` : ""}${p.version ? ` · parawatch ${p.version}` : ""}`);
+  }
+  if (st.conflicts.length) lines.push(paint(v, `conflicts ${st.conflicts.length}:`, "yellow"), ...st.conflicts.map((c) => `  ${c}`));
+  if (st.error) lines.push(paint(v, st.error, "yellow"));
+  return lines.join("\n");
 }
