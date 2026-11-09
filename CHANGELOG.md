@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.0 (2026-11-09)
 
 From running parawatch on a work machine where every session starts in one notes folder and most waiting is on pull requests.
 
@@ -16,7 +16,7 @@ From running parawatch on a work machine where every session starts in one notes
 - `digest [--date] [--json]`: what each session did on a day.
 - Desktop app: the new sections in the panel, GitHub read on an interval, notifications for pull requests that stop landing and for jobs that stop beating.
 
-## 0.1.0 (unreleased)
+## 0.1.0 (2026-11-09)
 
 First release.
 
