@@ -1,4 +1,4 @@
-import type { Card, Claim, DeclaredRun, PrLink, Project, PwEvent } from "./types.js";
+import type { Answer, Card, Claim, DeclaredRun, PrLink, Project, PwEvent } from "./types.js";
 
 export interface State {
   projects: Map<string, Project>;
@@ -10,25 +10,44 @@ export interface State {
   lastSeq: number;
 }
 
-/** Rebuild current state from the event log. */
-export function fold(events: PwEvent[]): State {
+/**
+ * Turns a path written on another machine into the same place on this one. Given the path and
+ * the machine that wrote it; returns the path unchanged when there is nothing to map.
+ */
+export type PathMap = (p: string, from?: string) => string;
+
+function mapAll(xs: string[] | undefined, map: PathMap | undefined, from: string | undefined): string[] | undefined {
+  return xs && map ? xs.map((x) => map(x, from)) : xs;
+}
+
+/** Rebuild current state from the event log. `map` makes other machines' paths local. */
+export function fold(events: PwEvent[], map?: PathMap): State {
   const s: State = { projects: new Map(), cards: new Map(), runs: new Map(), claims: [], prLinks: new Map(), lastSeq: 0 };
   for (const ev of events) {
     s.lastSeq = Math.max(s.lastSeq, ev.seq);
     switch (ev.type) {
       case "project.add":
-        s.projects.set(ev.project.name, ev.project);
+        s.projects.set(ev.project.name, { ...ev.project, paths: mapAll(ev.project.paths, map, ev.dev) ?? [] });
         break;
       case "project.remove":
         s.projects.delete(ev.name);
         break;
-      case "card.open":
-        s.cards.set(ev.card.id, { ...ev.card, openedAt: ev.ts, status: "open", answers: [], comments: [] });
+      case "card.open": {
+        const card: Card = { ...ev.card, openedAt: ev.ts, status: "open", answers: [], comments: [] };
+        if (ev.v >= 2 && ev.dev) card.dev = ev.dev;
+        card.attach = mapAll(card.attach, map, ev.dev);
+        card.open = mapAll(card.open, map, ev.dev);
+        s.cards.set(ev.card.id, card);
         break;
+      }
       case "card.answer": {
         const c = s.cards.get(ev.card);
         if (!c) break;
-        c.answers.push({ seq: ev.seq, at: ev.ts, by: ev.by, choice: ev.choice, comment: ev.comment, attach: ev.attach });
+        const a: Answer = { seq: ev.seq, at: ev.ts, by: ev.by, choice: ev.choice, comment: ev.comment, attach: mapAll(ev.attach, map, ev.dev) };
+        if (ev.v >= 2 && ev.dev) a.dev = ev.dev;
+        // written on another machine before that machine saw an earlier answer: the earlier one stands
+        if (typeof ev.seen === "number" && ev.seen < c.answers.length) a.late = true;
+        c.answers.push(a);
         if (c.status === "open") c.status = "answered";
         break;
       }
@@ -95,12 +114,27 @@ export function fold(events: PwEvent[]): State {
   return s;
 }
 
-/** Next id with a prefix, counting the events that created that kind of thing. */
-export function nextId(events: PwEvent[], prefix: "c" | "r"): string {
+/**
+ * Next id with a prefix, counting the events that created that kind of thing. In a shared folder
+ * (`device` given) only that machine's own log counts and the id carries the machine's name, so
+ * two machines never pick the same id: `pc-c3`.
+ */
+export function nextId(events: PwEvent[], prefix: "c" | "r", device?: string): string {
   let n = 0;
   for (const ev of events) {
+    if (device && ev.dev !== device) continue;
     if (prefix === "c" && ev.type === "card.open") n++;
     if (prefix === "r" && ev.type === "run.start") n++;
   }
-  return `${prefix}${n + 1}`;
+  return device ? `${device}-${prefix}${n + 1}` : `${prefix}${n + 1}`;
+}
+
+/**
+ * Find a card or run by id. A shared id may be given without its machine (`c3` for `pc-c3`) as
+ * long as only one machine has it; an exact id always wins.
+ */
+export function findId<T>(map: Map<string, T>, id: string): string | undefined {
+  if (map.has(id)) return id;
+  const hits = [...map.keys()].filter((k) => k.endsWith(`-${id}`));
+  return hits.length === 1 ? hits[0] : undefined;
 }

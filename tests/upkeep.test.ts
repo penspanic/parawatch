@@ -119,7 +119,7 @@ describe("update checks", () => {
 describe("the store format", () => {
   it("refuses to write into a log a newer version wrote, and still reads it", () => {
     addProject("game", ["/work/game"]);
-    fs.appendFileSync(eventsPath(), JSON.stringify({ v: 2, seq: 99, ts: new Date().toISOString(), type: "something.new" }) + "\n");
+    fs.appendFileSync(eventsPath(), JSON.stringify({ v: 3, seq: 99, ts: new Date().toISOString(), type: "something.new" }) + "\n");
     expect(readEvents()).toHaveLength(2);
     expect(() => addProject("app", ["/work/app"])).toThrow(UserError);
     expect(() => addProject("app", ["/work/app"])).toThrow(/newer parawatch/);

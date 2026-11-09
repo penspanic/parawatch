@@ -267,11 +267,42 @@ parawatch watch --from 120       # starting after event 120
 
 ## Storage
 
-Everything lives in one append-only file, `~/.local/state/parawatch/events.jsonl` (`$PARAWATCH_HOME`, or `$XDG_STATE_HOME/parawatch`). Writers take a short lock, so several agents can write at once. Next to it: cursors in `cursors/`, running waits in `listeners/`, the last GitHub reading in `github.json`, the last update check in `update.json`, the version each copy (CLI, app) last ran in `clients/`, and the optional `config.json`. Delete the folder to start over.
+Everything lives in one append-only file, `~/.local/state/parawatch/events.jsonl` (`$PARAWATCH_HOME`, or `$XDG_STATE_HOME/parawatch`). Writers take a short lock, so several agents can write at once. Next to it: cursors in `cursors/`, running waits in `listeners/`, the last GitHub reading in `github.json`, the last update check in `update.json`, the version each copy (CLI, app) last ran in `clients/`, and the optional `config.json`. Delete the folder to start over. A shared log lives in the shared folder instead; see [More than one machine](#more-than-one-machine).
 
 Every event carries a format number. A copy of parawatch reads a log that a newer copy wrote, skipping what it does not know, but refuses to write to it and says to update. The desktop app's own log is in `~/Library/Logs/Parawatch/main.log` (Help > Show Log File).
 
 Desktop notifications for new cards use `osascript` on macOS and `notify-send` on Linux. `PARAWATCH_NOTIFY=0` turns them off. While the desktop app runs it notifies instead, and the CLI stays quiet. To-dos never notify.
+
+## More than one machine
+
+Agents on a second machine (a desktop PC, a build box) can ask and be answered like the ones on your laptop. Parawatch does not move files between machines itself: point it at a folder that something else keeps in step, and each machine writes only its own log there.
+
+```sh
+# on each machine, once, with its own name
+parawatch sync setup ~/agent-sync/parawatch --device mac --adapter syncthing
+parawatch sync setup ~/agent-sync/parawatch --device pc  --adapter syncthing
+parawatch sync            # this machine, the others, how the sync tool is doing
+```
+
+- **Nothing moves until you run `sync setup`.** A machine on its own keeps today's single file and format.
+- **`sync setup` moves this machine's log into the folder.** It becomes `events/<device>.jsonl` with every event, id and seq as it was, so cursors and open cards carry on. The old file is kept beside it as `events.jsonl.before-sync`. A copy of parawatch older than 0.3 on that machine stops writing until it is updated.
+- **Each machine reads every log and writes only its own.** The logs merge in time order. Two machines never write one file, so a sync tool has nothing to merge.
+- **Ids carry the machine once a log is shared:** `pc-c3`, `mac-r2`. Commands take the short form (`parawatch close c3`) while only one machine has that number. Cards from before the move keep their ids.
+- **When two machines answer one card before either has seen the other's answer, the earlier answer stands.** The other one stays on the card, marked as not used, and does not wake the agent. An answer given after seeing the first one counts as usual.
+- **Paths follow the machine.** Attachments, things to open and project folders written on another machine are read as the same place here, under its home folder or the shared folder. Name other folders that sit in different places on each machine (a cloud drive, say): `parawatch sync root gdrive "G:\My Drive"` on one machine and `parawatch sync root gdrive ~/Library/CloudStorage/…/My\ Drive` on the other. Pasted pictures are saved in the shared folder, so every machine can open them.
+- **Waits are seen everywhere.** A card on your laptop says whether an agent on the PC is waiting for it.
+- **Every machine reads GitHub for itself.** The same news is delivered once.
+
+The shared folder holds `events/`, `devices/` (each machine's paths, version and last sign of life), `listeners/` and `attachments/`. Cursors, the lock, the GitHub reading and settings stay on each machine.
+
+**Sync adapters** are how parawatch asks the sync tool how it is doing, for `parawatch sync`, `doctor` and the app's settings. Pick one with `--adapter` (or `"sync": { "adapter": … }` in `config.json`):
+
+| Adapter | Reports |
+|---|---|
+| `syncthing` | Asks the local Syncthing through its REST API (address and API key from its `config.xml`; `PARAWATCH_SYNCTHING_KEY` or `"sync": { "syncthing": { "url", "home" } }` override): connected devices, when the folder was last in step, files on the way, errors. |
+| `folder` | Anything else that keeps a folder in step (a cloud drive, a network share): the other machines' last writes and conflict copies. |
+
+An adapter is one object with a `status()` method (`src/core/sync.ts`, `registerAdapter`). Another tool, such as a git checkout or a small server, fits the same shape.
 
 ## Not goals
 

@@ -1,9 +1,8 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { readInbox, inboxFrom } from "./ops.js";
+import { readInbox, inboxFrom, readState } from "./ops.js";
 import { homeDir, readCursor, readEvents } from "./store.js";
-import { fold } from "./state.js";
 import { inboxLine } from "./format.js";
 import type { Card } from "./types.js";
 
@@ -94,14 +93,14 @@ export function instructionState(file: string): "current" | "outdated" | "absent
  */
 export function hookContext(input: { session_id?: string; cwd?: string }, project?: string): string | undefined {
   const events = readEvents();
-  const state = fold(events);
+  const state = readState(events);
   let name = project;
   if (!name && input.session_id) name = state.claims.find((c) => input.session_id!.startsWith(c.session))?.project;
   if (!name && input.cwd) {
     for (const p of state.projects.values()) if (p.paths.some((x) => input.cwd === x || input.cwd!.startsWith(x + "/"))) name = p.name;
   }
   if (!name) return undefined;
-  const items = inboxFrom(events, readCursor(name), { project: name });
+  const items = inboxFrom(events, readCursor(name), { project: name }, state);
   if (!items.length) return undefined;
   const cards = items.filter((i) => i.kind !== "pr").length;
   const prs = items.length - cards;

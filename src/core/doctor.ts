@@ -10,9 +10,10 @@ import { ghHosts, githubConfig, readCache, runGh, type GhRunner } from "./github
 import { instructionState } from "./integrate.js";
 import { listeners } from "./ops.js";
 import { fold } from "./state.js";
-import { eventsPath, homeDir, readEvents, storeFormat } from "./store.js";
+import { deviceName, eventFiles, homeDir, readEvents, sharedDir, storeFormat } from "./store.js";
+import { readDevice, syncStatus, type SyncStatus } from "./sync.js";
 import { skillState, skillTargets, type SkillTarget } from "./skill.js";
-import { SCHEMA_VERSION } from "./types.js";
+import { STORE_FORMAT } from "./types.js";
 import { updateChecksOn, type UpdateInfo } from "./update.js";
 
 export type CheckState = "ok" | "warn" | "off" | "info";
@@ -35,6 +36,8 @@ export interface DoctorInput {
   gh?: GhRunner;
   /** Claude Code settings files to look for the hook in */
   claudeSettings?: string[];
+  /** how sharing is doing; read from the sync tool when not given */
+  sync?: SyncStatus | null;
 }
 
 function claudeSettingsFiles(): string[] {
@@ -61,14 +64,33 @@ export async function doctor(input: DoctorInput): Promise<Check[]> {
   // the store
   const events = readEvents();
   let size = 0;
-  try {
-    size = fs.statSync(eventsPath()).size;
-  } catch {
-    // no events yet
+  for (const f of eventFiles()) {
+    try {
+      size += fs.statSync(f.file).size;
+    } catch {
+      // no events yet
+    }
   }
   const format = storeFormat(events);
-  if (format > SCHEMA_VERSION) add("store", "warn", `${eventsPath()} has format ${format}, newer than this copy reads (${SCHEMA_VERSION})`, CLI_UPDATE);
-  else add("store", "ok", `${homeDir()} · ${events.length} events, ${bytes(size)}`);
+  const shared = sharedDir();
+  const where = shared ? `${shared} (shared) · this machine ${homeDir()}` : homeDir();
+  if (format > STORE_FORMAT) add("store", "warn", `${where} has format ${format}, newer than this copy reads (${STORE_FORMAT})`, CLI_UPDATE);
+  else add("store", "ok", `${where} · ${events.length} events, ${bytes(size)}`);
+
+  // other machines
+  const st = input.sync === undefined ? await syncStatus().catch(() => undefined) : input.sync ?? undefined;
+  if (!shared) add("sync", "off", "this machine only", "to share with another machine: parawatch sync setup <folder> --device <name>");
+  else {
+    const me = deviceName();
+    const mine = readDevice(me);
+    if (mine && mine.host !== `${os.hostname()}:${os.homedir()}`) add("sync", "warn", `another machine (${mine.host}) also writes as "${me}"`, "give each machine its own name: parawatch sync setup <folder> --device <name>");
+    if (!st) add("sync", "info", `${me} · ${shared}`);
+    else {
+      const peers = st.peers.map((p) => `${p.name} ${p.connected === true ? "connected" : p.connected === false ? "not connected" : "seen"}`).join(", ");
+      add("sync", st.error || !st.ok ? "warn" : "ok", `${me} · ${st.adapter} · ${peers || "no other machine yet"}${st.error ? ` · ${st.error}` : ""}`);
+      if (st.conflicts.length) add("sync", "warn", `${st.conflicts.length} conflict copy(ies): ${st.conflicts.slice(0, 3).join(", ")}`, "each machine writes only its own file; look for two machines using one device name");
+    }
+  }
   const state = fold(events);
   add("projects", state.projects.size ? "ok" : "info", state.projects.size ? [...state.projects.keys()].join(", ") : "none registered (claims still work)");
 

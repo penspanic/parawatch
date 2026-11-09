@@ -758,6 +758,11 @@ button.pw-round.pw-send:disabled {
   margin-top: 4px;
   color: var(--text-muted);
 }
+.pw-answer.is-late > span:first-of-type {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
 .pw-answer .pw-icon svg {
   width: 13px;
   height: 13px;

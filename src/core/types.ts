@@ -1,4 +1,12 @@
+/** The version of the JSON that commands print (`--json`) and panels read. */
 export const SCHEMA_VERSION = 1;
+
+/**
+ * The newest event-log format this copy reads and writes. 1: one machine. 2: per-device logs in a
+ * shared folder (prefixed ids, answers that record what they saw). A copy refuses to write to a
+ * log with a newer format than it knows.
+ */
+export const STORE_FORMAT = 2;
 
 /**
  * decide: a choice. try: try a build or look at something. block: only the human can do it and
@@ -12,6 +20,13 @@ export interface Answer {
   seq: number;
   at: string;
   by: string;
+  /** the machine the answer was given on (shared folders only) */
+  dev?: string;
+  /**
+   * given on another machine before that machine saw an earlier answer: kept on the card, but the
+   * earlier answer stands and this one is not delivered
+   */
+  late?: boolean;
   choice?: number;
   comment?: string;
   attach?: string[];
@@ -43,6 +58,8 @@ export interface Card {
   /** when the matter first came up, if earlier than the card (moved from a board, say) */
   since?: string;
   openedAt: string;
+  /** the machine the card was opened on (shared folders only) */
+  dev?: string;
   status: CardStatus;
   answers: Answer[];
   comments: Comment[];
@@ -131,15 +148,19 @@ export const PR_CHANGES: PrChange[] = ["review", "approved", "changes_requested"
 /** Fields shared by every event line. */
 interface EventBase {
   v: number;
+  /** the order within one machine's log */
   seq: number;
   ts: string;
+  /** the machine whose log holds the event; filled in when read, never written */
+  dev?: string;
 }
 
 export type EventBody =
   | { type: "project.add"; project: Project }
   | { type: "project.remove"; name: string }
   | { type: "card.open"; card: Omit<Card, "status" | "answers" | "comments" | "openedAt"> }
-  | { type: "card.answer"; card: string; by: string; choice?: number; comment?: string; attach?: string[] }
+  /** `seen`: how many answers the card had where it was written (shared folders only) */
+  | { type: "card.answer"; card: string; by: string; choice?: number; comment?: string; attach?: string[]; seen?: number }
   | { type: "card.comment"; card: string; by: string; text: string }
   | { type: "card.close"; card: string; note?: string }
   | { type: "card.edit"; card: string; set: CardEdit }
@@ -151,7 +172,9 @@ export type EventBody =
   | { type: "pr.link"; link: Omit<PrLink, "at"> }
   | { type: "pr.unlink"; pr: string }
   /** something happened on a pull request: read from GitHub, or reported by another tool */
-  | { type: "pr.change"; pr: PrRef; change: PrChange; title?: string; by?: string; text?: string; source: "github" | "external" };
+  | { type: "pr.change"; pr: PrRef; change: PrChange; title?: string; by?: string; text?: string; source: "github" | "external" }
+  /** left in a single-machine log that moved to a shared folder, so older copies stop writing to it */
+  | { type: "store.moved"; to: string };
 
 export type PwEvent = EventBase & EventBody;
 
@@ -167,6 +190,8 @@ export interface Snapshot {
   github?: GithubInfo;
   /** agents blocked in `parawatch wait` right now */
   listeners?: Listener[];
+  /** this machine and the others, when the log is shared */
+  devices?: { me: string; others: string[] };
 }
 
 export interface GithubInfo {
@@ -180,6 +205,10 @@ export interface GithubInfo {
 export interface Listener {
   consumer: string;
   pid: number;
+  /** the machine the wait runs on (shared folders only) */
+  device?: string;
+  /** last sign of life, for waits on other machines */
+  beat?: string;
   project?: string;
   card?: string;
   session?: string;

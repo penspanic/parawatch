@@ -1,11 +1,22 @@
 import fs from "node:fs";
 import path from "node:path";
 import { UserError } from "./errors.js";
-import { appendEvent, eventsPath, homeDir, readCursor, readEvents, writeCursor } from "./store.js";
-import { fold, nextId } from "./state.js";
+import { advance, appendEvent, deviceName, eventsDir, homeDir, isAfter, readCursor, readEvents, sharedDir, writeCursor, type Position } from "./store.js";
+import { findId, fold, nextId, type State } from "./state.js";
+import { pathMap } from "./sync.js";
 import { CARD_KINDS, HUMAN, PR_CHANGES, type Card, type CardEdit, type CardKind, type Claim, type Listener, type PrChange, type PrRef, type PwEvent } from "./types.js";
 
 export { UserError };
+
+/** Current state, with other machines' paths made local. */
+export function readState(events = readEvents()): State {
+  return fold(events, pathMap());
+}
+
+/** The machine name ids carry, when the log is shared. */
+function idDevice(): string | undefined {
+  return sharedDir() ? deviceName() : undefined;
+}
 
 function cleanList(xs: string[] | undefined): string[] | undefined {
   const out = (xs ?? []).map((x) => x.trim()).filter(Boolean);
@@ -26,7 +37,7 @@ export function addProject(name: string, paths: string[]): void {
 }
 
 export function removeProject(name: string): void {
-  const s = fold(readEvents());
+  const s = readState();
   if (!s.projects.has(name)) throw new UserError(`no project named "${name}"`);
   appendEvent(() => ({ type: "project.remove", name }));
 }
@@ -103,7 +114,7 @@ export function openCard(input: CardInput): Card {
   const since = input.since?.trim() ? parseWhen(input.since) : undefined;
   let id = "";
   appendEvent((events) => {
-    id = nextId(events, "c");
+    id = nextId(events, "c", idDevice());
     const session = input.session?.trim() || undefined;
     const from = input.from?.trim() || sessionTitle(fold(events).claims, session);
     return {
@@ -128,19 +139,32 @@ export function openCard(input: CardInput): Card {
       },
     };
   });
-  const card = fold(readEvents()).cards.get(id);
+  const card = readState().cards.get(id);
   if (!card) throw new Error("card vanished right after it was written");
   return card;
 }
 
+/** A card by id; a shared id may leave out its machine (`c3` for `pc-c3`). */
+export function findCard(state: State, id: string): Card | undefined {
+  const k = findId(state.cards, id);
+  return k ? state.cards.get(k) : undefined;
+}
+
 function requireCard(id: string): Card {
-  const card = fold(readEvents()).cards.get(id);
+  const card = findCard(readState(), id);
   if (!card) throw new UserError(`no card "${id}"`);
   return card;
 }
 
+function requireRun(id: string): string {
+  const k = findId(readState().runs, id);
+  if (!k) throw new UserError(`no declared run "${id}"`);
+  return k;
+}
+
 export function answerCard(id: string, a: { choice?: number; comment?: string; attach?: string[]; by?: string }): void {
   const card = requireCard(id);
+  id = card.id;
   if (card.status === "closed") throw new UserError(`card ${id} is already closed`);
   if (a.choice === undefined && !a.comment?.trim() && !cleanList(a.attach)) {
     throw new UserError("an answer needs --choice, --comment or --attach");
@@ -151,24 +175,27 @@ export function answerCard(id: string, a: { choice?: number; comment?: string; a
       throw new UserError(n ? `--choice must be between 1 and ${n}` : `card ${id} has no options`);
     }
   }
-  appendEvent(() => ({
+  const shared = !!sharedDir();
+  appendEvent((events) => ({
     type: "card.answer",
     card: id,
     by: a.by || HUMAN,
     choice: a.choice,
     comment: a.comment?.trim() || undefined,
     attach: absPaths(a.attach),
+    // what this machine knew when answering, so a crossing answer from another machine shows
+    seen: shared ? events.filter((e) => e.type === "card.answer" && e.card === id).length : undefined,
   }));
 }
 
 export function commentCard(id: string, text: string, by: string): void {
-  requireCard(id);
+  id = requireCard(id).id;
   if (!text.trim()) throw new UserError("a comment needs text");
   appendEvent(() => ({ type: "card.comment", card: id, by, text: text.trim() }));
 }
 
 export function editCard(id: string, set: CardEdit): Card {
-  requireCard(id);
+  id = requireCard(id).id;
   const clean: CardEdit = {};
   if (set.kind !== undefined) clean.kind = checkKind(set.kind);
   if (set.title !== undefined) {
@@ -190,7 +217,7 @@ export function editCard(id: string, set: CardEdit): Card {
 export function closeCard(id: string, note?: string): void {
   const card = requireCard(id);
   if (card.status === "closed") return;
-  appendEvent(() => ({ type: "card.close", card: id, note: note?.trim() || undefined }));
+  appendEvent(() => ({ type: "card.close", card: card.id, note: note?.trim() || undefined }));
 }
 
 export interface RunInput {
@@ -209,25 +236,25 @@ export function startRun(r: RunInput): string {
   const log = r.log?.trim() ? path.resolve(r.log) : undefined;
   let id = "";
   appendEvent((events) => {
-    id = nextId(events, "r");
+    id = nextId(events, "r", idDevice());
     return { type: "run.start", run: { id, project: r.project, task: r.task, title: r.title, parent: r.parent, heartbeat: r.heartbeat, log } };
   });
   return id;
 }
 
 export function noteRun(id: string, text: string): void {
-  if (!fold(readEvents()).runs.has(id)) throw new UserError(`no declared run "${id}"`);
-  appendEvent(() => ({ type: "run.note", run: id, text }));
+  const run = requireRun(id);
+  appendEvent(() => ({ type: "run.note", run, text }));
 }
 
 export function beatRun(id: string): void {
-  if (!fold(readEvents()).runs.has(id)) throw new UserError(`no declared run "${id}"`);
-  appendEvent(() => ({ type: "run.beat", run: id }));
+  const run = requireRun(id);
+  appendEvent(() => ({ type: "run.beat", run }));
 }
 
 export function endRun(id: string, status: "done" | "failed", note?: string): void {
-  if (!fold(readEvents()).runs.has(id)) throw new UserError(`no declared run "${id}"`);
-  appendEvent(() => ({ type: "run.end", run: id, status, note }));
+  const run = requireRun(id);
+  appendEvent(() => ({ type: "run.end", run, status, note }));
 }
 
 export interface ClaimInput {
@@ -247,7 +274,7 @@ export interface ClaimInput {
  */
 export function claimSession(input: ClaimInput): Claim {
   if (input.session.length < 6) throw new UserError("give at least 6 characters of the session id");
-  const before = fold(readEvents()).claims.find((c) => c.session === input.session);
+  const before = readState().claims.find((c) => c.session === input.session);
   const project = input.project?.trim() || before?.project;
   if (!project) throw new UserError("this session has not claimed a project yet: give --project");
   const sameWork = !input.project || (input.project === before?.project && (input.task ?? before?.task) === before?.task);
@@ -269,7 +296,7 @@ export function claimSession(input: ClaimInput): Claim {
 // ---------------------------------------------------------------- pull requests
 
 export function linkPr(link: { pr: PrRef; session?: string; project?: string; task?: string }): void {
-  const claims = fold(readEvents()).claims;
+  const claims = readState().claims;
   const claim = link.session ? claims.find((c) => link.session!.startsWith(c.session)) : undefined;
   const project = link.project?.trim() || claim?.project;
   appendEvent(() => ({
@@ -279,7 +306,7 @@ export function linkPr(link: { pr: PrRef; session?: string; project?: string; ta
 }
 
 export function unlinkPr(key: string): void {
-  if (!fold(readEvents()).prLinks.has(key)) throw new UserError(`no linked pull request ${key}`);
+  if (!readState().prLinks.has(key)) throw new UserError(`no linked pull request ${key}`);
   appendEvent(() => ({ type: "pr.unlink", pr: key }));
 }
 
@@ -293,6 +320,8 @@ export function prEvent(pr: PrRef, change: string, opts: { by?: string; text?: s
 
 export interface InboxItem {
   seq: number;
+  /** the machine whose log holds it (with `seq`, where a reader has read up to) */
+  dev?: string;
   at: string;
   kind: "answer" | "comment" | "pr";
   /** the card answered or commented on; absent for pull request news */
@@ -311,23 +340,41 @@ export interface InboxFilter {
   card?: string;
 }
 
+/** Two machines that both read GitHub report the same change; the later report is an echo. */
+const ECHO_MS = 30 * 60_000;
+
 /**
- * Human answers and comments newer than `afterSeq`, on cards that are not closed, and news on pull
- * requests linked to the project.
+ * Human answers and comments after `after` (a position, or a seq on a single machine), on cards
+ * that are not closed, and news on pull requests linked to the project. An answer given on
+ * another machine before it saw an earlier answer is kept on the card but not delivered.
  */
-export function inboxFrom(events: PwEvent[], afterSeq: number, filter: InboxFilter): InboxItem[] {
-  const state = fold(events);
+export function inboxFrom(events: PwEvent[], after: Position | number, filter: InboxFilter, state = readState(events)): InboxItem[] {
+  const pos: Position = typeof after === "number" ? { [deviceName()]: after } : after;
   const out: InboxItem[] = [];
+  const reported = new Map<string, { dev?: string; at: number }>();
+  const answerNo = new Map<string, number>();
   for (const ev of events) {
-    if (ev.seq <= afterSeq) continue;
     if (ev.type === "pr.change") {
+      const k = `${ev.pr.key}|${ev.change}|${ev.text ?? ""}`;
+      const prev = reported.get(k);
+      const at = Date.parse(ev.ts);
+      reported.set(k, { dev: ev.dev, at });
+      if (prev && prev.dev !== ev.dev && at - prev.at < ECHO_MS) continue;
+      if (!isAfter(ev, pos)) continue;
       const link = state.prLinks.get(ev.pr.key);
       if (!link || filter.card || (filter.project && link.project !== filter.project)) continue;
-      out.push({ seq: ev.seq, at: ev.ts, kind: "pr", by: ev.by ?? ev.source, pr: { ref: ev.pr, change: ev.change, title: ev.title, text: ev.text, project: link.project } });
+      out.push({ seq: ev.seq, dev: ev.dev, at: ev.ts, kind: "pr", by: ev.by ?? ev.source, pr: { ref: ev.pr, change: ev.change, title: ev.title, text: ev.text, project: link.project } });
       continue;
     }
     if (ev.type !== "card.answer" && ev.type !== "card.comment") continue;
-    if (ev.by !== HUMAN) continue;
+    let late = false;
+    if (ev.type === "card.answer") {
+      const n = answerNo.get(ev.card) ?? 0;
+      answerNo.set(ev.card, n + 1);
+      late = typeof ev.seen === "number" && ev.seen < n;
+    }
+    if (!isAfter(ev, pos)) continue;
+    if (ev.by !== HUMAN || late) continue;
     const card = state.cards.get(ev.card);
     if (!card || card.status === "closed") continue;
     if (filter.project && card.project !== filter.project) continue;
@@ -335,6 +382,7 @@ export function inboxFrom(events: PwEvent[], afterSeq: number, filter: InboxFilt
     if (ev.type === "card.answer") {
       out.push({
         seq: ev.seq,
+        dev: ev.dev,
         at: ev.ts,
         kind: "answer",
         card,
@@ -345,7 +393,7 @@ export function inboxFrom(events: PwEvent[], afterSeq: number, filter: InboxFilt
         attach: ev.attach,
       });
     } else {
-      out.push({ seq: ev.seq, at: ev.ts, kind: "comment", card, by: ev.by, comment: ev.text });
+      out.push({ seq: ev.seq, dev: ev.dev, at: ev.ts, kind: "comment", card, by: ev.by, comment: ev.text });
     }
   }
   return out;
@@ -353,20 +401,43 @@ export function inboxFrom(events: PwEvent[], afterSeq: number, filter: InboxFilt
 
 // ---------------------------------------------------------------- listeners
 
+/** Waits are visible to every machine when the log is shared. */
 function listenersDir(): string {
-  return path.join(homeDir(), "listeners");
+  return path.join(sharedDir() ?? homeDir(), "listeners");
 }
+
+/** How often a wait says it is still there, and when one on another machine counts as gone. */
+const LISTENER_BEAT_MS = 60_000;
+const LISTENER_GONE_MS = 3 * LISTENER_BEAT_MS;
 
 /** Mark this process as waiting, so cards can say whether an answer reaches an agent at once. */
 export function startListening(l: Omit<Listener, "pid" | "since">): () => void {
-  const file = path.join(listenersDir(), `${process.pid}.json`);
+  const shared = !!sharedDir();
+  const file = path.join(listenersDir(), shared ? `${deviceName()}-${process.pid}.json` : `${process.pid}.json`);
   fs.mkdirSync(listenersDir(), { recursive: true });
-  const me: Listener = { ...l, pid: process.pid, since: new Date().toISOString() };
-  fs.writeFileSync(file, JSON.stringify(me) + "\n");
+  const me: Listener = { ...l, pid: process.pid, since: new Date().toISOString(), ...(shared ? { device: deviceName(), beat: new Date().toISOString() } : {}) };
+  const write = () => {
+    try {
+      const tmp = `${file}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify(me) + "\n");
+      fs.renameSync(tmp, file);
+    } catch {
+      // the folder may be busy syncing; the next beat writes it again
+    }
+  };
+  write();
+  const timer = shared
+    ? setInterval(() => {
+        me.beat = new Date().toISOString();
+        write();
+      }, LISTENER_BEAT_MS)
+    : undefined;
+  timer?.unref();
   let done = false;
   const stop = () => {
     if (done) return;
     done = true;
+    if (timer) clearInterval(timer);
     fs.rmSync(file, { force: true });
   };
   process.once("exit", stop);
@@ -388,20 +459,26 @@ function alive(pid: number): boolean {
   }
 }
 
-/** Waits running now. Files left by a process that died are removed. */
-export function listeners(): Listener[] {
+/**
+ * Waits running now, on this machine and (when shared) the others. Files left by a process that
+ * died here are removed; a wait on another machine counts while its beat is fresh.
+ */
+export function listeners(now = Date.now()): Listener[] {
   let names: string[];
   try {
     names = fs.readdirSync(listenersDir()).filter((f) => f.endsWith(".json"));
   } catch {
     return [];
   }
+  const me = deviceName();
   const out: Listener[] = [];
   for (const n of names) {
     const file = path.join(listenersDir(), n);
     try {
       const l = JSON.parse(fs.readFileSync(file, "utf8")) as Listener;
-      if (alive(l.pid)) out.push(l);
+      if (l.device && l.device !== me) {
+        if (l.beat && now - Date.parse(l.beat) < LISTENER_GONE_MS) out.push(l);
+      } else if (alive(l.pid)) out.push(l);
       else fs.rmSync(file, { force: true });
     } catch {
       // half written; read it next time
@@ -419,11 +496,11 @@ export function consumerName(opts: { as?: string; project?: string; card?: strin
   return opts.as || opts.project || (opts.card ? `card-${opts.card}` : "default");
 }
 
-export function readInbox(consumer: string, filter: InboxFilter, advance: boolean): InboxItem[] {
+export function readInbox(consumer: string, filter: InboxFilter, move: boolean): InboxItem[] {
   const events = readEvents();
-  const items = inboxFrom(events, readCursor(consumer), filter);
-  const last = items[items.length - 1];
-  if (advance && last) writeCursor(consumer, last.seq);
+  const pos = readCursor(consumer);
+  const items = inboxFrom(events, pos, filter);
+  if (move && items.length) writeCursor(consumer, advance(pos, items));
   return items;
 }
 
@@ -441,7 +518,7 @@ export async function waitInbox(
   let watcher: fs.FSWatcher | undefined;
   let wake: (() => void) | undefined;
   try {
-    const dir = path.dirname(eventsPath());
+    const dir = eventsDir();
     fs.mkdirSync(dir, { recursive: true });
     watcher = fs.watch(dir, () => wake?.());
   } catch {

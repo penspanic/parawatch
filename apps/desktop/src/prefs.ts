@@ -45,6 +45,8 @@ export interface AboutInfo {
   skew?: string;
   logPath: string;
   dataPath: string;
+  /** sharing with other machines, when this one shares its log */
+  sync?: { device: string; text: string; warn: boolean };
 }
 
 /** Whether `value` is something `key` may be set to. */
