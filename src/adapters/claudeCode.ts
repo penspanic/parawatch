@@ -59,12 +59,75 @@ export interface Reading {
   cwd?: string;
   title?: string;
   pendingTimeoutMs?: number;
+  lastPromptAt?: string;
+  asks?: Run["asks"];
+  recap?: string;
+}
+
+const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+const DIR_IN_COMMAND = /(?:^|[;&|]\s*|\s)(?:cd|git\s+-C)\s+("[^"]+"|'[^']+'|[^\s;&|]+)/g;
+const PR_URL = /https?:\/\/[^\s"'<>()]+\/pull\/\d+/g;
+/** The desktop app's end-of-turn tool: a recap, maybe a question for the human. */
+const WRAP_UP = /(^|__)wrap_up$/;
+
+function resultText(b: Block): string {
+  const c = (b as { content?: unknown }).content;
+  if (typeof c === "string") return c;
+  if (Array.isArray(c)) return c.map((x) => (isObj(x) && typeof x.text === "string" ? x.text : "")).join("\n");
+  return "";
+}
+
+function unquote(s: string): string {
+  return s.replace(/^["']|["']$/g, "");
+}
+
+/**
+ * What a log shows about where the work happens and what it produced: folders of edited files and
+ * of `cd`/`git -C` targets (absolute paths only), and pull requests opened with `gh pr create`.
+ */
+export function scanWork(recs: unknown[]): { touched: string[]; createdPrs: string[] } {
+  const touched: string[] = [];
+  const add = (dir: string) => {
+    if (!path.isAbsolute(dir)) return;
+    const i = touched.indexOf(dir);
+    if (i >= 0) touched.splice(i, 1);
+    touched.push(dir);
+  };
+  const prCalls = new Set<string>();
+  const prs: string[] = [];
+  for (const r of recs) {
+    if (!isObj(r) || !isConversation(r)) continue;
+    for (const b of blocks(r)) {
+      if (b.type === "tool_use") {
+        const inp = b.input ?? {};
+        if (EDIT_TOOLS.has(String(b.name))) {
+          const f = str(inp.file_path) || str(inp.notebook_path);
+          if (f) add(path.dirname(f));
+        } else if (b.name === "Bash") {
+          const cmd = str(inp.command) ?? "";
+          for (const m of cmd.matchAll(DIR_IN_COMMAND)) add(unquote(m[1]!));
+          if (/\bgh\s+pr\s+create\b/.test(cmd) && b.id) prCalls.add(b.id);
+        }
+      } else if (b.type === "tool_result" && b.tool_use_id && prCalls.has(b.tool_use_id)) {
+        for (const m of resultText(b).matchAll(PR_URL)) if (!prs.includes(m[0])) prs.push(m[0]);
+      }
+    }
+  }
+  return { touched: touched.slice(-50), createdPrs: prs };
+}
+
+/** The last line of an agent's closing message, when it is a question. */
+function trailingQuestion(text: string): string | undefined {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  const last = lines[lines.length - 1];
+  return last && /[?？]\**$/.test(last) ? last : undefined;
 }
 
 /** Work out what a Claude Code transcript is doing from its last records. */
 export function readClaudeTail(recs: unknown[], kind: "session" | "subagent"): Reading {
   const out: Reading = { state: "unknown" };
   let lastConv: Record<string, unknown> | undefined;
+  let wrapUp: Record<string, unknown> | undefined;
   for (const r of recs) {
     if (!isObj(r)) continue;
     const ts = str(r.timestamp);
@@ -73,6 +136,14 @@ export function readClaudeTail(recs: unknown[], kind: "session" | "subagent"): R
     if (r.type === "custom-title" && str(r.customTitle)) out.title = str(r.customTitle);
     if (r.type === "agent-name" && str(r.agentName) && !out.title) out.title = str(r.agentName);
     if (isConversation(r)) lastConv = r;
+    if (promptText(r)) {
+      out.lastPromptAt = ts ?? out.lastPromptAt;
+      wrapUp = undefined; // a new turn began
+    }
+    if (r.type === "assistant") {
+      const w = blocks(r).find((b) => b.type === "tool_use" && WRAP_UP.test(String(b.name)));
+      if (w) wrapUp = { ...(w.input ?? {}), at: ts };
+    }
   }
   if (!lastConv) return out;
   const bs = blocks(lastConv);
@@ -85,8 +156,19 @@ export function readClaudeTail(recs: unknown[], kind: "session" | "subagent"): R
       if (typeof t === "number") out.pendingTimeoutMs = t;
     } else if (bs.some((b) => b.type === "text" && b.text?.trim())) {
       out.state = kind === "subagent" ? "done" : "idle";
-      const text = bs.filter((b) => b.type === "text").map((b) => b.text ?? "").join(" ");
-      out.action = oneLine(text, 100);
+      const full = bs.filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n");
+      out.action = oneLine(full, 100);
+      if (kind === "session") {
+        const recap = wrapUp && str(wrapUp.recap);
+        if (recap) out.recap = oneLine(recap, 300);
+        const ask = wrapUp && str(wrapUp.ask);
+        const blocked = wrapUp?.blocked === true;
+        if (ask || blocked) out.asks = { text: oneLine(ask || recap || full, 200), via: "wrap_up", blocked: blocked || undefined, at: str(wrapUp!.at) };
+        else if (!wrapUp) {
+          const q = trailingQuestion(full);
+          if (q) out.asks = { text: oneLine(q.replace(/\*\*/g, ""), 200), via: "text", at: out.lastActivity };
+        }
+      }
     } else {
       out.state = "working";
       out.action = "thinking";
@@ -109,6 +191,11 @@ function firstPrompt(file: string): { prompt?: string; cwd?: string; startedAt?:
     if (out.prompt && out.cwd && out.startedAt) break;
   }
   return out;
+}
+
+/** A log small enough that its tail already holds the whole file. */
+function sameFile(file: string): boolean {
+  return fs.statSync(file).size <= TAIL_BYTES;
 }
 
 function readMeta(file: string): Record<string, unknown> {
@@ -181,9 +268,16 @@ function readSession(file: string, now: number): Run {
   const base: Run = { id, runtime: "claude-code", kind: "session", title: id.slice(0, 8), state: "unknown", source: file };
   try {
     const head = firstPrompt(file);
-    const tail = readClaudeTail(readTailLines(file, TAIL_BYTES), "session");
+    const tailRecs = readTailLines(file, TAIL_BYTES);
+    const tail = readClaudeTail(tailRecs, "session");
+    const work = scanWork(sameFile(file) ? tailRecs : [...readHeadLines(file, HEAD_BYTES), ...tailRecs]);
     const run: Run = {
       ...base,
+      lastPromptAt: tail.lastPromptAt,
+      asks: tail.asks,
+      recap: tail.recap,
+      touched: work.touched.length ? work.touched : undefined,
+      createdPrs: work.createdPrs.length ? work.createdPrs : undefined,
       title: tail.title || (head.prompt ? oneLine(head.prompt, 60) : base.title),
       cwd: tail.cwd || head.cwd,
       startedAt: head.startedAt,
@@ -207,9 +301,13 @@ function readSubagent(file: string, now: number): Run {
   try {
     const meta = readMeta(file);
     const head = firstPrompt(file);
-    const tail = readClaudeTail(readTailLines(file, TAIL_BYTES), "subagent");
+    const tailRecs = readTailLines(file, TAIL_BYTES);
+    const tail = readClaudeTail(tailRecs, "subagent");
+    const work = scanWork(sameFile(file) ? tailRecs : [...readHeadLines(file, HEAD_BYTES), ...tailRecs]);
     const run: Run = {
       ...base,
+      touched: work.touched.length ? work.touched : undefined,
+      createdPrs: work.createdPrs.length ? work.createdPrs : undefined,
       title: str(meta.description) || (head.prompt ? oneLine(head.prompt, 60) : base.title),
       model: str(meta.model),
       cwd: tail.cwd || head.cwd,

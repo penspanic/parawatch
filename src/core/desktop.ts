@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { parsePrRef } from "./github.js";
 import { sessionTitle, UserError } from "./ops.js";
 import type { State } from "./state.js";
 import type { Card } from "./types.js";
@@ -82,10 +83,28 @@ export interface GotoTarget {
   url?: string;
 }
 
-/** Where `goto` leads for a card id or a session id (prefix). */
+/** The session that owns a pull request: by URL, `owner/repo#N`, or `#N` / `repo#N` when only one matches. */
+function prSession(target: string, state: State): string | undefined {
+  const ref = parsePrRef(target);
+  if (ref) {
+    const link = state.prLinks.get(ref.key);
+    if (!link) throw new UserError(`no session owns ${ref.repo}#${ref.number}; link it from that session with: parawatch pr link ${ref.url}`);
+    if (!link.session) throw new UserError(`${ref.repo}#${ref.number} is linked to a project but not to a session`);
+    return link.session;
+  }
+  const m = /^(?:([^/\s#]+))?#(\d+)$/.exec(target.trim());
+  if (!m) return undefined;
+  const hits = [...state.prLinks.values()].filter((l) => l.pr.number === Number(m[2]) && (!m[1] || l.pr.repo.split("/")[1] === m[1]));
+  if (!hits.length) throw new UserError(`no session owns a pull request ${target}`);
+  if (hits.length > 1) throw new UserError(`${target} matches ${hits.map((h) => h.pr.repo + "#" + h.pr.number).join(", ")}; give owner/repo#N`);
+  if (!hits[0]!.session) throw new UserError(`${target} is linked to a project but not to a session`);
+  return hits[0]!.session;
+}
+
+/** Where `goto` leads for a card id, a pull request, or a session id (prefix). */
 export function resolveGoto(target: string, state: State): GotoTarget {
   const card = state.cards.get(target);
-  const session = card ? card.session : target;
+  const session = card ? card.session : (prSession(target, state) ?? target);
   if (!session) {
     throw new UserError(`card ${target} does not say which session opened it (set one with: parawatch edit ${target} --session <id>)`);
   }

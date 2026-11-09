@@ -17,14 +17,18 @@ export function instructions(project?: string): string {
 
 The human follows this work through \`parawatch\`. Use it instead of asking in chat. If a \`parawatch\` skill is available, follow it.
 
-- At the start of a session: \`parawatch claim --project ${p}\` (add \`--role lead\` if you lead this project).
+- As soon as you know what you are working on, say so, even when this folder is not where the code lives: \`parawatch claim --project ${p} --task <ticket, PR or short name> --title "<what you do>"\`. Claim again when you move to other work.
+- When you open a pull request: \`parawatch pr link <url>\`. Reviews, CI results and merges on it then wake your wait.
+- When the work is finished: \`parawatch claim --done "<one line on how it ended>"\`.
 
 - Need a decision: \`parawatch ask --project ${p} "question" --option "..." --option "..." --recommend N --body "two or three lines"\`
+- Need approval for a step you have prepared (a merge, a message, a status change): \`parawatch ask --project ${p} "title" --action "<exact command>" [--preview <file with the text>]\`
 - Need the human to try something (a build, a video, a screen): \`parawatch try --project ${p} "title" --open <app or file> --attach <video or image> --look "what to look at"\`
 - Stuck until the human does something only they can do (install, sudo, sign in): \`parawatch block --project ${p} "what to do"\`
 - Something only the human can do, but nothing waits on it now: \`parawatch todo --project ${p} "what to do"\`
-- After opening a card, keep a background wait armed: \`parawatch wait --project ${p}\`. It prints the human's answers and exits; act on them, \`parawatch close <card> --note "what you did"\`, then arm it again.
-- A long job with no agent log (a bake, a benchmark): \`parawatch run start --project ${p} "title"\`, \`parawatch run note <id> "..."\`, \`parawatch run end <id>\`.
+- Put every question for the human on a card, not only in your reply: a question left in chat is easy to miss.
+- After opening a card or linking a pull request, keep a background wait armed: \`parawatch wait --project ${p}\`. It prints the human's answers and pull request news and exits; act on them, \`parawatch close <card> --note "what you did"\`, then arm it again.
+- A long job with no agent log (a bake, a benchmark): \`parawatch run start --project ${p} "title" --heartbeat <seconds> [--log <file>]\`, \`parawatch run note <id> "..."\`, \`parawatch run end <id>\`.
 - Never answer a card yourself. \`parawatch status\` shows everything that is open.
 ${END}`;
 }
@@ -64,7 +68,10 @@ export function hookContext(input: { session_id?: string; cwd?: string }, projec
   if (!name) return undefined;
   const items = inboxFrom(events, readCursor(name), { project: name });
   if (!items.length) return undefined;
-  return [`Parawatch: the human answered ${items.length} card(s) for ${name} that you have not handled yet.`, ...items.map(inboxLine), `Act on them, then \`parawatch close <card>\`.`].join("\n");
+  const cards = items.filter((i) => i.kind !== "pr").length;
+  const prs = items.length - cards;
+  const what = [cards ? `${cards} answer(s) on cards` : "", prs ? `${prs} pull request update(s)` : ""].filter(Boolean).join(" and ");
+  return [`Parawatch: ${what} for ${name} that you have not handled yet.`, ...items.map(inboxLine), cards ? `Act on them, then \`parawatch close <card>\`.` : `Act on them.`].join("\n");
 }
 
 /** Best-effort desktop notification. Never throws, never blocks. */

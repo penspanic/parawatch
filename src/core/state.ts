@@ -1,16 +1,18 @@
-import type { Card, Claim, DeclaredRun, Project, PwEvent } from "./types.js";
+import type { Card, Claim, DeclaredRun, PrLink, Project, PwEvent } from "./types.js";
 
 export interface State {
   projects: Map<string, Project>;
   cards: Map<string, Card>;
   runs: Map<string, DeclaredRun>;
   claims: Claim[];
+  /** pull requests linked to sessions, by PR key */
+  prLinks: Map<string, PrLink>;
   lastSeq: number;
 }
 
 /** Rebuild current state from the event log. */
 export function fold(events: PwEvent[]): State {
-  const s: State = { projects: new Map(), cards: new Map(), runs: new Map(), claims: [], lastSeq: 0 };
+  const s: State = { projects: new Map(), cards: new Map(), runs: new Map(), claims: [], prLinks: new Map(), lastSeq: 0 };
   for (const ev of events) {
     s.lastSeq = Math.max(s.lastSeq, ev.seq);
     switch (ev.type) {
@@ -63,6 +65,11 @@ export function fold(events: PwEvent[]): State {
         r.lastActivity = ev.ts;
         break;
       }
+      case "run.beat": {
+        const r = s.runs.get(ev.run);
+        if (r) r.lastActivity = ev.ts;
+        break;
+      }
       case "run.end": {
         const r = s.runs.get(ev.run);
         if (!r) break;
@@ -75,7 +82,13 @@ export function fold(events: PwEvent[]): State {
       case "run.claim":
         // a later claim of the same session replaces the earlier one
         s.claims = s.claims.filter((c) => c.session !== ev.claim.session);
-        s.claims.push(ev.claim);
+        s.claims.push({ ...ev.claim, at: ev.ts });
+        break;
+      case "pr.link":
+        s.prLinks.set(ev.link.pr.key, { ...ev.link, at: ev.ts });
+        break;
+      case "pr.unlink":
+        s.prLinks.delete(ev.pr);
         break;
     }
   }

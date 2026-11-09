@@ -6,25 +6,34 @@ import {
   UserError,
   addProject,
   answerCard,
+  beatRun,
   claimSession,
   closeCard,
   commentCard,
   consumerName,
   editCard,
   endRun,
+  linkPr,
+  listeners,
+  listenersFor,
   noteRun,
   openCard,
+  prEvent,
   readInbox,
   removeProject,
+  startListening,
   startRun,
+  unlinkPr,
   waitInbox,
   type CardInput,
 } from "../core/ops.js";
+import { githubConfig, readCache, resolvePrRef, syncGithub, prViews } from "../core/github.js";
+import { digest, digestText, localDate } from "../core/digest.js";
 import { readEvents } from "../core/store.js";
 import { followEvents } from "../core/follow.js";
 import { fold } from "../core/state.js";
 import { collectRuns } from "../core/runs.js";
-import { cardDetail, cardLine, cardRows, inboxLine, runsTree, view } from "../core/format.js";
+import { askRows, cardDetail, cardLine, cardRows, inboxLine, prRows, runsTree, view } from "../core/format.js";
 import { hookContext, notify, writeInstructions } from "../core/integrate.js";
 import { installSkill, skillSource, skillTargets } from "../core/skill.js";
 import { cardContextLine, resolveGoto } from "../core/desktop.js";
@@ -48,7 +57,16 @@ const program = new Command();
 program
   .name("parawatch")
   .description("See what your agents are doing, what needs you, and wake the right agent when you answer.")
-  .version("0.1.0");
+  .version("0.2.0");
+
+/** Read GitHub when the last reading is old; never fails the command. */
+async function refreshGithub(force = false): Promise<void> {
+  try {
+    await syncGithub({ state: fold(readEvents()), force });
+  } catch (err) {
+    if (force) throw err;
+  }
+}
 
 // ------------------------------------------------------------------ cards
 
@@ -86,10 +104,14 @@ function finishCard(input: CardInput, json?: boolean) {
   else process.stdout.write(`${card.id}\n`);
 }
 
-cardCommand("decide", "ask", "ask the human to decide")
+cardCommand("decide", "ask", "ask the human to decide, or to approve a prepared action")
   .option("-o, --option <text>", "a choice (repeatable)", collect)
   .option("-r, --recommend <n>", "the recommended choice, 1-based", int)
-  .action((title: string, o) => finishCard({ kind: "decide", title, ...common(o), options: o.option, recommend: o.recommend }, o.json));
+  .option("--action <text>", "the exact command or step that runs on yes (options default to Do it / Don't)")
+  .option("--preview <file>", "a file with the text the action sends or changes (a message, a diff)")
+  .action((title: string, o) =>
+    finishCard({ kind: "decide", title, ...common(o), options: o.option, recommend: o.recommend, action: o.action, preview: o.preview }, o.json),
+  );
 
 cardCommand("try", "try", "ask the human to try a build, watch a video or look at a screen")
   .option("--open <path>", "app, file or URL to open (repeatable)", collect)
@@ -121,7 +143,7 @@ program
 
 program
   .command("goto <target>")
-  .description("open the agent session behind a card (or a session id) in the Claude desktop app")
+  .description("open the agent session behind a card, a pull request (URL, owner/repo#N, repo#N) or a session id in the Claude desktop app")
   .option("--copy", "also put a line about the card on the clipboard, to paste into that session")
   .option("--print", "print the link instead of opening it")
   .action((target: string, o) => {
@@ -171,8 +193,18 @@ program
   .action((id: string, o) => {
     const card = fold(readEvents()).cards.get(id);
     if (!card) throw new UserError(`no card "${id}"`);
-    if (o.json) print(card);
-    else process.stdout.write(cardDetail(card) + "\n");
+    if (o.json) {
+      print(card);
+      return;
+    }
+    const waits = card.status === "closed" ? [] : listenersFor(card, listeners());
+    const delivery =
+      card.status === "closed"
+        ? ""
+        : waits.length
+          ? `\nDelivery: an agent is waiting (${waits.map((l) => l.consumer).join(", ")}); an answer wakes it now.`
+          : "\nDelivery: no agent is waiting; an answer is kept until the agent next checks (its next turn, or its next wait).";
+    process.stdout.write(cardDetail(card) + delivery + "\n");
   });
 
 program
@@ -200,7 +232,14 @@ function inboxOptions(c: Command) {
 inboxOptions(program.command("wait").description("block until the human answers, print the answers and exit"))
   .option("--timeout <seconds>", "give up after this long (exit code 2); 0 waits forever", int, 0)
   .action(async (o) => {
+    startListening({ consumer: consumerName(o), project: o.project, card: o.card, session: currentSession() });
+    // while waiting, keep GitHub fresh so news on linked pull requests wakes this wait
+    const tick = () => void refreshGithub();
+    tick();
+    const timer = setInterval(tick, 60_000);
+    timer.unref();
     const items = await waitInbox(consumerName(o), { project: o.project, card: o.card }, o.timeout * 1000);
+    clearInterval(timer);
     if (!items.length) {
       process.exitCode = 2;
       return;
@@ -235,10 +274,11 @@ program
   .option("--since <hours>", "look at logs touched in the last N hours", int, 6)
   .option("-a, --all", "include runs that ended a while ago")
   .option("--runtime <name>", "only this adapter (repeatable)", collect)
+  .option("--every", "list each run of a scheduled task instead of one row per task")
   .option("-w, --wide", "show runtime and ids")
   .option("--json", "JSON output")
   .action((o) => {
-    const runs = collectRuns(fold(readEvents()), { sinceHours: o.since, project: o.project, includeEnded: o.all, runtimes: o.runtime });
+    const runs = collectRuns(fold(readEvents()), { sinceHours: o.since, project: o.project, includeEnded: o.all, runtimes: o.runtime, keepRepeats: o.every });
     if (o.json) print({ v: SCHEMA_VERSION, runs });
     else process.stdout.write((runs.length ? runsTree(runs, view({ wide: o.wide, all: o.all })) : "Nothing running.") + "\n");
   });
@@ -249,10 +289,13 @@ run
   .requiredOption("-p, --project <name>", "project")
   .option("-t, --task <task>", "task")
   .option("--parent <id>", "the run that started this one (defaults to the calling session)")
+  .option("--heartbeat <seconds>", "count the run as stalled after this long without a beat, a note or log output", int)
+  .option("--log <file>", "a log file the job writes; each change counts as a beat")
   .action((title: string, o) => {
-    process.stdout.write(startRun({ title, project: o.project, task: o.task, parent: o.parent ?? currentSession() }) + "\n");
+    process.stdout.write(startRun({ title, project: o.project, task: o.task, parent: o.parent ?? currentSession(), heartbeat: o.heartbeat, log: o.log }) + "\n");
   });
-run.command("note <id> <text>").action((id: string, text: string) => noteRun(id, text));
+run.command("note <id> <text>").description("say how it is going (also counts as a beat)").action((id: string, text: string) => noteRun(id, text));
+run.command("beat <id>").description("say it is still alive").action((id: string) => beatRun(id));
 run
   .command("end <id>")
   .option("--failed", "it failed")
@@ -261,54 +304,143 @@ run
 
 program
   .command("claim [session]")
-  .description("say which project an agent session belongs to (id prefix, 6+ characters; defaults to the calling session)")
-  .requiredOption("-p, --project <name>", "project")
-  .option("-t, --task <task>", "task")
+  .description("say which project and task an agent session works on (id prefix, 6+ characters; defaults to the calling session)")
+  .option("-p, --project <name>", "project (may be left out once the session has claimed one)")
+  .option("-t, --task <task>", "task: a ticket key, a PR, a short name")
   .option("--role <role>", "for example lead or worker")
   .option("--title <title>", "name to show")
+  .option("--kind <kind>", "'scheduled' for a session a schedule starts again and again")
+  .option("--done <summary>", "the work is finished; one line on how it ended")
   .action((session: string | undefined, o) => {
     const id = session ?? currentSession();
     if (!id) throw new UserError("no session id given and none found in the environment (CLAUDE_CODE_SESSION_ID, CODEX_THREAD_ID)");
-    claimSession({ session: id, project: o.project, task: o.task, role: o.role, title: o.title });
-    process.stdout.write(`${id.slice(0, 8)} → ${o.project}${o.role ? ` (${o.role})` : ""}\n`);
+    if (o.kind !== undefined && o.kind !== "scheduled") throw new UserError("--kind can only be 'scheduled'");
+    const c = claimSession({ session: id, project: o.project, task: o.task, role: o.role, title: o.title, kind: o.kind, done: o.done });
+    process.stdout.write(`${id.slice(0, 8)} → ${c.project}${c.task ? ` / ${c.task}` : ""}${c.role ? ` (${c.role})` : ""}${c.done ? " · done" : ""}\n`);
+  });
+
+// ------------------------------------------------------------------ pull requests
+
+const pr = program.command("pr").description("pull requests and what they wait on (reads GitHub through gh)");
+pr.command("link <pr>")
+  .description("say this pull request belongs to the calling session: news on it wakes the session's wait")
+  .option("-p, --project <name>", "project (defaults to the session's claim)")
+  .option("-t, --task <task>", "task (defaults to the session's claim)")
+  .option("--session <id>", "the owning session (defaults to the calling session)")
+  .action((ref: string, o) => {
+    const r = resolvePrRef(ref);
+    const session = o.session ?? currentSession();
+    linkPr({ pr: r, session, project: o.project, task: o.task });
+    process.stdout.write(`${r.repo}#${r.number} → ${session ? session.slice(0, 8) : o.project ?? "no session"}\n`);
+  });
+pr.command("unlink <pr>")
+  .description("forget which session owns a pull request")
+  .action((ref: string) => unlinkPr(resolvePrRef(ref).key));
+pr.command("list")
+  .description("open pull requests you wrote or are asked to review, with what each waits on")
+  .option("-p, --project <name>", "only this project")
+  .option("--offline", "do not read GitHub, show the last reading")
+  .option("--json", "JSON output")
+  .action(async (o) => {
+    if (!o.offline) await refreshGithub();
+    const state = fold(readEvents());
+    const runs = collectRuns(state, { sinceHours: 72 });
+    let prs = prViews(readCache(), state, runs);
+    if (o.project) prs = prs.filter((p) => p.project === o.project);
+    if (o.json) print({ v: SCHEMA_VERSION, prs });
+    else process.stdout.write(prs.length ? prRows(prs, view()).join("\n") + "\n" : githubNote() ?? "No open pull requests.\n");
+  });
+pr.command("sync")
+  .description("read GitHub now")
+  .action(async () => {
+    const c = await syncGithub({ state: fold(readEvents()), force: true });
+    if (c.error) process.stderr.write(`parawatch: ${c.error}\n`);
+    process.stdout.write(`${c.prs.filter((p) => p.state === "open").length} open pull requests on ${(c.hosts ?? []).join(", ") || "no host"}\n`);
+  });
+pr.command("event <pr> <change>")
+  .description("record news another tool saw on a pull request (a merge bot, a ticket system); it wakes the owner like GitHub's own")
+  .option("-m, --text <text>", "what happened")
+  .option("--by <who>", "who did it")
+  .action((ref: string, change: string, o) => prEvent(resolvePrRef(ref), change, { text: o.text, by: o.by }));
+
+function githubNote(): string | undefined {
+  if (!githubConfig().enabled) return "GitHub is turned off in config.json.\n";
+  const c = readCache();
+  if (c.hosts && !c.hosts.length) return "GitHub: gh is not installed or not signed in (gh auth login).\n";
+  return undefined;
+}
+
+program
+  .command("digest")
+  .description("what each session did on a day: work claimed, cards, jobs, pull request news, how it ended")
+  .option("-d, --date <YYYY-MM-DD>", "the day (default: today)")
+  .option("--json", "JSON output")
+  .action((o) => {
+    const d = digest(o.date ?? localDate());
+    if (o.json) print({ v: SCHEMA_VERSION, ...d });
+    else process.stdout.write(digestText(d) + "\n");
   });
 
 // ------------------------------------------------------------------ status
 
 program
   .command("status")
-  .description("everything at a glance: what needs you, then what is running")
+  .description("everything at a glance: what needs you, what waits on others, then what is running")
   .option("-p, --project <name>", "only this project")
   .option("--since <hours>", "look at logs touched in the last N hours", int, 6)
+  .option("--offline", "do not read GitHub, show the last reading")
   .option("-w, --wide", "show runtime and ids")
   .option("--json", "JSON output")
-  .action((o) => {
+  .action(async (o) => {
+    if (!o.offline) await refreshGithub();
     const snap = snapshot({ sinceHours: o.since, project: o.project });
     if (o.json) {
       print(snap);
       return;
     }
     const { cards, runs } = snap;
+    const prs = snap.prs ?? [];
     const v = view({ wide: o.wide });
+    const now = Date.now();
     const head = (title: string, n: number | string, ...extra: string[]) =>
       v.color ? `\x1b[1m${title}\x1b[0m  \x1b[2m${n}${extra.join("")}\x1b[0m` : `${title}  ${n}${extra.join("")}`;
     const open = cards.filter((c) => c.status === "open" && c.kind !== "todo");
     const todo = cards.filter((c) => c.status === "open" && c.kind === "todo");
     const answered = cards.filter((c) => c.status === "answered");
+    const asking = runs.filter((r) => r.asks);
+    const reviews = prs.filter((p) => p.reviewRequested && !p.mine);
+    const waiting = prs.filter((p) => !(p.reviewRequested && !p.mine));
+    const ls = snap.listeners ?? [];
     const out: string[] = [];
     out.push(head("NEEDS YOU", open.length || "nothing"));
-    out.push(...cardRows(open, v, Date.now(), "  "));
+    out.push(...cardRows(open, v, now, "  "));
+    if (asking.length) {
+      out.push("", head("ASKED IN CHAT, NO CARD", asking.length, "  (read from the log)"));
+      out.push(...askRows(asking, v, now, "  "));
+    }
+    if (reviews.length) {
+      out.push("", head("REVIEWS ASKED OF YOU", reviews.length));
+      out.push(...prRows(reviews, v, now, "  "));
+    }
     if (todo.length) {
       out.push("", head("TO DO, NOTHING WAITS ON IT", todo.length));
-      out.push(...cardRows(todo, v, Date.now(), "  "));
+      out.push(...cardRows(todo, v, now, "  "));
     }
     if (answered.length) {
+      const notes: Record<string, string> = {};
+      for (const c of answered) if (!listenersFor(c, ls).length) notes[c.id] = "no agent waiting";
       out.push("", head("ANSWERED, WAITING FOR THE AGENT", answered.length));
-      out.push(...cardRows(answered, v, Date.now(), "  "));
+      out.push(...cardRows(answered, v, now, "  ", notes));
+    }
+    if (waiting.length) {
+      const stuck = waiting.filter((p) => p.stalled).length;
+      out.push("", head("WAITING ON OTHERS", waiting.length, stuck ? ` · ${stuck} stuck` : ""));
+      out.push(...prRows(waiting, v, now, "  "));
     }
     const working = runs.filter((r) => r.state === "working" || r.state === "waiting").length;
     out.push("", head("AGENTS", runs.length ? `${working} working` : "nothing running"));
     if (runs.length) out.push(runsTree(runs, v));
+    if (snap.github?.error && snap.github.enabled) out.push("", v.color ? `\x1b[2mGitHub: ${snap.github.error}\x1b[0m` : `GitHub: ${snap.github.error}`);
     process.stdout.write(out.join("\n") + "\n");
   });
 

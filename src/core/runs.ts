@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { scanAll } from "../adapters/index.js";
 import { ACTIVITY_MINUTES, activeMinutes } from "../adapters/jsonl.js";
 import type { State } from "./state.js";
-import type { Project, Run } from "./types.js";
+import type { DeclaredRun, Project, Run } from "./types.js";
 
 /** All checkouts of a project path: the path itself plus its git worktrees. */
 function rootsOf(p: string, cache: Map<string, string[]>): string[] {
@@ -69,37 +70,133 @@ function projectForPrompt(prompt: string | undefined, ms: Matcher[]): string | u
   return hits.size === 1 ? [...hits][0] : undefined;
 }
 
+/** The project most of these folders belong to (ties go to the most recent), with its count. */
+function projectForEdits(dirs: string[] | undefined, ms: Matcher[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const d of dirs ?? []) {
+    const p = projectForCwd(d, ms);
+    if (p) counts.set(p, (counts.get(p) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function topOf(counts: Map<string, number>, dirs: string[] | undefined, ms: Matcher[]): string | undefined {
+  let best: string | undefined;
+  let n = 0;
+  // walk newest first so a tie goes to where the run worked last
+  for (const d of [...(dirs ?? [])].reverse()) {
+    const p = projectForCwd(d, ms);
+    if (p && (counts.get(p) ?? 0) > n) {
+      best = p;
+      n = counts.get(p)!;
+    }
+  }
+  return best;
+}
+
+function claimFor(id: string, state: State) {
+  return state.claims.find((c) => id.startsWith(c.session));
+}
+
 /**
- * Give each observed run a project, in this order: an explicit claim, the checkout
- * it runs in, its parent's project, a project path named in its first prompt.
+ * Give each observed run a project, in this order: an explicit claim; the checkout it runs in,
+ * unless it only edits files of another project; its parent's project; the project whose files it
+ * edits most; a project path named in its first prompt.
  */
 export function attribute(runs: Run[], state: State): Run[] {
   const ms = matchers([...state.projects.values()]);
   const byId = new Map(runs.map((r) => [r.id, r]));
   for (const r of runs) {
-    const claim = state.claims.find((c) => r.id.startsWith(c.session));
+    const claim = claimFor(r.id, state);
     if (claim) {
       r.project = claim.project;
+      r.projectSource = "claim";
       r.task = claim.task ?? r.task;
       r.role = claim.role ?? r.role;
       if (claim.title) r.title = claim.title;
+      if (claim.kind === "scheduled") r.scheduled = true;
+      // done until someone writes to the session again
+      if (claim.done && claim.at && (!r.lastPromptAt || r.lastPromptAt < claim.at)) {
+        r.done = claim.done;
+        if (r.state === "idle") r.state = "done";
+        r.asks = undefined;
+      }
       continue;
     }
-    r.project = projectForCwd(r.cwd, ms);
+    const here = projectForCwd(r.cwd, ms);
+    const edits = projectForEdits(r.touched, ms);
+    if (here && !r.parent && edits.size && !edits.has(here)) {
+      r.project = topOf(edits, r.touched, ms);
+      r.projectSource = "edits";
+    } else if (here) {
+      r.project = here;
+      r.projectSource = "cwd";
+    }
   }
   // parents may themselves get a project only from a claim, so resolve children afterwards
   for (let pass = 0; pass < 3; pass++) {
     for (const r of runs) {
       if (r.project || !r.parent) continue;
       const p = byId.get(r.parent);
-      if (p?.project) r.project = p.project;
-      else r.project = state.claims.find((c) => r.parent!.startsWith(c.session))?.project;
+      const project = p?.project ?? claimFor(r.parent, state)?.project;
+      if (project) {
+        r.project = project;
+        r.projectSource = "parent";
+      }
     }
   }
   for (const r of runs) {
-    if (!r.project) r.project = projectForPrompt(r.prompt, ms);
+    if (r.project) continue;
+    const edits = topOf(projectForEdits(r.touched, ms), r.touched, ms);
+    const prompt = edits ? undefined : projectForPrompt(r.prompt, ms);
+    r.project = edits ?? prompt;
+    if (r.project) r.projectSource = edits ? "edits" : "prompt";
   }
   return runs;
+}
+
+/**
+ * Fold repeated runs of a scheduled task into the newest one, with a count. Runs claimed as
+ * scheduled group by project and task; unclaimed top-level sessions group by an identical first
+ * prompt. A run still working is never folded away.
+ */
+export function foldRepeats(runs: Run[]): Run[] {
+  const groups = new Map<string, Run[]>();
+  for (const r of runs) {
+    if (r.kind !== "session" || r.parent) continue;
+    const key = r.scheduled ? `s:${r.project}:${r.task ?? r.title}` : r.projectSource === "claim" || !r.prompt ? undefined : `p:${r.prompt}`;
+    if (!key) continue;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(r);
+  }
+  const drop = new Set<Run>();
+  for (const g of groups.values()) {
+    if (g.length < 2) continue;
+    g.sort((a, b) => (b.lastActivity ?? "").localeCompare(a.lastActivity ?? ""));
+    const [newest, ...older] = g;
+    let n = 0;
+    for (const r of older) {
+      if (r.state === "working" || r.state === "waiting" || r.asks) continue;
+      drop.add(r);
+      n++;
+    }
+    if (n) {
+      newest!.repeats = n;
+      newest!.scheduled = true;
+    }
+  }
+  // children of a folded run go with it
+  const gone = new Set([...drop].map((r) => r.id));
+  return runs.filter((r) => !drop.has(r) && !(r.parent && gone.has(r.parent)));
+}
+
+/** Linked pull requests, put on the run that owns them. */
+function attachPrs(runs: Run[], state: State): void {
+  for (const link of state.prLinks.values()) {
+    if (!link.session) continue;
+    const r = runs.find((x) => x.id.startsWith(link.session!));
+    if (r) (r.prs ??= []).push(link.pr.key);
+  }
 }
 
 /** A declared run is busy from its start until it ends (or now, while it runs). */
@@ -112,21 +209,37 @@ function declaredActivity(start: string, end: string | undefined, now: number): 
   return activeMinutes(times, now);
 }
 
+/** When a declared run last showed life: its last beat or note, or its log file changing. */
+function lastSign(d: DeclaredRun): string {
+  if (!d.log) return d.lastActivity;
+  try {
+    const m = new Date(fs.statSync(d.log).mtimeMs).toISOString();
+    return m > d.lastActivity ? m : d.lastActivity;
+  } catch {
+    return d.lastActivity;
+  }
+}
+
 export function declaredRuns(state: State, now = Date.now()): Run[] {
-  return [...state.runs.values()].map((d) => ({
-    id: d.id,
-    runtime: "declared",
-    kind: "declared" as const,
-    title: d.title,
-    project: d.project,
-    task: d.task,
-    parent: d.parent,
-    startedAt: d.startedAt,
-    lastActivity: d.lastActivity,
-    state: d.status === "running" ? ("working" as const) : d.status,
-    action: d.note,
-    activity: declaredActivity(d.startedAt, d.status === "running" ? undefined : (d.endedAt ?? d.lastActivity), now),
-  }));
+  return [...state.runs.values()].map((d) => {
+    const last = d.status === "running" ? lastSign(d) : d.lastActivity;
+    const quiet = d.status === "running" && d.heartbeat !== undefined && now - Date.parse(last) > d.heartbeat * 1000;
+    return {
+      id: d.id,
+      runtime: "declared",
+      kind: "declared" as const,
+      title: d.title,
+      project: d.project,
+      task: d.task,
+      parent: d.parent,
+      startedAt: d.startedAt,
+      lastActivity: last,
+      state: quiet ? ("stalled" as const) : d.status === "running" ? ("working" as const) : d.status,
+      action: quiet ? `no sign of life for ${Math.round((now - Date.parse(last)) / 60_000)}m${d.note ? ` · ${d.note}` : ""}` : d.note,
+      projectSource: "claim" as const,
+      activity: declaredActivity(d.startedAt, d.status === "running" ? undefined : (d.endedAt ?? d.lastActivity), now),
+    };
+  });
 }
 
 export interface RunQuery {
@@ -134,6 +247,8 @@ export interface RunQuery {
   project?: string;
   includeEnded?: boolean;
   runtimes?: string[];
+  /** show every run of a scheduled task instead of folding them */
+  keepRepeats?: boolean;
 }
 
 const ENDED = new Set(["done", "idle", "failed"]);
@@ -146,6 +261,7 @@ export function collectRuns(state: State, q: RunQuery, now = Date.now()): Run[] 
   const recent = (r: Run) => !r.lastActivity || Date.parse(r.lastActivity) >= sinceMs;
   let runs = attribute(scanAll({ sinceMs, now }, q.runtimes), state).filter(recent);
   runs.push(...declaredRuns(state, now).filter(recent));
+  attachPrs(runs, state);
   if (q.project) runs = runs.filter((r) => r.project === q.project);
   if (!q.includeEnded) {
     // keep what is moving, plus things that finished in the last half hour and parents of live children
@@ -154,10 +270,12 @@ export function collectRuns(state: State, q: RunQuery, now = Date.now()): Run[] 
       // a run quiet for hours is almost always gone, not stuck; --all still shows it
       if (r.state === "stalled") return r.lastActivity ? now - Date.parse(r.lastActivity) < OLD_STALL_MS : true;
       if (!ENDED.has(r.state)) return true;
+      if (r.asks) return true; // still waiting for the human to read it
       if (live.has(r.id)) return true;
       if (r.role === "lead") return true;
       return r.lastActivity ? now - Date.parse(r.lastActivity) < RECENT_END_MS : false;
     });
   }
+  if (!q.keepRepeats) runs = foldRepeats(runs);
   return runs.sort((a, b) => (b.lastActivity ?? "").localeCompare(a.lastActivity ?? ""));
 }

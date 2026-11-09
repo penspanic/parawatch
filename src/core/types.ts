@@ -48,6 +48,10 @@ export interface Card {
   comments: Comment[];
   closedAt?: string;
   closeNote?: string;
+  /** an approval: the exact command or step that runs if the human says yes */
+  action?: string;
+  /** text the action would send or change (a message, a diff), shown with the card */
+  preview?: string;
 }
 
 /** Fields `parawatch edit` may change on a card. */
@@ -65,6 +69,12 @@ export interface Claim {
   task?: string;
   role?: string;
   title?: string;
+  /** "scheduled": started by a schedule, so repeated runs of the same task fold into one row */
+  kind?: "scheduled";
+  /** the session said its work is finished, with this one-line summary */
+  done?: string;
+  /** when the claim was made (filled from the event time) */
+  at?: string;
 }
 
 export interface DeclaredRun {
@@ -78,7 +88,45 @@ export interface DeclaredRun {
   note?: string;
   status: "running" | "done" | "failed";
   endedAt?: string;
+  /** seconds without a beat, a note or log output after which the run counts as stalled */
+  heartbeat?: number;
+  /** a log file whose changes count as beats */
+  log?: string;
 }
+
+/** A pull request, wherever it is hosted. `key` is `host/owner/repo#number`. */
+export interface PrRef {
+  key: string;
+  host: string;
+  repo: string;
+  number: number;
+  url: string;
+}
+
+/** A pull request an agent session said is its own, or that its log shows it opened. */
+export interface PrLink {
+  pr: PrRef;
+  session?: string;
+  project?: string;
+  task?: string;
+  at: string;
+}
+
+export type PrChange =
+  | "review"
+  | "approved"
+  | "changes_requested"
+  | "commented"
+  | "ci_failed"
+  | "ci_passed"
+  | "queued"
+  | "queue_removed"
+  | "conflict"
+  | "merged"
+  | "closed"
+  | "note";
+
+export const PR_CHANGES: PrChange[] = ["review", "approved", "changes_requested", "commented", "ci_failed", "ci_passed", "queued", "queue_removed", "conflict", "merged", "closed", "note"];
 
 /** Fields shared by every event line. */
 interface EventBase {
@@ -95,10 +143,15 @@ export type EventBody =
   | { type: "card.comment"; card: string; by: string; text: string }
   | { type: "card.close"; card: string; note?: string }
   | { type: "card.edit"; card: string; set: CardEdit }
-  | { type: "run.start"; run: { id: string; project: string; task?: string; title: string; parent?: string } }
+  | { type: "run.start"; run: { id: string; project: string; task?: string; title: string; parent?: string; heartbeat?: number; log?: string } }
   | { type: "run.note"; run: string; text: string }
+  | { type: "run.beat"; run: string }
   | { type: "run.end"; run: string; status: "done" | "failed"; note?: string }
-  | { type: "run.claim"; claim: Claim };
+  | { type: "run.claim"; claim: Claim }
+  | { type: "pr.link"; link: Omit<PrLink, "at"> }
+  | { type: "pr.unlink"; pr: string }
+  /** something happened on a pull request: read from GitHub, or reported by another tool */
+  | { type: "pr.change"; pr: PrRef; change: PrChange; title?: string; by?: string; text?: string; source: "github" | "external" };
 
 export type PwEvent = EventBase & EventBody;
 
@@ -109,6 +162,55 @@ export interface Snapshot {
   projects: Project[];
   cards: Card[];
   runs: Run[];
+  /** open pull requests and what each waits on; absent when GitHub is not set up */
+  prs?: PrView[];
+  github?: GithubInfo;
+  /** agents blocked in `parawatch wait` right now */
+  listeners?: Listener[];
+}
+
+export interface GithubInfo {
+  /** `gh` is installed and signed in */
+  enabled: boolean;
+  fetchedAt?: string;
+  error?: string;
+}
+
+/** A running `parawatch wait`: an answer that matches it is delivered at once. */
+export interface Listener {
+  consumer: string;
+  pid: number;
+  project?: string;
+  card?: string;
+  session?: string;
+  since: string;
+}
+
+/** Where a pull request stands, as `status` and the panel show it. */
+export interface PrView {
+  key: string;
+  url: string;
+  repo: string;
+  number: number;
+  title: string;
+  author?: string;
+  state: "open" | "merged" | "closed";
+  draft: boolean;
+  /** what it waits on now, in a few words: "review", "CI", "merge queue", "changes requested", ... */
+  waitingOn: string;
+  /** who it waits on: reviewer logins, or the author */
+  who?: string[];
+  /** since when it has waited on that */
+  since: string;
+  stalled: boolean;
+  /** the PR asks the human (not the author) for a review */
+  reviewRequested: boolean;
+  /** the human wrote it */
+  mine: boolean;
+  session?: string;
+  sessionTitle?: string;
+  project?: string;
+  task?: string;
 }
 
 /** Who counts as a human when deciding what wakes an agent. */
@@ -140,4 +242,24 @@ export interface Run {
    * current minute), ascending. Read from the end of the log, so a very busy run may show less.
    */
   activity?: number[];
+  /** how the project was found: an explicit claim, or a guess from the log */
+  projectSource?: "claim" | "cwd" | "parent" | "edits" | "prompt";
+  /** folders of the files this run edited, most recent last (from its log) */
+  touched?: string[];
+  /** the last turn ended asking the human something, without a card */
+  asks?: { text: string; via: "wrap_up" | "text"; blocked?: boolean; at?: string };
+  /** the one-line summary the runtime wrote for the last turn, if it writes one */
+  recap?: string;
+  /** the session said it is finished (`claim --done`) and has not been asked anything since */
+  done?: string;
+  /** started by a schedule (`claim --kind scheduled`) */
+  scheduled?: boolean;
+  /** older runs of the same scheduled task folded into this row */
+  repeats?: number;
+  /** when the human (or parent) last wrote to this run */
+  lastPromptAt?: string;
+  /** pull requests this run opened, as seen in its log */
+  createdPrs?: string[];
+  /** pull requests linked to this run */
+  prs?: string[];
 }

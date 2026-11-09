@@ -89,18 +89,17 @@ export function parseEventLines(text: string): PwEvent[] {
 
 /** Append one event. `build` sees the current events so it can pick ids under the lock. */
 export function appendEvent(build: (events: PwEvent[]) => EventBody): PwEvent {
-  return withLock(() => {
-    const events = readEvents();
-    const last = events[events.length - 1];
-    const ev = {
-      v: SCHEMA_VERSION,
-      seq: (last?.seq ?? 0) + 1,
-      ts: new Date().toISOString(),
-      ...build(events),
-    } as PwEvent;
-    fs.appendFileSync(eventsPath(), JSON.stringify(ev) + "\n");
-    return ev;
-  });
+  return withLock(() => appendLocked((events) => [build(events)])[0]!);
+}
+
+/** Append events while already holding the lock (inside `withLock`). */
+export function appendLocked(build: (events: PwEvent[]) => EventBody[]): PwEvent[] {
+  const events = readEvents();
+  let seq = events[events.length - 1]?.seq ?? 0;
+  const ts = new Date().toISOString();
+  const out = build(events).map((body) => ({ v: SCHEMA_VERSION, seq: ++seq, ts, ...body }) as PwEvent);
+  if (out.length) fs.appendFileSync(eventsPath(), out.map((e) => JSON.stringify(e) + "\n").join(""));
+  return out;
 }
 
 const CURSOR_NAME = /^[A-Za-z0-9._-]+$/;
