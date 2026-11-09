@@ -1,7 +1,7 @@
 // Shapes shared with the CLI come straight from its source; the rest is the panel's own.
 import type { Card, Snapshot } from "../../../src/core/types.js";
 
-export type { Answer, Card, CardKind, Comment, Project, Run, RunState, Snapshot } from "../../../src/core/types.js";
+export type { Answer, Card, CardKind, Comment, Listener, PrView, Project, Run, RunState, Snapshot } from "../../../src/core/types.js";
 
 /** One line of `parawatch watch`. */
 export interface PwEvent {

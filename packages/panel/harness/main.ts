@@ -132,6 +132,9 @@ async function load(): Promise<Snapshot> {
     projects: real?.projects ?? [],
     cards: useReal ? real!.cards : cards.filter((c) => c.status !== "closed"),
     runs: useReal ? real!.runs : fakeRuns,
+    prs: useReal ? real!.prs : undefined,
+    github: useReal ? real!.github : undefined,
+    listeners: useReal ? real!.listeners : undefined,
   };
 }
 

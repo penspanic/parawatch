@@ -11,6 +11,7 @@ import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, nativeTheme,
 import { answerCard, UserError } from "../../../src/core/ops.js";
 import { cardContextLine, resolveGoto } from "../../../src/core/desktop.js";
 import { followEvents } from "../../../src/core/follow.js";
+import { syncGithub } from "../../../src/core/github.js";
 import { desktopPidPath } from "../../../src/core/integrate.js";
 import { snapshot as takeSnapshot } from "../../../src/core/snapshot.js";
 import { fold } from "../../../src/core/state.js";
@@ -18,7 +19,7 @@ import { homeDir, readEvents } from "../../../src/core/store.js";
 import type { PwEvent, Snapshot } from "../../../src/core/types.js";
 import { artPng, trayPng, type TrayState } from "./art.js";
 import { KEEP_CLOSED, SINCE_HOURS, THEMES, validPref, type Prefs, type Theme } from "./prefs.js";
-import { alertFor, agentsWorking, needsYou, summary } from "./rules.js";
+import { alertFor, agentsWorking, needsYou, newlyStuck, summary } from "./rules.js";
 
 const MEDIA_SCHEME = "pwfile";
 const MAX_MEDIA_BYTES = 200 * 1024 * 1024;
@@ -65,6 +66,10 @@ let quitting = false;
 let refreshTimer: NodeJS.Timeout | undefined;
 let debounce: NodeJS.Timeout | undefined;
 let stopFollowing: (() => void) | undefined;
+/** stuck pull requests and jobs already reported; the first look only learns them */
+const stuck = new Set<string>();
+let stuckPrimed = false;
+let githubTimer: NodeJS.Timeout | undefined;
 
 // ------------------------------------------------------------------ data
 
@@ -72,6 +77,9 @@ function refresh(): void {
   try {
     latest = takeSnapshot({ sinceHours: settings.sinceHours, closed: settings.keepClosed });
     lastError = undefined;
+    const alerts = newlyStuck(latest, stuck);
+    if (stuckPrimed && settings.notify) for (const a of alerts) notifyHuman(a);
+    stuckPrimed = true;
   } catch (err) {
     lastError = err instanceof Error ? err.message : String(err);
   }
@@ -88,6 +96,25 @@ function scheduleRefresh(): void {
   if (refreshTimer) clearTimeout(refreshTimer);
   const visible = !!win && !win.isDestroyed() && win.isVisible() && !win.isMinimized();
   refreshTimer = setTimeout(refresh, visible ? 10_000 : 60_000);
+}
+
+/**
+ * Read GitHub through `gh` on the configured interval. News lands as events (which refresh and
+ * notify); the snapshot is refreshed anyway so waiting times move.
+ */
+function watchGithub(): void {
+  const tick = async () => {
+    try {
+      const before = fs.existsSync(path.join(homeDir(), "github.json")) ? fs.statSync(path.join(homeDir(), "github.json")).mtimeMs : 0;
+      await syncGithub({ state: fold(readEvents()) });
+      const after = fs.existsSync(path.join(homeDir(), "github.json")) ? fs.statSync(path.join(homeDir(), "github.json")).mtimeMs : 0;
+      if (after !== before) refresh();
+    } catch (err) {
+      console.warn(`parawatch: reading GitHub failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+  void tick();
+  githubTimer = setInterval(() => void tick(), 60_000);
 }
 
 function onEvent(ev: PwEvent): void {
@@ -469,6 +496,7 @@ if (!app.requestSingleInstanceLock()) {
   });
   app.on("will-quit", () => {
     stopFollowing?.();
+    if (githubTimer) clearInterval(githubTimer);
     try {
       if (fs.readFileSync(desktopPidPath(), "utf8").trim() === String(process.pid)) fs.unlinkSync(desktopPidPath());
     } catch {
@@ -497,6 +525,7 @@ if (!app.requestSingleInstanceLock()) {
     createTray();
     refresh();
     stopFollowing = followEvents(onEvent);
+    watchGithub();
     Notification.isSupported(); // touch the API early so macOS asks for permission on first run
   });
 }

@@ -20,6 +20,41 @@ export function agentsWorking(s: Snapshot | undefined): boolean {
   return s?.runs.some((r) => r.state === "working") ?? false;
 }
 
+/** Pull request news worth a notification: things that stop it from landing, and the landing. */
+const PR_ALERTS: Partial<Record<string, string>> = {
+  changes_requested: "changes requested",
+  ci_failed: "CI failed",
+  conflict: "merge conflict",
+  queue_removed: "dropped from the merge queue",
+  merged: "merged",
+};
+
+/**
+ * What became stuck since the last look: a pull request waiting too long in one state, or a job
+ * that stopped showing signs of life. `seen` remembers what was already reported.
+ */
+export function newlyStuck(s: Snapshot | undefined, seen: Set<string>): Alert[] {
+  if (!s) return [];
+  const out: Alert[] = [];
+  const now = new Set<string>();
+  for (const p of s.prs ?? []) {
+    if (!p.stalled || (p.reviewRequested && !p.mine)) continue;
+    const key = `pr:${p.key}:${p.waitingOn}`;
+    now.add(key);
+    if (!seen.has(key)) out.push({ title: `${p.repo.split("/")[1]}#${p.number} stuck in ${p.waitingOn}`, body: p.title });
+  }
+  for (const r of s.runs) {
+    if (r.state !== "stalled" || r.kind !== "declared") continue;
+    const key = `run:${r.id}`;
+    now.add(key);
+    if (!seen.has(key)) out.push({ title: "A job stopped showing signs of life", body: r.action ? `${r.title}: ${r.action}` : r.title });
+  }
+  // forget what got unstuck, so it is reported again if it sticks again
+  for (const k of [...seen]) if (!now.has(k)) seen.delete(k);
+  for (const k of now) seen.add(k);
+  return out;
+}
+
 export interface Alert {
   title: string;
   body: string;
@@ -36,6 +71,9 @@ export function alertFor(ev: PwEvent, state: { runTitle(id: string): string | un
     const c = ev.card;
     if (c.kind === "todo") return undefined;
     return { title: `${c.project} · ${KIND_WORD[c.kind]}`, body: c.title, card: c.id };
+  }
+  if (ev.type === "pr.change" && PR_ALERTS[ev.change]) {
+    return { title: `${ev.pr.repo.split("/")[1]}#${ev.pr.number} · ${PR_ALERTS[ev.change]}${ev.by && ev.source === "github" ? ` by ${ev.by}` : ""}`, body: ev.text ? `${ev.title ?? ""}\n${ev.text}`.trim() : (ev.title ?? ev.pr.url) };
   }
   if (ev.type === "run.end" && ev.status === "failed") {
     const title = state.runTitle(ev.run) ?? ev.run;

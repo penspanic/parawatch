@@ -1,7 +1,7 @@
 {
   "name": "@parawatch/desktop",
   "productName": "Parawatch",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Parawatch as a desktop app: what needs you, what your agents are doing, with notifications and a badge.",
   "license": "MIT",
@@ -18,7 +18,7 @@
     "release:mac": "scripts/release-mac.sh"
   },
   "dependencies": {
-    "@parawatch/panel": "0.1.0",
+    "@parawatch/panel": "0.2.0",
     "marked": "^18.1.3"
   },
   "devDependencies": {

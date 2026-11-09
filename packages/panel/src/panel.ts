@@ -1,5 +1,5 @@
 import { ago, clean, groupRuns, type FoldNode, type RunNode } from "./tree";
-import type { Backend, Card, Reply, Run, Snapshot } from "./types";
+import type { Backend, Card, Listener, PrView, Reply, Run, Snapshot } from "./types";
 
 /** What the panel needs from its host (the desktop app, or the harness page). */
 export interface PanelHost {
@@ -27,6 +27,11 @@ const DAY = 24 * 60 * 60 * 1000;
 /** When the matter came up: `since` when it is older than the card, else when the card opened. */
 function cardStart(c: Card): string {
   return c.since && c.since < c.openedAt ? c.since : c.openedAt;
+}
+
+/** The waits an answer to this card would wake now (the CLI's `listenersFor`). */
+function waitingFor(c: Card, ls: Listener[]): Listener[] {
+  return ls.filter((l) => (l.card ? l.card === c.id : !l.project || l.project === c.project));
 }
 
 function shortDate(iso: string): string {
@@ -207,6 +212,11 @@ export class Panel {
     const need = this.badge(row, "inbox", open, open ? `${open} card${open === 1 ? "" : "s"} need${open === 1 ? "s" : ""} you` : "Nothing needs you", open ? "pw-need is-urgent" : "pw-need");
     need.setAttribute("aria-live", "polite");
     this.badge(row, "list-checks", todo, `${todo} to do`, todo ? "" : "is-zero");
+    const asks = s?.runs.filter((r) => r.asks).length ?? 0;
+    if (asks) this.badge(row, "message-circle-question", asks, `${asks} session${asks === 1 ? "" : "s"} asked you in chat, without a card`, "pw-asks");
+    const stuck = s?.prs?.filter((p) => p.stalled && !(p.reviewRequested && !p.mine)).length ?? 0;
+    const prs = s?.prs?.length ?? 0;
+    if (prs) this.badge(row, "git-pull-request", prs, `${prs} open pull request${prs === 1 ? "" : "s"}${stuck ? `, ${stuck} stuck` : ""}`, stuck ? "pw-prs is-stuck" : "pw-prs");
     this.badge(row, "activity", working, `${working} agent${working === 1 ? "" : "s"} working`, working ? "" : "is-zero");
     const btn = el("button", "pw-icon-btn clickable-icon", undefined, row);
     btn.setAttribute("aria-label", "Refresh");
@@ -226,7 +236,11 @@ export class Panel {
 
   private signature(): string {
     const cards = this.snapshot?.cards ?? [];
-    return JSON.stringify([cards.map((c) => [c.id, c.status, c.kind, c.title, c.since, c.from, c.session, c.answers.length, c.comments.length, c.closedAt]), [...this.busy], [...this.reopened]]);
+    const s = this.snapshot;
+    const asks = (s?.runs ?? []).filter((r) => r.asks).map((r) => [r.id, r.title, r.asks!.text]);
+    const prs = (s?.prs ?? []).map((p) => [p.key, p.waitingOn, p.since, p.stalled, p.sessionTitle, p.title]);
+    const ls = (s?.listeners ?? []).map((l) => [l.pid, l.project, l.card]);
+    return JSON.stringify([cards.map((c) => [c.id, c.status, c.kind, c.title, c.since, c.from, c.session, c.answers.length, c.comments.length, c.closedAt]), asks, prs, ls, [...this.busy], [...this.reopened]]);
   }
 
   private renderCards(now: number): void {
@@ -274,6 +288,32 @@ export class Panel {
         todo.parentElement!.classList.add("pw-todo-group");
         for (const c of later) todo.appendChild(this.card(c, now));
       }
+    }
+
+    // a session that ended its turn with a question in chat, read from its log
+    const asking = (this.snapshot?.runs ?? []).filter((r) => r.asks);
+    if (asking.length) {
+      const body = this.foldGroup(root, "asks", "Asked in chat", false, (head) => {
+        this.badge(head, "message-circle-question", asking.length, `${asking.length} asked in chat, without a card (read from the session log)`, "pw-asks");
+      });
+      for (const r of asking) body.appendChild(this.askRow(r, now));
+    }
+
+    const prs = this.snapshot?.prs ?? [];
+    const reviews = prs.filter((p) => p.reviewRequested && !p.mine);
+    const waiting = prs.filter((p) => !(p.reviewRequested && !p.mine));
+    if (reviews.length) {
+      const body = this.foldGroup(root, "reviews", "Reviews for you", false, (head) => {
+        this.badge(head, "git-pull-request", reviews.length, `${reviews.length} pull request${reviews.length === 1 ? "" : "s"} asking for your review`);
+      });
+      for (const p of reviews) body.appendChild(this.prRow(p, now));
+    }
+    if (waiting.length) {
+      const stuck = waiting.filter((p) => p.stalled).length;
+      const body = this.foldGroup(root, "waiting", "Waiting on others", false, (head) => {
+        this.badge(head, "git-pull-request", waiting.length, `${waiting.length} open pull request${waiting.length === 1 ? "" : "s"}${stuck ? `, ${stuck} stuck` : ""}`, stuck ? "is-stuck" : "");
+      });
+      for (const p of waiting) body.appendChild(this.prRow(p, now));
     }
 
     if (answered.length) {
@@ -389,6 +429,12 @@ export class Panel {
   /** What the card says and carries: body, what to look at, things to open, media, comments. */
   private cardDetail(c: Card, box: HTMLElement): void {
     if (c.body) this.host.renderMarkdown(c.body, el("div", "pw-card-body markdown-rendered", undefined, box));
+    if (c.action) {
+      const act = el("div", "pw-action", undefined, box);
+      this.icon(act, "play").title = "Runs if you say yes";
+      el("code", "pw-action-text", c.action, act);
+    }
+    if (c.preview) el("pre", "pw-preview", c.preview, box);
     if (c.look) {
       const look = el("div", "pw-look", undefined, box);
       this.icon(look, "eye").title = "Look at";
@@ -600,6 +646,10 @@ export class Panel {
       this.icon(line, "corner-down-right").title = "Your answer";
       el("span", undefined, parts.join(", "), line);
     }
+    if (c.status === "answered" && !waitingFor(c, this.snapshot?.listeners ?? []).length) {
+      const n = el("div", "pw-delivery", "No agent is waiting. It gets your answer on its next turn.", top);
+      n.title = "No `parawatch wait` is running for this project";
+    }
     if (c.status === "closed" && c.closeNote) {
       const line = el("div", "pw-answer pw-close-note", undefined, top);
       this.icon(line, "archive").title = "Closed";
@@ -732,6 +782,56 @@ export class Panel {
     }
   }
 
+  /** A session that asked the human something in chat: open it to answer. */
+  private askRow(r: Run, now: number): HTMLElement {
+    const row = el("div", `pw-ask${r.asks!.blocked ? " is-blocked" : ""}`);
+    const top = el("div", "pw-ask-top", undefined, row);
+    const who = el("a", "pw-ask-who", r.title, top);
+    (who as HTMLAnchorElement).href = "#";
+    who.title = "Open this session to answer";
+    who.onclick = (e) => {
+      e.preventDefault();
+      void this.backend.goto(r.id).catch((err) => this.host.notice(err instanceof Error ? err.message : String(err)));
+    };
+    if (r.project) el("span", "pw-meta", r.project + (r.task ? ` / ${r.task}` : ""), top);
+    el("span", "pw-meta pw-ask-age", ago(r.asks!.at ?? r.lastActivity, now), top);
+    el("div", "pw-ask-text", clean(r.asks!.text), row);
+    row.title = r.asks!.via === "wrap_up" ? "The session's end-of-turn summary asks you this" : "The session's last message ends with this question";
+    return row;
+  }
+
+  /** A pull request: what it waits on and since when, and the session that owns it. */
+  private prRow(p: PrView, now: number): HTMLElement {
+    const row = el("div", `pw-pr${p.stalled ? " is-stuck" : ""}`);
+    const top = el("div", "pw-pr-top", undefined, row);
+    const label = el("a", "pw-pr-label", `${p.repo.split("/")[1]}#${p.number}`, top);
+    (label as HTMLAnchorElement).href = "#";
+    label.title = `Open ${p.url}`;
+    label.onclick = (e) => {
+      e.preventDefault();
+      this.backend.open(p.url);
+    };
+    const review = p.reviewRequested && !p.mine;
+    const wait = review ? "your review" : p.waitingOn + (p.waitingOn === "review" && p.who?.length ? ` (${p.who.join(", ")})` : "");
+    el("span", "pw-pr-wait", p.stalled ? `stuck in ${wait}` : wait, top);
+    el("span", "pw-meta", ago(p.since, now), top).title = `Waiting on this since ${new Date(p.since).toLocaleString()}`;
+    el("div", "pw-pr-title", p.title, row);
+    if (p.session || p.project) {
+      const own = el(p.session ? "a" : "span", "pw-meta pw-pr-owner", undefined, row);
+      this.icon(own, "bot");
+      el("span", undefined, p.sessionTitle ?? p.project ?? p.session!.slice(0, 8), own);
+      if (p.session) {
+        (own as HTMLAnchorElement).href = "#";
+        own.title = "Open the session that owns this pull request";
+        own.onclick = (e) => {
+          e.preventDefault();
+          void this.backend.goto(p.session!).catch((err) => this.host.notice(err instanceof Error ? err.message : String(err)));
+        };
+      }
+    }
+    return row;
+  }
+
   private runIcon(r: Run): string {
     if (r.role === "lead") return "network";
     if (r.kind === "declared") return "timer";
@@ -758,8 +858,16 @@ export class Panel {
         if (e.key === "Enter") go();
       };
     }
-    const what = r.error ? `unreadable: ${r.error}` : clean(r.action);
+    const what = r.error
+      ? `unreadable: ${r.error}`
+      : r.done
+        ? `done · ${clean(r.done)}`
+        : r.asks
+          ? `${r.asks.blocked ? "blocked" : "asks"}: ${clean(r.asks.text)}`
+          : clean((r.state === "idle" && r.recap) || r.action);
+    if (r.repeats) el("span", "pw-run-repeats", `×${r.repeats + 1}`, text).title = `${r.repeats + 1} runs of this scheduled task; the newest is shown`;
     const sub = el("div", "pw-run-sub", undefined, text);
+    if (r.asks) sub.classList.add(r.asks.blocked ? "is-blocked" : "is-asking");
     el("span", "pw-run-age", ago(r.lastActivity, now), sub);
     if (what || r.state === "stalled") el("span", "pw-run-action", r.state === "stalled" ? `stalled${what ? ` · ${what}` : ""}` : what, sub);
     row.appendChild(this.lane(r, at, now));

@@ -767,3 +767,133 @@ button.pw-round.pw-send:disabled {
 .pw-todo-group > .pw-fold-head .pw-fold-badges {
   margin-left: 0;
 }
+
+/* ---------------------------------------------------------------- approvals */
+
+.pw-action {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 8px;
+  color: var(--text-muted);
+}
+.pw-action .pw-icon svg {
+  width: 13px;
+  height: 13px;
+  margin-top: 3px;
+}
+.pw-action-text {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-normal);
+  background: var(--background-secondary);
+  border-radius: var(--radius-s);
+  padding: 2px 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.pw-preview {
+  margin: 8px 0 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 8px 10px;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.45;
+  color: var(--text-normal);
+  background: var(--background-secondary);
+  border-radius: var(--radius-s);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.pw-delivery {
+  margin-top: 4px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+}
+
+/* ---------------------------------------------------------------- asked in chat, pull requests */
+
+.pw-ask,
+.pw-pr {
+  padding: 8px 14px;
+  border-radius: var(--pw-radius);
+}
+.pw-ask:hover,
+.pw-pr:hover {
+  background: var(--pw-hover);
+}
+.pw-ask-top,
+.pw-pr-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.pw-ask-who,
+.pw-pr-label {
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pw-ask-who:hover,
+.pw-pr-label:hover {
+  color: var(--text-accent);
+}
+.pw-ask-age {
+  margin-left: auto;
+}
+.pw-ask-text {
+  margin-top: 2px;
+  color: var(--color-yellow);
+  line-height: 1.45;
+}
+.pw-ask.is-blocked .pw-ask-text {
+  color: var(--color-red);
+}
+.pw-pr-wait {
+  color: var(--color-yellow);
+  white-space: nowrap;
+}
+.pw-pr.is-stuck .pw-pr-wait {
+  color: var(--color-red);
+}
+.pw-pr-top .pw-meta {
+  margin-left: auto;
+}
+.pw-pr-title {
+  margin-top: 2px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+.pw-pr-owner {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  text-decoration: none;
+}
+a.pw-pr-owner:hover {
+  color: var(--text-accent);
+}
+.pw-badge.is-stuck .pw-badge-n,
+.pw-prs.is-stuck .pw-badge-n {
+  color: var(--color-red);
+}
+.pw-asks .pw-badge-n {
+  color: var(--color-yellow);
+}
+.pw-run-repeats {
+  margin-left: 6px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+}
+.pw-run-sub.is-asking .pw-run-action {
+  color: var(--color-yellow);
+}
+.pw-run-sub.is-blocked .pw-run-action {
+  color: var(--color-red);
+}

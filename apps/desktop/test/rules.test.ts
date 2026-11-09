@@ -103,3 +103,25 @@ describe("icons drawn in code", () => {
     expect(px(twelve, digit)).toBeGreaterThan(px(one, digit));
   });
 });
+
+describe("pull requests and stuck work", () => {
+  const pr = { type: "pr.change", pr: { key: "github.com/acme/api#88", host: "github.com", repo: "acme/api", number: 88, url: "https://github.com/acme/api/pull/88" }, title: "Fix login", source: "github" };
+
+  it("notifies what keeps a pull request from landing, and the landing", () => {
+    expect(alertFor(ev({ ...pr, change: "queue_removed" }), noRuns)).toEqual({ title: "api#88 · dropped from the merge queue", body: "Fix login" });
+    expect(alertFor(ev({ ...pr, change: "changes_requested", by: "alice" }), noRuns)?.title).toBe("api#88 · changes requested by alice");
+    expect(alertFor(ev({ ...pr, change: "commented" }), noRuns)).toBeUndefined();
+  });
+
+  it("reports a pull request or a job once when it gets stuck, and again only after it recovers", async () => {
+    const { newlyStuck } = await import("../src/rules.js");
+    const view = { key: "k", url: "", repo: "acme/api", number: 88, title: "Fix login", state: "open", draft: false, waitingOn: "merge queue", since: "", stalled: true, reviewRequested: false, mine: true } as const;
+    const job = { id: "r1", runtime: "declared", kind: "declared", title: "bench", state: "stalled", action: "no sign of life for 12m" } as const;
+    const s = { ...snap([]), prs: [view], runs: [job] } as Snapshot;
+    const seen = new Set<string>();
+    expect(newlyStuck(s, seen).map((a) => a.title)).toEqual(["api#88 stuck in merge queue", "A job stopped showing signs of life"]);
+    expect(newlyStuck(s, seen)).toEqual([]);
+    expect(newlyStuck({ ...s, prs: [{ ...view, stalled: false }], runs: [] }, seen)).toEqual([]);
+    expect(newlyStuck(s, seen)).toHaveLength(2);
+  });
+});
