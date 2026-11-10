@@ -8,8 +8,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { UserError } from "./ops.js";
 import type { State } from "./state.js";
-import { appendLocked, homeDir, withLock } from "./store.js";
-import type { EventBody, PrChange, PrRef, PrView, Run } from "./types.js";
+import { appendLocked, deviceName, homeDir, withLock } from "./store.js";
+import type { EventBody, PrChange, PrRef, PrView, PwEvent, Run } from "./types.js";
 
 // ------------------------------------------------------------------ config
 
@@ -349,6 +349,20 @@ export function nextCache(prev: GithubCache, fresh: PrStatus[], hosts: string[],
   return { cache: { fetchedAt: at, hosts, prs, since }, events };
 }
 
+/**
+ * Drop news another machine already reported. This machine's reading spans from its previous
+ * reading (`since`) to now; the same change on the same PR that another machine wrote in that
+ * span is the one this machine just noticed, maybe long after. A machine that reads GitHub for
+ * the first time in hours would otherwise tell every agent again what they already handled.
+ */
+export function dropReported(fresh: EventBody[], log: PwEvent[], since: string | undefined, me = deviceName()): EventBody[] {
+  if (!since) return fresh;
+  const seen = new Set<string>();
+  for (const e of log) if (e.type === "pr.change" && e.dev && e.dev !== me && e.ts >= since) seen.add(`${e.pr.key}|${e.change}|${e.by ?? ""}`);
+  if (!seen.size) return fresh;
+  return fresh.filter((b) => b.type !== "pr.change" || !seen.has(`${b.pr.key}|${b.change}|${b.by ?? ""}`));
+}
+
 // ------------------------------------------------------------------ sync
 
 function fetchingPath(): string {
@@ -427,7 +441,7 @@ export async function syncGithub(opts: SyncOptions): Promise<GithubCache> {
       if (latest.fetchedAt && latest.fetchedAt > started) return latest; // someone else was faster
       const { cache, events } = nextCache(latest, fresh, hosts, started);
       if (errors.length) cache.error = errors.join("; ");
-      appendLocked(() => events);
+      appendLocked((log) => dropReported(events, log, latest.fetchedAt));
       writeCache(cache);
       return cache;
     });

@@ -6,6 +6,7 @@
 - `wait -p <project>` still reads the whole project, for a lead. Outside an agent session nothing changes.
 - The instruction block (`parawatch init`) and the skill now say `parawatch wait`. `doctor` reports an older block as outdated; run `parawatch init` again to update it.
 - The Claude Code hook reports only the session's own unhandled news.
+- Fix: a machine reading GitHub for the first time in a while wrote again the pull request news another machine had already reported, and every wait woke a second time. News another machine wrote since this machine last read GitHub is now left out.
 
 ## 0.3.1 (2026-11-10)
 

@@ -7,8 +7,9 @@ import { snapshot } from "../src/core/snapshot.js";
 import { eventFiles, eventsPath, readCursor, readEvents, writeCursor } from "../src/core/store.js";
 import { findConflicts, mapPath, readDevice, setRoot, setupSync, syncStatus, type DeviceInfo } from "../src/core/sync.js";
 import { readSyncthingGui } from "../src/core/syncthing.js";
+import { dropReported } from "../src/core/github.js";
 import { doctor } from "../src/core/doctor.js";
-import { STORE_FORMAT } from "../src/core/types.js";
+import { STORE_FORMAT, type PrChange } from "../src/core/types.js";
 
 /**
  * Two machines on one test box: each has its own parawatch home and its own copy of the shared
@@ -252,6 +253,24 @@ describe("two machines", () => {
     on("pc", () => prEvent(pr, "ci_failed", { text: "build" }));
     both();
     expect(on("pc", () => readInbox("spill", { project: "spill" }, true))).toHaveLength(1);
+  });
+
+  it("news another machine reported since this machine last read GitHub is not written again", () => {
+    const pr = { key: "github.com/o/r#504", host: "github.com", repo: "o/r", number: 504, url: "https://github.com/o/r/pull/504" };
+    const lastRead = new Date(Date.now() - 3 * 3_600_000).toISOString();
+    on("mac", () => {
+      prEvent(pr, "ci_passed");
+      prEvent(pr, "merged");
+    });
+    both();
+    const news = (change: PrChange) => ({ type: "pr.change" as const, pr, change, source: "github" as const });
+    // the pc last read GitHub hours ago and now sees the same two changes, plus one of its own
+    const kept = on("pc", () => dropReported([news("ci_passed"), news("merged"), news("commented")], readEvents(), lastRead));
+    expect(kept.map((b) => b.type === "pr.change" && b.change)).toEqual(["commented"]);
+    // a change reported before the pc's last reading is a different one
+    expect(on("pc", () => dropReported([news("merged")], readEvents(), new Date(Date.now() + 1000).toISOString()))).toHaveLength(1);
+    // this machine's own earlier news never hides its new news
+    expect(on("mac", () => dropReported([news("merged")], readEvents(), lastRead))).toHaveLength(1);
   });
 
   it("runs declared on either machine get their own ids and can be ended by the short id", () => {
