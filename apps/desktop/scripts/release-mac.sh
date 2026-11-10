@@ -10,6 +10,7 @@
 #   xcrun notarytool store-credentials parawatch-notary --apple-id you@example.com --team-id TEAMID
 #
 # The release is left as a draft; publish it on GitHub or with `gh release edit vX.Y.Z --draft=false`.
+# Publishing it also publishes the CLI to npm (.github/workflows/publish.yml).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

@@ -1,0 +1,57 @@
+name: Publish to npm
+
+# Publishing a GitHub release publishes the same version to npm, through npm trusted publishing
+# (no token: npm trusts this workflow in this repository). Run it by hand with a tag to publish a
+# release that came out before this workflow, or to try again.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish, such as v0.3.4"
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      # the tests do not start Electron, so skip its 100 MB download
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      # trusted publishing needs npm 11.5.1 or later
+      - run: npm install -g npm@11
+      - name: Check the tag names the package version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::tag $TAG does not match package.json version $version"
+            exit 1
+          fi
+          if npm view "parawatch@$version" version >/dev/null 2>&1; then
+            echo "parawatch@$version is already on npm; nothing to do"
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+      - if: env.SKIP != '1'
+        run: npm ci
+      - if: env.SKIP != '1'
+        run: npm run typecheck
+      # prepublishOnly builds and runs the tests again
+      - if: env.SKIP != '1'
+        run: npm publish
