@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.4 (2026-11-10)
+
+- A Claude Code run that ended its turn while a background job it started is still running shows as working, with the job's command, instead of done or idle. It counts as stalled only when both its log and the job's output file have been quiet for 20 minutes, so a job that hung shows up instead of dropping out of the list. A `parawatch wait` or `parawatch watch` in the background does not count: that session is waiting for the human.
+- A lead that has really ended (it said `claim --done`, or it was archived in the Claude desktop app) leaves the list 30 minutes after its last activity, like other runs. An idle lead still stays.
+- Hide a run: the eye button on a run row in the app, or `parawatch run hide <id>`. It stays hidden on every machine until it does something new. `parawatch run unhide <id>` brings it back, and `runs --all` shows hidden runs.
+- Approval cards: the preview is folded to a few lines with Show all, a Markdown preview renders without its frontmatter, and a chip opens the preview file itself. The action shows its first line, with the whole text under details.
+- `parawatch edit` can change `--action`, `--preview` and `--attach` (`--no-attach` clears) while nobody has answered the card. The card shows when the action or preview changed. After an answer, open a new card instead.
+- The desktop app shows each service's own icon (Claude Code, Codex, GitHub) beside runs, pull requests and the card's asker. The icon is fetched from the service's site, as a browser shows it, and cached for a week; no logo files ship with parawatch. Turn it off in Settings with "Show service icons".
+
 ## 0.3.3 (2026-11-10)
 
 - Folders are compared by their real spelling: symlinks and Windows short names are resolved, and on Windows case and `/` against `\` no longer matter. A run in a worktree reached through a link, or on Windows, finds its project, and so does the Claude Code hook.
