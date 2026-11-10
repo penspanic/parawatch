@@ -69,6 +69,11 @@ export interface Card {
   action?: string;
   /** text the action would send or change (a message, a diff), shown with the card */
   preview?: string;
+  /**
+   * In a snapshot: the session that opened the card has ended (claimed done, or archived), so an
+   * answer goes to whoever waits on the project. Never stored.
+   */
+  ownerEnded?: boolean;
 }
 
 /** Fields `parawatch edit` may change on a card. */

@@ -29,16 +29,19 @@ function cardStart(c: Card): string {
   return c.since && c.since < c.openedAt ? c.since : c.openedAt;
 }
 
-/** The waits an answer to this card would wake now (the CLI's `listenersFor`). */
+/**
+ * The waits an answer to this card would wake now (the CLI's `listenersFor`). A card whose session
+ * has ended reaches the session waits in its project, as an unowned card does.
+ */
 function waitingFor(c: Card, ls: Listener[]): Listener[] {
   const same = (x?: string, y?: string) => !!x && !!y && (x.startsWith(y) || y.startsWith(x));
   return ls.filter((l) =>
     l.card
       ? l.card === c.id
       : l.scope === "session"
-        ? c.session
-          ? same(l.session, c.session)
-          : !!l.project && l.project === c.project
+        ? c.session && same(l.session, c.session)
+          ? true
+          : (!c.session || !!c.ownerEnded) && !!l.project && l.project === c.project
         : !l.project || l.project === c.project,
   );
 }

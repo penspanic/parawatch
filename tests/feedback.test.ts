@@ -26,6 +26,7 @@ import {
 } from "../src/core/ops.js";
 import { hookContext } from "../src/core/integrate.js";
 import { attribute, declaredRuns, foldRepeats } from "../src/core/runs.js";
+import { snapshot } from "../src/core/snapshot.js";
 import { fold } from "../src/core/state.js";
 import { homeDir, readEvents } from "../src/core/store.js";
 import type { Run } from "../src/core/types.js";
@@ -380,6 +381,45 @@ describe("waits per session", () => {
     expect(listenersFor(theirs, listeners())).toHaveLength(0);
     expect(listenersFor(loose, listeners())).toHaveLength(1);
     stop();
+  });
+
+  it("what a session that has ended owned goes to the project's sessions", () => {
+    setup();
+    const done = openCard({ kind: "decide", project: "bugs", title: "Ship?", session: sessions[0] });
+    const archived = openCard({ kind: "decide", project: "bugs", title: "Rename?", session: sessions[2] });
+    const live = openCard({ kind: "decide", project: "bugs", title: "Keep?", session: sessions[3] });
+    claimSession({ session: sessions[0]!, done: "Merged #1" });
+    // the human archived the third session in the Claude desktop app
+    const dir = process.env.PARAWATCH_CLAUDE_DESKTOP_DIR!;
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "local_x1.json"), JSON.stringify({ sessionId: "local_x1", cliSessionId: sessions[2], isArchived: true }));
+    for (const c of [done, archived, live]) answerCard(c.id, { comment: "yes" });
+    prEvent(parsePrRef("acme/app#1")!, "merged");
+    const got = read(sessions[1]!);
+    expect(got.map((i) => i.card?.id ?? i.pr?.ref.number)).toEqual([done.id, archived.id, 1]);
+    // the session itself still gets its own news, and like any reader in the project, the rest
+    expect(read(sessions[0]!).map((i) => i.card?.id ?? i.pr?.ref.number)).toEqual([done.id, archived.id, 1]);
+    // and a wait on the project counts as listening for those cards
+    const stop = startListening({ consumer: sessionConsumer(sessions[1]!), project: "bugs", session: sessions[1], scope: "session" });
+    const state = fold(readEvents());
+    expect(listenersFor(state.cards.get(done.id)!, listeners())).toHaveLength(1);
+    expect(listenersFor(state.cards.get(archived.id)!, listeners())).toHaveLength(1);
+    expect(listenersFor(state.cards.get(live.id)!, listeners())).toHaveLength(0);
+    stop();
+  });
+
+  it("a snapshot marks cards whose session has ended", () => {
+    process.env.PARAWATCH_CLAUDE_DIR = path.join(os.tmpdir(), "parawatch-no-logs");
+    process.env.PARAWATCH_CODEX_DIR = path.join(os.tmpdir(), "parawatch-no-logs");
+    setup();
+    openCard({ kind: "decide", project: "bugs", title: "Ship?", session: sessions[0] });
+    openCard({ kind: "decide", project: "bugs", title: "Keep?", session: sessions[1] });
+    claimSession({ session: sessions[0]!, done: "Merged #1" });
+    const cards = snapshot({ project: "bugs" }).cards;
+    expect(cards.map((c) => [c.title, c.ownerEnded ?? false])).toEqual([
+      ["Ship?", true],
+      ["Keep?", false],
+    ]);
   });
 
   it("the hook names only the session's own news", () => {

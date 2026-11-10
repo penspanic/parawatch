@@ -2,8 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { parsePrRef } from "./github.js";
-import { sessionTitle, UserError } from "./ops.js";
-import type { State } from "./state.js";
+import { UserError } from "./errors.js";
+import { sessionTitle, type State } from "./state.js";
 import type { Card } from "./types.js";
 
 /**

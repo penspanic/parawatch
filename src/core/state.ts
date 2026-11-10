@@ -1,5 +1,12 @@
 import type { Answer, Card, Claim, DeclaredRun, PrLink, Project, PwEvent } from "./types.js";
 
+/** The claimed name of a session (claims may hold an id prefix). */
+export function sessionTitle(claims: Claim[], session: string | undefined): string | undefined {
+  if (!session) return undefined;
+  const c = claims.find((x) => session.startsWith(x.session) || x.session.startsWith(session));
+  return c?.title;
+}
+
 export interface State {
   projects: Map<string, Project>;
   cards: Map<string, Card>;
