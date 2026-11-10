@@ -45,6 +45,7 @@ function toolSummary(b: Block): string {
 /** A prompt the human (or parent agent) typed, not a tool result or system notice. */
 function promptText(rec: Record<string, unknown>): string | undefined {
   if (rec.type !== "user" || rec.isMeta === true) return undefined;
+  if (isObj(rec.origin) && rec.origin.kind === "task-notification") return undefined;
   const bs = blocks(rec);
   if (bs.some((b) => b.type === "tool_result")) return undefined;
   const text = bs.filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n").trim();
@@ -62,6 +63,68 @@ export interface Reading {
   lastPromptAt?: string;
   asks?: Run["asks"];
   recap?: string;
+  /** Output files of background jobs still running when the turn ended (waiting runs only). */
+  pendingOutputs?: string[];
+}
+
+interface Job {
+  id: string;
+  output?: string;
+  command?: string;
+}
+
+const JOB_STARTED = /(?:running in background with ID|moved to the background \(ID): ([\w-]+)\)?[^\n]{0,80}?\.\s*Output is being written to: (.+?)\.\s+You will be notified/s;
+const JOB_STARTED_NO_PATH = /(?:running in background with ID|moved to the background \(ID): ([\w-]+)/;
+const NOTICE = /<task-notification>([\s\S]*?)<\/task-notification>/g;
+const STOP_TOOLS = new Set(["TaskStop", "KillShell", "KillBash"]);
+
+function tag(xml: string, name: string): string | undefined {
+  return new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(xml)?.[1]?.trim();
+}
+
+/** Text a record carries that may hold a task notice: a user message, a queued command, a queue entry. */
+function noticeText(rec: Record<string, unknown>): string {
+  const parts: string[] = [];
+  for (const b of blocks(rec)) if (b.type === "text" && b.text) parts.push(b.text);
+  const att = rec.attachment;
+  if (isObj(att) && typeof att.prompt === "string") parts.push(att.prompt);
+  if (rec.type === "queue-operation" && typeof rec.content === "string") parts.push(rec.content);
+  return parts.join("\n");
+}
+
+/**
+ * Background shell jobs a transcript started and has not seen end. A job ends with a completion
+ * notice (a status other than running) or a stop tool call. A job that started before the tail
+ * began is unknown and not counted.
+ */
+function pendingJobs(recs: unknown[]): Job[] {
+  const jobs = new Map<string, Job>();
+  const commands = new Map<string, string>();
+  const ended = new Set<string>();
+  for (const r of recs) {
+    if (!isObj(r)) continue;
+    for (const b of blocks(r)) {
+      if (b.type === "tool_use") {
+        if (b.id && b.name === "Bash") commands.set(b.id, str(b.input?.command) ?? "");
+        if (STOP_TOOLS.has(String(b.name))) {
+          const id = str(b.input?.task_id) || str(b.input?.shell_id) || str(b.input?.bash_id);
+          if (id) ended.add(id);
+        }
+      } else if (b.type === "tool_result") {
+        const text = resultText(b);
+        const m = JOB_STARTED.exec(text);
+        const id = m?.[1] ?? JOB_STARTED_NO_PATH.exec(text)?.[1];
+        if (id) jobs.set(id, { id, output: m?.[2]?.trim(), command: b.tool_use_id ? commands.get(b.tool_use_id) : undefined });
+      }
+    }
+    for (const n of noticeText(r).matchAll(NOTICE)) {
+      const id = tag(n[1]!, "task-id");
+      const status = tag(n[1]!, "status");
+      // monitor events carry no status and do not end a job
+      if (id && status && status.toLowerCase() !== "running") ended.add(id);
+    }
+  }
+  return [...jobs.values()].filter((j) => !ended.has(j.id));
 }
 
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
@@ -146,6 +209,7 @@ export function readClaudeTail(recs: unknown[], kind: "session" | "subagent"): R
     }
   }
   if (!lastConv) return out;
+  const jobs = pendingJobs(recs);
   const bs = blocks(lastConv);
   if (lastConv.type === "assistant") {
     const tool = [...bs].reverse().find((b) => b.type === "tool_use");
@@ -154,6 +218,13 @@ export function readClaudeTail(recs: unknown[], kind: "session" | "subagent"): R
       out.action = toolSummary(tool);
       const t = tool.input?.timeout;
       if (typeof t === "number") out.pendingTimeoutMs = t;
+    } else if (jobs.length && bs.some((b) => b.type === "text" && b.text?.trim())) {
+      // the turn ended while a background job runs: the run is waiting, not finished
+      const j = jobs[jobs.length - 1]!;
+      out.state = "working";
+      out.action = oneLine(`waiting for a background job${j.command ? `: ${j.command}` : ` (${j.id})`}`, 100);
+      const outputs = jobs.map((x) => x.output).filter((x): x is string => !!x);
+      if (outputs.length) out.pendingOutputs = outputs;
     } else if (bs.some((b) => b.type === "text" && b.text?.trim())) {
       out.state = kind === "subagent" ? "done" : "idle";
       const full = bs.filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n");
@@ -209,9 +280,24 @@ function readMeta(file: string): Record<string, unknown> {
 
 const STALL_MS = 20 * 60_000;
 
-export function applyStall(run: Run, pendingTimeoutMs: number | undefined, now: number): void {
+/** The newest modification time among files that exist on this machine, or undefined. */
+export function newestMtime(files: string[] | undefined): number | undefined {
+  let newest: number | undefined;
+  for (const f of files ?? []) {
+    try {
+      const m = fs.statSync(f).mtimeMs;
+      if (newest === undefined || m > newest) newest = m;
+    } catch {
+      // not on this machine, or gone
+    }
+  }
+  return newest;
+}
+
+/** `lastSeenMs` is other proof of life, such as a background job's output file changing. */
+export function applyStall(run: Run, pendingTimeoutMs: number | undefined, now: number, lastSeenMs?: number): void {
   if (run.state !== "working" || !run.lastActivity) return;
-  const quiet = now - Date.parse(run.lastActivity);
+  const quiet = now - Math.max(Date.parse(run.lastActivity), lastSeenMs ?? 0);
   const allowed = Math.max(STALL_MS, (pendingTimeoutMs ?? 0) + 2 * 60_000);
   if (quiet > allowed) run.state = "stalled";
 }
@@ -287,7 +373,7 @@ function readSession(file: string, now: number): Run {
       prompt: head.prompt ? oneLine(head.prompt, 400) : undefined,
       activity: logActivity(file, now),
     };
-    applyStall(run, tail.pendingTimeoutMs, now);
+    applyStall(run, tail.pendingTimeoutMs, now, newestMtime(tail.pendingOutputs));
     return run;
   } catch (err) {
     return { ...base, error: `could not read: ${(err as Error).message}` };
@@ -318,7 +404,7 @@ function readSubagent(file: string, now: number): Run {
       prompt: head.prompt ? oneLine(head.prompt, 400) : undefined,
       activity: logActivity(file, now),
     };
-    applyStall(run, tail.pendingTimeoutMs, now);
+    applyStall(run, tail.pendingTimeoutMs, now, newestMtime(tail.pendingOutputs));
     return run;
   } catch (err) {
     return { ...base, error: `could not read: ${(err as Error).message}` };

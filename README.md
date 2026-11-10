@@ -231,7 +231,7 @@ parawatch reads agent logs. It never writes to them and never sends them anywher
 | Claude Code | `~/.claude/projects/*/<session>.jsonl` and `<session>/subagents/` (or `$CLAUDE_CONFIG_DIR`) | sessions with their title, subagents with their description and model, the tool in flight |
 | Codex | `~/.codex/sessions/` (or `$CODEX_HOME`) | `codex exec` jobs and interactive sessions with their prompt and last tool call; jobs started from a Claude Code session show under it |
 
-States: `●` working, `◐` waiting, `○` idle, `✓` done (a finished subagent, or a session that claimed `--done`), `!` stalled (quiet longer than its tool's timeout allows, or a declared job past its heartbeat), `✗` failed.
+States: `●` working, `◐` waiting, `○` idle, `✓` done (a finished subagent, or a session that claimed `--done`), `!` stalled (quiet longer than its tool's timeout allows, counting a waited-on background job's output file as activity, or a declared job past its heartbeat), `✗` failed. A Claude Code run whose turn ended while a background shell job is still running (no completion notice or stop yet) counts as working, not idle or done.
 
 A run belongs to a project by, in order: a claim; its working directory, unless it only edits files of another project; its parent's project; the project whose files it edits most; a project path named in its first prompt. Runs that match nothing show under `other`. `--wide` marks the guesses (`~edits`, `~prompt`).
 

@@ -1,5 +1,8 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { readClaudeTail } from "../src/adapters/claudeCode.js";
+import { applyStall, claudeCode, newestMtime, readClaudeTail } from "../src/adapters/claudeCode.js";
 import { parentFromCwd, promptFromRaw, readCodexLog } from "../src/adapters/codex.js";
 import { activeMinutes, timestampsIn, textValues } from "../src/adapters/jsonl.js";
 
@@ -36,6 +39,115 @@ describe("claude code transcripts", () => {
   it("ignores meta records when judging state", () => {
     const r = readClaudeTail([assistant(1, [{ type: "text", text: "ok" }]), { ...user(2, "<local-command-caveat>"), isMeta: true }], "session");
     expect(r.state).toBe("idle");
+  });
+});
+
+describe("background jobs", () => {
+  const OUT = "/tmp/claude-1/proj/sess/tasks/bjob1.output";
+  const bash = assistant(1, [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "node tour.js", run_in_background: true } }]);
+  const started = user(2, [
+    { type: "tool_result", tool_use_id: "t1", content: `Command running in background with ID: bjob1. Output is being written to: ${OUT}. You will be notified when it completes.` },
+  ]);
+  const movedWin = user(2, [
+    {
+      type: "tool_result",
+      tool_use_id: "t1",
+      content: "Command was moved to the background (ID: bjob1) after running for 180s. Output is being written to: C:\\Users\\x\\AppData\\Local\\Temp\\claude\\abc\\tasks\\bjob1.output. You will be notified when it completes. It is running now: node tour.js",
+    },
+  ]);
+  const waitingText = assistant(3, [{ type: "text", text: "Tour is running. Waiting for the completion notice?" }]);
+  const notice = (status: string) =>
+    user(4, `<task-notification>\n<task-id>bjob1</task-id>\n<tool-use-id>t1</tool-use-id>\n<output-file>${OUT}</output-file>\n<status>${status}</status>\n<summary>Background command completed</summary>\n</task-notification>`);
+  const closing = assistant(5, [{ type: "text", text: "Tour finished." }]);
+
+  it("a turn that ends with a job still running is working, not done", () => {
+    for (const kind of ["subagent", "session"] as const) {
+      const r = readClaudeTail([user(0, "run it"), bash, started, waitingText], kind);
+      expect(r.state).toBe("working");
+      expect(r.action).toContain("waiting for a background job");
+      expect(r.action).toContain("node tour.js");
+      expect(r.asks).toBeUndefined();
+      expect(r.pendingOutputs).toEqual([OUT]);
+    }
+  });
+
+  it("reads a command moved to the background after a timeout", () => {
+    const r = readClaudeTail([user(0, "run it"), bash, movedWin, waitingText], "subagent");
+    expect(r.state).toBe("working");
+    expect(r.pendingOutputs).toEqual(["C:\\Users\\x\\AppData\\Local\\Temp\\claude\\abc\\tasks\\bjob1.output"]);
+  });
+
+  it("a completion notice ends the wait", () => {
+    const recs = [user(0, "run it"), bash, started, waitingText, notice("completed"), closing];
+    expect(readClaudeTail(recs, "subagent")).toMatchObject({ state: "done" });
+    expect(readClaudeTail(recs, "session")).toMatchObject({ state: "idle" });
+    const queued = { type: "queue-operation", operation: "enqueue", timestamp: ts(4), content: (notice("completed").message as { content: string }).content };
+    expect(readClaudeTail([...recs.slice(0, 4), queued, closing], "subagent").state).toBe("done");
+    expect(readClaudeTail([...recs.slice(0, 4), notice("failed"), closing], "subagent").state).toBe("done");
+  });
+
+  it("a notice is not a human prompt", () => {
+    const r = readClaudeTail([user(0, "run it"), bash, started, waitingText, { ...notice("completed"), origin: { kind: "task-notification" } }], "session");
+    expect(r.lastPromptAt).toBe(ts(0));
+  });
+
+  it("a monitor event without a status does not end the job", () => {
+    const ev = user(4, "<task-notification>\n<task-id>bjob1</task-id>\n<summary>Monitor event</summary>\n</task-notification>");
+    expect(readClaudeTail([user(0, "go"), bash, started, ev, closing], "subagent").state).toBe("working");
+  });
+
+  it("TaskStop ends the wait", () => {
+    const stop = assistant(4, [{ type: "tool_use", id: "t2", name: "TaskStop", input: { task_id: "bjob1" } }]);
+    const stopped = user(4, [{ type: "tool_result", tool_use_id: "t2", content: "stopped" }]);
+    expect(readClaudeTail([user(0, "go"), bash, started, stop, stopped, closing], "subagent").state).toBe("done");
+  });
+
+  it("a job that started before the tail is unknown", () => {
+    expect(readClaudeTail([waitingText], "subagent").state).toBe("done");
+  });
+
+  describe("stall", () => {
+    const now = Date.parse(ts(0)) + 25 * 60_000;
+    const run = () => ({ state: "working", lastActivity: ts(0) }) as Parameters<typeof applyStall>[0];
+
+    it("a fresh output file counts as activity, a stale one does not", () => {
+      const a = run();
+      applyStall(a, undefined, now, now - 60_000);
+      expect(a.state).toBe("working");
+      const b = run();
+      applyStall(b, undefined, now, now - 21 * 60_000);
+      expect(b.state).toBe("stalled");
+    });
+
+    it("an output path that does not exist falls back to the log", () => {
+      expect(newestMtime(["/no/such/dir/x.output"])).toBeUndefined();
+      const a = run();
+      applyStall(a, undefined, now, newestMtime(["/no/such/dir/x.output"]));
+      expect(a.state).toBe("stalled");
+    });
+
+    it("scan uses the output file of a waiting subagent", () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "parawatch-bg-"));
+      const out = path.join(dir, "bjob1.output");
+      fs.writeFileSync(out, "log\n");
+      const sub = path.join(dir, "projects", "-work-app", "sess", "subagents");
+      fs.mkdirSync(sub, { recursive: true });
+      const startedHere = user(2, [{ type: "tool_result", tool_use_id: "t1", content: `Command running in background with ID: bjob1. Output is being written to: ${out}. You will be notified when it completes.` }]);
+      fs.writeFileSync(path.join(sub, "agent-a1.jsonl"), [user(0, "run it"), bash, startedHere, waitingText].map((r) => JSON.stringify(r)).join("\n") + "\n");
+      process.env.PARAWATCH_CLAUDE_DIR = path.join(dir, "projects");
+      const scan = (nowMs: number) => claudeCode.scan({ now: nowMs, sinceMs: 0 } as Parameters<typeof claudeCode.scan>[0]).find((r) => r.id === "a1")!;
+      // the transcript is 25 minutes old but the output file was just written
+      expect(scan(Date.parse(ts(3)) + 25 * 60_000).state).toBe("working");
+      // the output file is old too
+      const old = new Date(Date.parse(ts(3)) - 60_000);
+      fs.utimesSync(out, old, old);
+      expect(scan(Date.parse(ts(3)) + 25 * 60_000).state).toBe("stalled");
+      // the output file is gone: the log decides
+      fs.unlinkSync(out);
+      expect(scan(Date.parse(ts(3)) + 25 * 60_000).state).toBe("stalled");
+      expect(scan(Date.parse(ts(3)) + 5 * 60_000).state).toBe("working");
+      delete process.env.PARAWATCH_CLAUDE_DIR;
+    });
   });
 });
 
