@@ -1,0 +1,176 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 664" width="900" height="664" role="img" aria-label="Left: a laptop and a desktop PC, each running Claude Code and Codex sessions that look alike, some with subagents under them and three with a question left in the chat, and GitHub with two open pull requests. Right: one parawatch board with what needs you, the pull requests that wait on others, and every session by project with its subagents, its state, a timeline of the last hour and its machine.">
+<text x="0" y="22" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#16181c" text-anchor="start">Everywhere your agents run</text>
+<text x="400" y="22" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#16181c" text-anchor="start">One board</text>
+<rect x="0.5" y="40.5" width="299" height="223" rx="12" fill="#f3f4f6" stroke="#e2e4e8"/>
+<text x="16" y="66" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#16181c" text-anchor="start">Laptop</text>
+<text x="16" y="90" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#5a6069" text-anchor="start">Claude Code</text>
+<text x="156" y="90" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#5a6069" text-anchor="start">Codex</text>
+<rect x="16.5" y="100.5" width="127" height="29" rx="7" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="26" y="109" width="66" height="5" rx="2.5" fill="#d5d8de"/><rect x="26" y="119" width="42" height="5" rx="2.5" fill="#d5d8de"/>
+<circle cx="128" cy="115.0" r="9" fill="#f6ecd3"/>
+<text x="128" y="119.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#a16207" text-anchor="middle">?</text>
+<path d="M24 130V147H32" fill="none" stroke="#d5d8de" stroke-width="1.5"/>
+<rect x="32.5" y="136.5" width="111" height="21" rx="6" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="41" y="144.5" width="58" height="5" rx="2.5" fill="#d5d8de"/>
+<path d="M24 158V173H32" fill="none" stroke="#d5d8de" stroke-width="1.5"/>
+<rect x="32.5" y="162.5" width="111" height="21" rx="6" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="41" y="170.5" width="70" height="5" rx="2.5" fill="#d5d8de"/>
+<path d="M24 184V199H32" fill="none" stroke="#d5d8de" stroke-width="1.5"/>
+<rect x="32.5" y="188.5" width="111" height="21" rx="6" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="41" y="196.5" width="46" height="5" rx="2.5" fill="#d5d8de"/>
+<rect x="16.5" y="216.5" width="127" height="29" rx="7" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="26" y="225" width="60" height="5" rx="2.5" fill="#d5d8de"/><rect x="26" y="235" width="48" height="5" rx="2.5" fill="#d5d8de"/>
+<rect x="156.5" y="100.5" width="127" height="29" rx="7" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="166" y="109" width="54" height="5" rx="2.5" fill="#d5d8de"/><rect x="166" y="119" width="62" height="5" rx="2.5" fill="#d5d8de"/>
+<rect x="156.5" y="138.5" width="127" height="29" rx="7" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="166" y="147" width="72" height="5" rx="2.5" fill="#d5d8de"/><rect x="166" y="157" width="38" height="5" rx="2.5" fill="#d5d8de"/>
+<circle cx="268" cy="153.0" r="9" fill="#f6ecd3"/>
+<text x="268" y="157.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#a16207" text-anchor="middle">?</text>
+<rect x="156.5" y="176.5" width="127" height="29" rx="7" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="166" y="185" width="60" height="5" rx="2.5" fill="#d5d8de"/><rect x="166" y="195" width="50" height="5" rx="2.5" fill="#d5d8de"/>
+<rect x="156.5" y="214.5" width="127" height="29" rx="7" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="166" y="223" width="48" height="5" rx="2.5" fill="#d5d8de"/><rect x="166" y="233" width="66" height="5" rx="2.5" fill="#d5d8de"/>
+<rect x="0.5" y="280.5" width="299" height="223" rx="12" fill="#f3f4f6" stroke="#e2e4e8"/>
+<text x="16" y="306" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#16181c" text-anchor="start">Desktop PC</text>
+<text x="16" y="330" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#5a6069" text-anchor="start">Claude Code</text>
+<text x="156" y="330" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#5a6069" text-anchor="start">Codex</text>
+<rect x="16.5" y="340.5" width="127" height="29" rx="7" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="26" y="349" width="72" height="5" rx="2.5" fill="#d5d8de"/><rect x="26" y="359" width="46" height="5" rx="2.5" fill="#d5d8de"/>
+<path d="M24 370V387H32" fill="none" stroke="#d5d8de" stroke-width="1.5"/>
+<rect x="32.5" y="376.5" width="111" height="21" rx="6" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="41" y="384.5" width="62" height="5" rx="2.5" fill="#d5d8de"/>
+<rect x="16.5" y="404.5" width="127" height="29" rx="7" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="26" y="413" width="56" height="5" rx="2.5" fill="#d5d8de"/><rect x="26" y="423" width="64" height="5" rx="2.5" fill="#d5d8de"/>
+<circle cx="128" cy="419.0" r="9" fill="#f6ecd3"/>
+<text x="128" y="423.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#a16207" text-anchor="middle">?</text>
+<rect x="16.5" y="442.5" width="127" height="29" rx="7" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="26" y="451" width="68" height="5" rx="2.5" fill="#d5d8de"/><rect x="26" y="461" width="40" height="5" rx="2.5" fill="#d5d8de"/>
+<rect x="156.5" y="340.5" width="127" height="29" rx="7" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="166" y="349" width="64" height="5" rx="2.5" fill="#d5d8de"/><rect x="166" y="359" width="44" height="5" rx="2.5" fill="#d5d8de"/>
+<rect x="156.5" y="378.5" width="127" height="29" rx="7" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="166" y="387" width="50" height="5" rx="2.5" fill="#d5d8de"/><rect x="166" y="397" width="58" height="5" rx="2.5" fill="#d5d8de"/>
+<rect x="156.5" y="416.5" width="127" height="29" rx="7" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="166" y="425" width="70" height="5" rx="2.5" fill="#d5d8de"/><rect x="166" y="435" width="40" height="5" rx="2.5" fill="#d5d8de"/>
+<rect x="156.5" y="454.5" width="127" height="29" rx="7" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="166" y="463" width="58" height="5" rx="2.5" fill="#d5d8de"/><rect x="166" y="473" width="52" height="5" rx="2.5" fill="#d5d8de"/>
+<rect x="0.5" y="520.5" width="299" height="127" rx="12" fill="#f3f4f6" stroke="#e2e4e8"/>
+<text x="16" y="546" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#16181c" text-anchor="start">GitHub</text>
+<text x="70" y="546" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#5a6069" text-anchor="start">pull requests</text>
+<rect x="16.5" y="562.5" width="267" height="29" rx="7" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="26" y="574.5" width="84" height="5" rx="2.5" fill="#d5d8de"/>
+<text x="272" y="581.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#dc2f3c" text-anchor="end">merge queue</text>
+<rect x="16.5" y="600.5" width="267" height="29" rx="7" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="26" y="612.5" width="66" height="5" rx="2.5" fill="#d5d8de"/>
+<text x="272" y="619.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#5a6069" text-anchor="end">review</text>
+<path d="M310 152H390m-8-6l8 6-8 6" fill="none" stroke="#9399a2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="350" y="142" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#5a6069" text-anchor="middle">agent logs</text>
+<path d="M310 392H390m-8-6l8 6-8 6" fill="none" stroke="#9399a2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="350" y="382" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#5a6069" text-anchor="middle">synced folder</text>
+<path d="M310 584H390m-8-6l8 6-8 6" fill="none" stroke="#9399a2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="350" y="574" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#5a6069" text-anchor="middle">gh</text>
+<rect x="400.5" y="40.5" width="499" height="607" rx="12" fill="#f3f4f6" stroke="#e2e4e8"/>
+<text x="416" y="66" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#16181c" text-anchor="start">Needs you</text>
+<rect x="494.4" y="53" width="24" height="18" rx="9" fill="#2b6cf0"/>
+<text x="506.4" y="66.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#ffffff" text-anchor="middle">3</text>
+<text x="884" y="66" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#9399a2" text-anchor="end">cards, and questions left in a chat</text>
+<rect x="416.5" y="80.5" width="467" height="33" rx="8" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="425" y="86" width="22" height="22" rx="6" fill="#e6eefe"/>
+<path d="M436 103v-5l-4.5-5.5M436 98l4.5-5.5" fill="none" stroke="#2b6cf0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="456" y="101.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#16181c" text-anchor="start">Which ending for the shake box?</text>
+<rect x="837.5" y="87.5" width="34" height="19" rx="9.5" fill="none" stroke="#e2e4e8"/>
+<text x="854.5" y="101" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#5a6069" text-anchor="middle">mac</text>
+<text x="829" y="101.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#5a6069" text-anchor="end">game</text>
+<rect x="416.5" y="120.5" width="467" height="33" rx="8" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="425" y="126" width="22" height="22" rx="6" fill="#dcf3ef"/>
+<path d="M429 137q7-6.5 14 0q-7 6.5-14 0z" fill="none" stroke="#0e9384" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="436" cy="137" r="1.9" fill="#0e9384"/>
+<text x="456" y="141.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#16181c" text-anchor="start">Try build 139</text>
+<rect x="844.5" y="127.5" width="27" height="19" rx="9.5" fill="none" stroke="#e2e4e8"/>
+<text x="858.0" y="141" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#5a6069" text-anchor="middle">pc</text>
+<text x="836" y="141.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#5a6069" text-anchor="end">game</text>
+<rect x="416.5" y="160.5" width="467" height="33" rx="8" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="425" y="166" width="22" height="22" rx="6" fill="#f6ecd3"/>
+<path d="M430.5 171.5h11a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5h-6l-3 3v-3h-2a1.5 1.5 0 0 1-1.5-1.5v-6a1.5 1.5 0 0 1 1.5-1.5z" fill="none" stroke="#a16207" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="456" y="181.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#16181c" text-anchor="start">Publish now, or wait for the photos?</text>
+<rect x="837.5" y="167.5" width="34" height="19" rx="9.5" fill="none" stroke="#e2e4e8"/>
+<text x="854.5" y="181" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#5a6069" text-anchor="middle">mac</text>
+<text x="829" y="181.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#a16207" text-anchor="end">asked in chat</text>
+<text x="416" y="226" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#16181c" text-anchor="start">Waiting on others</text>
+<text x="884" y="226" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#9399a2" text-anchor="end">reviews, CI, the merge queue</text>
+<rect x="416.5" y="240.5" width="467" height="33" rx="8" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="425" y="246" width="22" height="22" rx="6" fill="#eceef1"/>
+<circle cx="432" cy="252" r="2" fill="none" stroke="#5a6069" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="432" cy="262" r="2" fill="none" stroke="#5a6069" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="440" cy="262" r="2" fill="none" stroke="#5a6069" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M432 254v6M440 260v-4q0-4-4-4" fill="none" stroke="#5a6069" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="456" y="261.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#16181c" text-anchor="start">marble-box#139</text>
+<text x="872" y="261.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#dc2f3c" text-anchor="end">stuck in merge queue, 9h</text>
+<rect x="416.5" y="280.5" width="467" height="33" rx="8" fill="#ffffff" stroke="#e2e4e8"/>
+<rect x="425" y="286" width="22" height="22" rx="6" fill="#eceef1"/>
+<circle cx="432" cy="292" r="2" fill="none" stroke="#5a6069" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="432" cy="302" r="2" fill="none" stroke="#5a6069" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="440" cy="302" r="2" fill="none" stroke="#5a6069" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M432 294v6M440 300v-4q0-4-4-4" fill="none" stroke="#5a6069" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="456" y="301.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#16181c" text-anchor="start">ear-trainer#22</text>
+<text x="872" y="301.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#5a6069" text-anchor="end">review, 5h</text>
+<text x="416" y="346" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#16181c" text-anchor="start">Agents</text>
+<text x="472" y="346" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#9399a2" text-anchor="start">by project, with their subagents</text>
+<text x="668" y="346" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#9399a2" text-anchor="start">−60m</text>
+<text x="746.0" y="346" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#9399a2" text-anchor="middle">−30m</text>
+<text x="824" y="346" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#9399a2" text-anchor="end">now</text>
+<text x="416" y="368" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#5a6069" text-anchor="start">game</text>
+<rect x="416.5" y="376.5" width="467" height="151" rx="8" fill="#ffffff" stroke="#e2e4e8"/>
+<path d="M668 377V527M746.0 377V527" fill="none" stroke="#e2e4e8"/>
+<path d="M824 377V527" fill="none" stroke="#2b6cf0" stroke-width="1.5"/>
+<path d="M433 400V503" fill="none" stroke="#d5d8de" stroke-width="1.5"/>
+<circle cx="433" cy="389" r="4.5" fill="#2b6cf0"/>
+<text x="448" y="393.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#16181c" text-anchor="start">Game Director</text>
+<text x="448" y="407" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#5a6069" text-anchor="start">Claude Code · Wait for answers</text>
+<rect x="671.1" y="392" width="25.0" height="6" rx="3" fill="#d5d8de"/>
+<rect x="714.8" y="392" width="34.3" height="6" rx="3" fill="#d5d8de"/>
+<rect x="774.1" y="392" width="18.7" height="6" rx="3" fill="#d5d8de"/>
+<rect x="808.4" y="392" width="15.6" height="6" rx="3" fill="#2b6cf0"/>
+<rect x="837.5" y="385.5" width="34" height="19" rx="9.5" fill="none" stroke="#e2e4e8"/>
+<text x="854.5" y="399" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#5a6069" text-anchor="middle">mac</text>
+<line x1="417" y1="414" x2="883" y2="414" stroke="#e2e4e8" stroke-opacity="0.6"/>
+<path d="M433 427H444" fill="none" stroke="#d5d8de" stroke-width="1.5"/>
+<circle cx="453" cy="427" r="4.5" fill="#2b6cf0"/>
+<text x="468" y="431.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#16181c" text-anchor="start">139 shake round 2</text>
+<text x="468" y="445" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#5a6069" text-anchor="start">subagent · Bash: Run tests</text>
+<rect x="714.8" y="430" width="49.9" height="6" rx="3" fill="#d5d8de"/>
+<rect x="780.3" y="430" width="43.7" height="6" rx="3" fill="#2b6cf0"/>
+<rect x="837.5" y="423.5" width="34" height="19" rx="9.5" fill="none" stroke="#e2e4e8"/>
+<text x="854.5" y="437" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#5a6069" text-anchor="middle">mac</text>
+<line x1="417" y1="452" x2="883" y2="452" stroke="#e2e4e8" stroke-opacity="0.6"/>
+<path d="M433 465H444" fill="none" stroke="#d5d8de" stroke-width="1.5"/>
+<circle cx="453" cy="465" r="4.5" fill="#2b6cf0"/>
+<text x="468" y="469.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#16181c" text-anchor="start">Generate the level icons</text>
+<text x="468" y="483" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#5a6069" text-anchor="start">codex exec · make_icons.py</text>
+<rect x="749.1" y="468" width="34.3" height="6" rx="3" fill="#d5d8de"/>
+<rect x="795.9" y="468" width="28.1" height="6" rx="3" fill="#2b6cf0"/>
+<rect x="837.5" y="461.5" width="34" height="19" rx="9.5" fill="none" stroke="#e2e4e8"/>
+<text x="854.5" y="475" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#5a6069" text-anchor="middle">mac</text>
+<line x1="417" y1="490" x2="883" y2="490" stroke="#e2e4e8" stroke-opacity="0.6"/>
+<path d="M433 503H444" fill="none" stroke="#d5d8de" stroke-width="1.5"/>
+<text x="453" y="508" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#dc2f3c" text-anchor="middle">!</text>
+<text x="468" y="507.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#16181c" text-anchor="start">Overnight benchmark</text>
+<text x="468" y="521" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#dc2f3c" text-anchor="start">stalled · quiet for 24m</text>
+<rect x="680.5" y="506" width="81.1" height="6" rx="3" fill="#d5d8de"/>
+<rect x="837.5" y="499.5" width="34" height="19" rx="9.5" fill="none" stroke="#e2e4e8"/>
+<text x="854.5" y="513" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#5a6069" text-anchor="middle">mac</text>
+<text x="416" y="548" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#5a6069" text-anchor="start">app</text>
+<rect x="416.5" y="556.5" width="467" height="75" rx="8" fill="#ffffff" stroke="#e2e4e8"/>
+<path d="M668 557V631M746.0 557V631" fill="none" stroke="#e2e4e8"/>
+<path d="M824 557V631" fill="none" stroke="#2b6cf0" stroke-width="1.5"/>
+<path d="M433 580V607" fill="none" stroke="#d5d8de" stroke-width="1.5"/>
+<circle cx="433" cy="569" r="4" fill="none" stroke="#9399a2" stroke-width="1.5"/>
+<text x="448" y="573.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#16181c" text-anchor="start">App Director</text>
+<text x="448" y="587" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#5a6069" text-anchor="start">Claude Code · PR 18 passed</text>
+<rect x="675.8" y="572" width="23.4" height="6" rx="3" fill="#d5d8de"/>
+<rect x="733.5" y="572" width="15.6" height="6" rx="3" fill="#d5d8de"/>
+<rect x="755.4" y="572" width="9.4" height="6" rx="3" fill="#d5d8de"/>
+<rect x="844.5" y="565.5" width="27" height="19" rx="9.5" fill="none" stroke="#e2e4e8"/>
+<text x="858.0" y="579" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#5a6069" text-anchor="middle">pc</text>
+<line x1="417" y1="594" x2="883" y2="594" stroke="#e2e4e8" stroke-opacity="0.6"/>
+<path d="M433 607H444" fill="none" stroke="#d5d8de" stroke-width="1.5"/>
+<circle cx="453" cy="607" r="4.5" fill="#2b6cf0"/>
+<text x="468" y="611.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#16181c" text-anchor="start">Interval lesson screen</text>
+<text x="468" y="625" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#5a6069" text-anchor="start">subagent · Bash: Build the app</text>
+<rect x="699.2" y="610" width="78.0" height="6" rx="3" fill="#d5d8de"/>
+<rect x="789.7" y="610" width="34.3" height="6" rx="3" fill="#2b6cf0"/>
+<rect x="844.5" y="603.5" width="27" height="19" rx="9.5" fill="none" stroke="#e2e4e8"/>
+<text x="858.0" y="617" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#5a6069" text-anchor="middle">pc</text>
+</svg>
