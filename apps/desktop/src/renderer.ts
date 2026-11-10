@@ -93,14 +93,23 @@ const settings = new SettingsView(
   },
 );
 
+let beforeSettings: HTMLElement | null = null;
+
 function showSettings(on: boolean): void {
+  const was = document.body.classList.contains("is-settings");
+  if (on && !was) beforeSettings = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   document.body.classList.toggle("is-settings", on);
   settingsRoot.hidden = !on;
   if (on) {
     void api.prefs().then((p) => settings.update(p));
     void api.about().then((a) => settings.setAbout(a));
     void api.updateState().then((u) => settings.setUpdate(u));
-    settingsRoot.querySelector<HTMLElement>(".st-close")?.focus();
+    settingsRoot.querySelector<HTMLElement>(".st-back")?.focus();
+  } else if (was) {
+    // Back where the user was: the control that opened settings, or nothing if it is gone.
+    if (beforeSettings?.isConnected) beforeSettings.focus();
+    else if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    beforeSettings = null;
   }
 }
 

@@ -47,12 +47,14 @@ export class SettingsView {
     private actions: AboutActions,
   ) {
     const head = el("div", "st-head", undefined, root);
+    const back = el("button", "st-back", undefined, head);
+    const icon = el("span", "st-back-icon", undefined, back);
+    setIcon(icon, "chevron-left");
+    el("span", undefined, "Back", back);
+    back.title = "Back (Esc)";
+    back.setAttribute("aria-label", "Back to cards");
+    back.onclick = () => this.close();
     el("span", "st-title", "Settings", head);
-    const done = el("button", "pw-icon-btn st-close", undefined, head);
-    setIcon(done, "x");
-    done.title = "Close (Esc)";
-    done.setAttribute("aria-label", "Close settings");
-    done.onclick = () => this.close();
     this.body = el("div", "st-body", undefined, root);
   }
 
