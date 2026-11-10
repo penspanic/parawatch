@@ -208,6 +208,7 @@ export class Panel {
     for (let g = box.closest<HTMLElement>(".pw-fold-group.is-collapsed"); g; g = g.parentElement?.closest<HTMLElement>(".pw-fold-group.is-collapsed") ?? null) {
       g.querySelector<HTMLElement>(":scope > .pw-fold-head")?.click();
     }
+    if (box.classList.contains("is-folded")) box.querySelector<HTMLElement>(":scope > .pw-card-head > .pw-card-fold")?.click();
     box.scrollIntoView({ block: "center", behavior: "smooth" });
     box.classList.add("is-flash");
     window.setTimeout(() => box.classList.remove("is-flash"), 1600);
@@ -354,10 +355,10 @@ export class Panel {
       for (const c of now_) body.appendChild(this.card(c, now));
       if (later.length) {
         // nothing waits on these, so they start folded under a quiet line
-        const todo = this.foldGroup(body, `todo:${project}`, "", true, (head) => {
+        const todo = this.foldGroup(body, `todo:${project}`, "To do", true, (head) => {
           this.badge(head, KIND_ICON.todo, later.length, `${later.length} to do, nothing waits on these`, "pw-kind-todo");
         });
-        todo.parentElement!.classList.add("pw-todo-group");
+        todo.parentElement!.classList.add("pw-todo-group", "pw-nested");
         for (const c of later) todo.appendChild(this.card(c, now));
       }
     }
@@ -389,14 +390,16 @@ export class Panel {
     }
 
     if (answered.length) {
-      const s = el("div", "pw-section", undefined, root);
-      this.badge(s, "hourglass", answered.length, `${answered.length} answered, waiting for the agent`);
-      for (const c of answered) root.appendChild(this.pastCard(c, now));
+      const body = this.foldGroup(root, "answered", "Answered", false, (head) => {
+        this.badge(head, "hourglass", answered.length, `${answered.length} answered, waiting for the agent`);
+      });
+      body.parentElement!.classList.add("pw-answered-group");
+      for (const c of answered) body.appendChild(this.pastCard(c, now));
     }
 
     if (closed.length) {
       // done with, kept so their builds, videos and pictures can be opened again; starts folded
-      const body = this.foldGroup(root, "closed", "", true, (head) => {
+      const body = this.foldGroup(root, "closed", "Closed", true, (head) => {
         this.badge(head, "archive", closed.length, `${closed.length} closed, newest first`);
       });
       body.parentElement!.classList.add("pw-closed-group");
@@ -484,6 +487,24 @@ export class Panel {
       age.dataset.since = start;
       meta.title = opened;
     }
+    this.cardId(c, head);
+  }
+
+  /**
+   * The card's id, as agents name it in chat ("mac-c58"): short for a card from this machine,
+   * whole for one from another. A click copies the whole id.
+   */
+  private cardId(c: Card, head: HTMLElement): void {
+    const b = el("button", "pw-card-id", this.shortId(c.id), head);
+    b.title = `Card ${c.id}. Click to copy the id`;
+    b.setAttribute("aria-label", `Copy card id ${c.id}`);
+    b.onclick = (e) => {
+      e.stopPropagation();
+      void navigator.clipboard.writeText(c.id).then(
+        () => this.host.notice(`Copied ${c.id}`),
+        () => this.host.notice(`Could not copy ${c.id}`),
+      );
+    };
   }
 
   private card(c: Card, now: number): HTMLElement {
@@ -492,10 +513,46 @@ export class Panel {
     const busy = this.busy.has(c.id);
     if (busy) box.classList.add("is-busy");
     this.cardHead(c, box, now, true);
-    el("div", "pw-card-title", c.title, box);
+    const title = el("div", "pw-card-title", c.title, box);
     this.cardDetail(c, box);
     this.reply(c, box, busy);
+    // everything under the title folds away, so a card the human cannot answer yet keeps one line
+    const main = el("div", "pw-card-main");
+    while (title.nextSibling) main.appendChild(title.nextSibling);
+    box.appendChild(main);
+    this.cardFold(c, box, title);
     return box;
+  }
+
+  /** A card folds to its head and title; the choice is kept per card. */
+  private cardFold(c: Card, box: HTMLElement, title: HTMLElement): void {
+    const key = `card:${c.id}`;
+    const head = box.querySelector<HTMLElement>(":scope > .pw-card-head");
+    if (!head) return;
+    const b = el("button", "pw-card-fold clickable-icon", undefined, head);
+    const chevron = el("span", "pw-chevron", undefined, b);
+    this.host.icon(chevron, "chevron-down");
+    const apply = () => {
+      const folded = this.collapsed.has(key);
+      box.classList.toggle("is-folded", folded);
+      b.title = folded ? "Show the card" : "Fold the card to its title";
+      b.setAttribute("aria-label", b.title);
+      b.setAttribute("aria-expanded", String(!folded));
+    };
+    const toggle = () => {
+      if (this.collapsed.has(key)) this.collapsed.delete(key);
+      else this.collapsed.add(key);
+      saveCollapsed(this.collapsed);
+      apply();
+    };
+    b.onclick = (e) => {
+      e.stopPropagation();
+      toggle();
+    };
+    title.onclick = () => {
+      if (box.classList.contains("is-folded")) toggle();
+    };
+    apply();
   }
 
   /** What the card says and carries: body, what to look at, things to open, media, comments. */
@@ -975,6 +1032,36 @@ export class Panel {
     return "terminal";
   }
 
+  /** Open cards this run opened that it may be stopped on (a to-do waits on nothing). */
+  private openCardsOf(r: Run): Card[] {
+    if (r.kind === "declared") return [];
+    const same = (a: string, b: string) => a.startsWith(b) || b.startsWith(a);
+    return (this.snapshot?.cards ?? []).filter((c) => c.status === "open" && c.kind !== "todo" && c.session && same(c.session, r.id));
+  }
+
+  /** A card's id as this machine shows it: short for its own cards. */
+  private shortId(id: string): string {
+    const me = this.snapshot?.devices?.me;
+    return me && id.startsWith(`${me}-`) ? id.slice(me.length + 1) : id;
+  }
+
+  /** The cards a run waits on, at the "now" end of its lane; a click goes to the card. */
+  private laneCards(lane: HTMLElement, cards: Card[]): void {
+    lane.removeAttribute("aria-hidden");
+    const wrap = el("div", "pw-lane-cards", undefined, lane);
+    for (const c of cards.slice(0, 2)) {
+      const b = el("button", `pw-lane-card pw-kind-${c.kind}`, undefined, wrap);
+      this.icon(b, KIND_ICON[c.kind]);
+      el("span", undefined, this.shortId(c.id), b);
+      b.title = `Waits on card ${c.id}: ${c.title}. Click to go to the card`;
+      b.onclick = (e) => {
+        e.stopPropagation();
+        this.focusCard(c.id);
+      };
+    }
+    if (cards.length > 2) el("span", "pw-lane-more", `+${cards.length - 2}`, wrap).title = cards.slice(2).map((c) => `${c.id}: ${c.title}`).join("\n");
+  }
+
   private runRow({ run: r, depth }: RunNode, now: number, at: number): HTMLElement {
     const row = el("div", `pw-run pw-state-${r.state}${r.role === "lead" ? " is-lead" : ""}${depth ? " is-child" : ""}`);
     row.style.setProperty("--pw-depth", String(depth));
@@ -999,20 +1086,27 @@ export class Panel {
         if (e.key === "Enter") go();
       };
     }
+    const cards = this.openCardsOf(r);
+    const waits = cards.length && r.state !== "working" && !r.done;
     const what = r.error
       ? `unreadable: ${r.error}`
-      : r.done
+      : waits
+        ? `waits on ${this.shortId(cards[0]!.id)}: ${clean(cards[0]!.title)}${cards.length > 1 ? ` (+${cards.length - 1})` : ""}`
+        : r.done
         ? `done · ${clean(r.done)}`
         : r.asks
           ? `${r.asks.blocked ? "blocked" : "asks"}: ${clean(r.asks.text)}`
           : clean((r.state === "idle" && r.recap) || r.action);
     if (r.repeats) el("span", "pw-run-repeats", `×${r.repeats + 1}`, text).title = `${r.repeats + 1} runs of this scheduled task; the newest is shown`;
     const sub = el("div", "pw-run-sub", undefined, text);
-    if (r.asks) sub.classList.add(r.asks.blocked ? "is-blocked" : "is-asking");
+    if (waits) sub.classList.add("is-waiting-card");
+    else if (r.asks) sub.classList.add(r.asks.blocked ? "is-blocked" : "is-asking");
     el("span", "pw-run-age", ago(r.lastActivity, now), sub);
     if (r.device) el("span", "pw-run-device", `on ${r.device}`, sub);
     if (what || r.state === "stalled") el("span", "pw-run-action", r.state === "stalled" ? `stalled${what ? ` · ${what}` : ""}` : what, sub);
-    row.appendChild(this.lane(r, at, now));
+    const lane = this.lane(r, at, now);
+    row.appendChild(lane);
+    if (cards.length) this.laneCards(lane, cards);
     const hide = el("button", "pw-run-hide clickable-icon", undefined, row);
     this.host.icon(hide, "eye-off");
     hide.title = "Hide until it does something new";

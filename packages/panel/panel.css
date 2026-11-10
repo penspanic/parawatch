@@ -17,6 +17,7 @@
   --pw-todo: var(--text-muted);
   --pw-bad: var(--color-red, #d64545);
   --pw-who: 42%;
+  --pw-well: color-mix(in srgb, var(--text-normal) 3.5%, transparent);
   font-size: var(--font-ui-small, 13px);
   padding: 4px 2px 24px;
 }
@@ -230,7 +231,8 @@
 .pw-run-hide {
   position: absolute;
   top: 50%;
-  right: 8px;
+  /* at the end of the name column, clear of the lane and the cards it shows */
+  left: calc(var(--pw-who) - 22px);
   transform: translateY(-50%);
   display: none;
   padding: 3px;
@@ -480,6 +482,31 @@
   outline-offset: 2px;
 }
 
+.pw-card-fold {
+  display: inline-flex;
+  padding: 2px;
+  color: var(--text-faint);
+}
+.pw-card-fold:hover {
+  color: var(--text-normal);
+}
+.pw-card.is-folded > .pw-card-head .pw-chevron {
+  transform: rotate(-90deg);
+}
+.pw-card.is-folded {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.pw-card.is-folded > .pw-card-main {
+  display: none;
+}
+.pw-card.is-folded > .pw-card-head {
+  margin-bottom: 4px;
+}
+.pw-card.is-folded > .pw-card-title {
+  font-size: var(--font-ui-small, 13px);
+  cursor: pointer;
+}
 .pw-card-head {
   display: flex;
   align-items: center;
@@ -538,6 +565,20 @@ a.pw-from:hover {
 .pw-card-age {
   margin-left: auto;
   font-variant-numeric: tabular-nums;
+}
+.pw-card-id {
+  padding: 0 4px;
+  border: none;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--text-faint);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+}
+.pw-card-id:hover {
+  color: var(--text-normal);
+  background: var(--pw-hover);
 }
 .pw-card-title {
   font-weight: 650;
@@ -858,8 +899,12 @@ button.pw-round.pw-send:disabled {
 .pw-closed-group {
   margin-top: 18px;
 }
-.pw-closed-group > .pw-fold-head .pw-fold-badges {
+.pw-closed-group > .pw-fold-head .pw-fold-badges,
+.pw-answered-group > .pw-fold-head .pw-fold-badges {
   margin-left: 0;
+}
+.pw-answered-group {
+  margin-top: 18px;
 }
 .pw-answer {
   display: flex;
@@ -877,9 +922,33 @@ button.pw-round.pw-send:disabled {
   height: 13px;
 }
 
-/* the folded to-do line inside a project: the count sits next to its chevron */
-.pw-todo-group > .pw-fold-head .pw-fold-badges {
+/*
+ * A group inside a project's group (its to-dos) is a well: a tinted box whose head is its first
+ * line. Folded, it is one line; opened, the box grows and the cards sit inside it.
+ */
+.pw-nested {
+  margin: 2px 0 var(--pw-gap);
+  padding: 2px 6px;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-radius);
+  background: var(--pw-well);
+}
+.pw-nested > .pw-fold-head {
+  padding: 6px 4px;
+}
+.pw-nested > .pw-fold-head .pw-fold-name {
+  font-weight: var(--font-normal, 400);
+  color: var(--text-muted);
+}
+.pw-nested > .pw-fold-head .pw-fold-badges {
   margin-left: 0;
+}
+.pw-nested > .pw-fold-body {
+  padding: 2px 0 0;
+}
+.pw-nested .pw-card {
+  margin-bottom: 6px;
+  box-shadow: none;
 }
 
 /* ---------------------------------------------------------------- approvals */
@@ -1064,4 +1133,55 @@ a.pw-pr-owner:hover {
 }
 .pw-run-sub.is-blocked .pw-run-action {
   color: var(--color-red);
+}
+
+/* ---------------------------------------------------------------- what a run waits on */
+
+/* the cards a run opened and has no answer for, at the "now" end of its lane */
+.pw-lane-cards {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.pw-lane-card {
+  --pw-k: var(--pw-decide);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px 1px 4px;
+  border: 1px solid color-mix(in srgb, var(--pw-k) 45%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--pw-k) 12%, var(--pw-surface));
+  color: var(--pw-k);
+  font-family: var(--font-monospace);
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+}
+.pw-lane-card:hover {
+  background: color-mix(in srgb, var(--pw-k) 22%, var(--pw-surface));
+}
+.pw-lane-card .pw-icon svg {
+  width: 12px;
+  height: 12px;
+}
+.pw-lane-card.pw-kind-try {
+  --pw-k: var(--pw-try);
+}
+.pw-lane-card.pw-kind-block {
+  --pw-k: var(--pw-block);
+}
+.pw-lane-card.pw-kind-todo {
+  --pw-k: var(--pw-todo);
+}
+.pw-lane-more {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.pw-run-sub.is-waiting-card .pw-run-action {
+  color: var(--pw-decide);
 }
