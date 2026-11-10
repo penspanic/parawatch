@@ -208,6 +208,7 @@ export class Panel {
     for (let g = box.closest<HTMLElement>(".pw-fold-group.is-collapsed"); g; g = g.parentElement?.closest<HTMLElement>(".pw-fold-group.is-collapsed") ?? null) {
       g.querySelector<HTMLElement>(":scope > .pw-fold-head")?.click();
     }
+    if (box.classList.contains("is-folded")) box.querySelector<HTMLElement>(":scope > .pw-card-head > .pw-card-fold")?.click();
     box.scrollIntoView({ block: "center", behavior: "smooth" });
     box.classList.add("is-flash");
     window.setTimeout(() => box.classList.remove("is-flash"), 1600);
@@ -354,10 +355,10 @@ export class Panel {
       for (const c of now_) body.appendChild(this.card(c, now));
       if (later.length) {
         // nothing waits on these, so they start folded under a quiet line
-        const todo = this.foldGroup(body, `todo:${project}`, "", true, (head) => {
+        const todo = this.foldGroup(body, `todo:${project}`, "To do", true, (head) => {
           this.badge(head, KIND_ICON.todo, later.length, `${later.length} to do, nothing waits on these`, "pw-kind-todo");
         });
-        todo.parentElement!.classList.add("pw-todo-group");
+        todo.parentElement!.classList.add("pw-todo-group", "pw-nested");
         for (const c of later) todo.appendChild(this.card(c, now));
       }
     }
@@ -389,14 +390,16 @@ export class Panel {
     }
 
     if (answered.length) {
-      const s = el("div", "pw-section", undefined, root);
-      this.badge(s, "hourglass", answered.length, `${answered.length} answered, waiting for the agent`);
-      for (const c of answered) root.appendChild(this.pastCard(c, now));
+      const body = this.foldGroup(root, "answered", "Answered", false, (head) => {
+        this.badge(head, "hourglass", answered.length, `${answered.length} answered, waiting for the agent`);
+      });
+      body.parentElement!.classList.add("pw-answered-group");
+      for (const c of answered) body.appendChild(this.pastCard(c, now));
     }
 
     if (closed.length) {
       // done with, kept so their builds, videos and pictures can be opened again; starts folded
-      const body = this.foldGroup(root, "closed", "", true, (head) => {
+      const body = this.foldGroup(root, "closed", "Closed", true, (head) => {
         this.badge(head, "archive", closed.length, `${closed.length} closed, newest first`);
       });
       body.parentElement!.classList.add("pw-closed-group");
@@ -512,10 +515,46 @@ export class Panel {
     const busy = this.busy.has(c.id);
     if (busy) box.classList.add("is-busy");
     this.cardHead(c, box, now, true);
-    el("div", "pw-card-title", c.title, box);
+    const title = el("div", "pw-card-title", c.title, box);
     this.cardDetail(c, box);
     this.reply(c, box, busy);
+    // everything under the title folds away, so a card the human cannot answer yet keeps one line
+    const main = el("div", "pw-card-main");
+    while (title.nextSibling) main.appendChild(title.nextSibling);
+    box.appendChild(main);
+    this.cardFold(c, box, title);
     return box;
+  }
+
+  /** A card folds to its head and title; the choice is kept per card. */
+  private cardFold(c: Card, box: HTMLElement, title: HTMLElement): void {
+    const key = `card:${c.id}`;
+    const head = box.querySelector<HTMLElement>(":scope > .pw-card-head");
+    if (!head) return;
+    const b = el("button", "pw-card-fold clickable-icon", undefined, head);
+    const chevron = el("span", "pw-chevron", undefined, b);
+    this.host.icon(chevron, "chevron-down");
+    const apply = () => {
+      const folded = this.collapsed.has(key);
+      box.classList.toggle("is-folded", folded);
+      b.title = folded ? "Show the card" : "Fold the card to its title";
+      b.setAttribute("aria-label", b.title);
+      b.setAttribute("aria-expanded", String(!folded));
+    };
+    const toggle = () => {
+      if (this.collapsed.has(key)) this.collapsed.delete(key);
+      else this.collapsed.add(key);
+      saveCollapsed(this.collapsed);
+      apply();
+    };
+    b.onclick = (e) => {
+      e.stopPropagation();
+      toggle();
+    };
+    title.onclick = () => {
+      if (box.classList.contains("is-folded")) toggle();
+    };
+    apply();
   }
 
   /** What the card says and carries: body, what to look at, things to open, media, comments. */

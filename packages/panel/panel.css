@@ -17,6 +17,7 @@
   --pw-todo: var(--text-muted);
   --pw-bad: var(--color-red, #d64545);
   --pw-who: 42%;
+  --pw-well: color-mix(in srgb, var(--text-normal) 3.5%, transparent);
   font-size: var(--font-ui-small, 13px);
   padding: 4px 2px 24px;
 }
@@ -480,6 +481,31 @@
   outline-offset: 2px;
 }
 
+.pw-card-fold {
+  display: inline-flex;
+  padding: 2px;
+  color: var(--text-faint);
+}
+.pw-card-fold:hover {
+  color: var(--text-normal);
+}
+.pw-card.is-folded > .pw-card-head .pw-chevron {
+  transform: rotate(-90deg);
+}
+.pw-card.is-folded {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.pw-card.is-folded > .pw-card-main {
+  display: none;
+}
+.pw-card.is-folded > .pw-card-head {
+  margin-bottom: 4px;
+}
+.pw-card.is-folded > .pw-card-title {
+  font-size: var(--font-ui-small, 13px);
+  cursor: pointer;
+}
 .pw-card-head {
   display: flex;
   align-items: center;
@@ -872,8 +898,12 @@ button.pw-round.pw-send:disabled {
 .pw-closed-group {
   margin-top: 18px;
 }
-.pw-closed-group > .pw-fold-head .pw-fold-badges {
+.pw-closed-group > .pw-fold-head .pw-fold-badges,
+.pw-answered-group > .pw-fold-head .pw-fold-badges {
   margin-left: 0;
+}
+.pw-answered-group {
+  margin-top: 18px;
 }
 .pw-answer {
   display: flex;
@@ -891,9 +921,33 @@ button.pw-round.pw-send:disabled {
   height: 13px;
 }
 
-/* the folded to-do line inside a project: the count sits next to its chevron */
-.pw-todo-group > .pw-fold-head .pw-fold-badges {
+/*
+ * A group inside a project's group (its to-dos) is a well: a tinted box whose head is its first
+ * line. Folded, it is one line; opened, the box grows and the cards sit inside it.
+ */
+.pw-nested {
+  margin: 2px 0 var(--pw-gap);
+  padding: 2px 6px;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-radius);
+  background: var(--pw-well);
+}
+.pw-nested > .pw-fold-head {
+  padding: 6px 4px;
+}
+.pw-nested > .pw-fold-head .pw-fold-name {
+  font-weight: var(--font-normal, 400);
+  color: var(--text-muted);
+}
+.pw-nested > .pw-fold-head .pw-fold-badges {
   margin-left: 0;
+}
+.pw-nested > .pw-fold-body {
+  padding: 2px 0 0;
+}
+.pw-nested .pw-card {
+  margin-bottom: 6px;
+  box-shadow: none;
 }
 
 /* ---------------------------------------------------------------- approvals */
