@@ -495,9 +495,7 @@ export class Panel {
    * whole for one from another. A click copies the whole id.
    */
   private cardId(c: Card, head: HTMLElement): void {
-    const me = this.snapshot?.devices?.me;
-    const short = me && c.id.startsWith(`${me}-`) ? c.id.slice(me.length + 1) : c.id;
-    const b = el("button", "pw-card-id", short, head);
+    const b = el("button", "pw-card-id", this.shortId(c.id), head);
     b.title = `Card ${c.id}. Click to copy the id`;
     b.setAttribute("aria-label", `Copy card id ${c.id}`);
     b.onclick = (e) => {
@@ -1034,6 +1032,36 @@ export class Panel {
     return "terminal";
   }
 
+  /** Open cards this run opened that it may be stopped on (a to-do waits on nothing). */
+  private openCardsOf(r: Run): Card[] {
+    if (r.kind === "declared") return [];
+    const same = (a: string, b: string) => a.startsWith(b) || b.startsWith(a);
+    return (this.snapshot?.cards ?? []).filter((c) => c.status === "open" && c.kind !== "todo" && c.session && same(c.session, r.id));
+  }
+
+  /** A card's id as this machine shows it: short for its own cards. */
+  private shortId(id: string): string {
+    const me = this.snapshot?.devices?.me;
+    return me && id.startsWith(`${me}-`) ? id.slice(me.length + 1) : id;
+  }
+
+  /** The cards a run waits on, at the "now" end of its lane; a click goes to the card. */
+  private laneCards(lane: HTMLElement, cards: Card[]): void {
+    lane.removeAttribute("aria-hidden");
+    const wrap = el("div", "pw-lane-cards", undefined, lane);
+    for (const c of cards.slice(0, 2)) {
+      const b = el("button", `pw-lane-card pw-kind-${c.kind}`, undefined, wrap);
+      this.icon(b, KIND_ICON[c.kind]);
+      el("span", undefined, this.shortId(c.id), b);
+      b.title = `Waits on card ${c.id}: ${c.title}. Click to go to the card`;
+      b.onclick = (e) => {
+        e.stopPropagation();
+        this.focusCard(c.id);
+      };
+    }
+    if (cards.length > 2) el("span", "pw-lane-more", `+${cards.length - 2}`, wrap).title = cards.slice(2).map((c) => `${c.id}: ${c.title}`).join("\n");
+  }
+
   private runRow({ run: r, depth }: RunNode, now: number, at: number): HTMLElement {
     const row = el("div", `pw-run pw-state-${r.state}${r.role === "lead" ? " is-lead" : ""}${depth ? " is-child" : ""}`);
     row.style.setProperty("--pw-depth", String(depth));
@@ -1058,20 +1086,27 @@ export class Panel {
         if (e.key === "Enter") go();
       };
     }
+    const cards = this.openCardsOf(r);
+    const waits = cards.length && r.state !== "working" && !r.done;
     const what = r.error
       ? `unreadable: ${r.error}`
-      : r.done
+      : waits
+        ? `waits on ${this.shortId(cards[0]!.id)}: ${clean(cards[0]!.title)}${cards.length > 1 ? ` (+${cards.length - 1})` : ""}`
+        : r.done
         ? `done · ${clean(r.done)}`
         : r.asks
           ? `${r.asks.blocked ? "blocked" : "asks"}: ${clean(r.asks.text)}`
           : clean((r.state === "idle" && r.recap) || r.action);
     if (r.repeats) el("span", "pw-run-repeats", `×${r.repeats + 1}`, text).title = `${r.repeats + 1} runs of this scheduled task; the newest is shown`;
     const sub = el("div", "pw-run-sub", undefined, text);
-    if (r.asks) sub.classList.add(r.asks.blocked ? "is-blocked" : "is-asking");
+    if (waits) sub.classList.add("is-waiting-card");
+    else if (r.asks) sub.classList.add(r.asks.blocked ? "is-blocked" : "is-asking");
     el("span", "pw-run-age", ago(r.lastActivity, now), sub);
     if (r.device) el("span", "pw-run-device", `on ${r.device}`, sub);
     if (what || r.state === "stalled") el("span", "pw-run-action", r.state === "stalled" ? `stalled${what ? ` · ${what}` : ""}` : what, sub);
-    row.appendChild(this.lane(r, at, now));
+    const lane = this.lane(r, at, now);
+    row.appendChild(lane);
+    if (cards.length) this.laneCards(lane, cards);
     const hide = el("button", "pw-run-hide clickable-icon", undefined, row);
     this.host.icon(hide, "eye-off");
     hide.title = "Hide until it does something new";

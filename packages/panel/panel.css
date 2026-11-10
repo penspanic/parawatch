@@ -231,7 +231,8 @@
 .pw-run-hide {
   position: absolute;
   top: 50%;
-  right: 8px;
+  /* at the end of the name column, clear of the lane and the cards it shows */
+  left: calc(var(--pw-who) - 22px);
   transform: translateY(-50%);
   display: none;
   padding: 3px;
@@ -1132,4 +1133,55 @@ a.pw-pr-owner:hover {
 }
 .pw-run-sub.is-blocked .pw-run-action {
   color: var(--color-red);
+}
+
+/* ---------------------------------------------------------------- what a run waits on */
+
+/* the cards a run opened and has no answer for, at the "now" end of its lane */
+.pw-lane-cards {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.pw-lane-card {
+  --pw-k: var(--pw-decide);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px 1px 4px;
+  border: 1px solid color-mix(in srgb, var(--pw-k) 45%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--pw-k) 12%, var(--pw-surface));
+  color: var(--pw-k);
+  font-family: var(--font-monospace);
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+}
+.pw-lane-card:hover {
+  background: color-mix(in srgb, var(--pw-k) 22%, var(--pw-surface));
+}
+.pw-lane-card .pw-icon svg {
+  width: 12px;
+  height: 12px;
+}
+.pw-lane-card.pw-kind-try {
+  --pw-k: var(--pw-try);
+}
+.pw-lane-card.pw-kind-block {
+  --pw-k: var(--pw-block);
+}
+.pw-lane-card.pw-kind-todo {
+  --pw-k: var(--pw-todo);
+}
+.pw-lane-more {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.pw-run-sub.is-waiting-card .pw-run-action {
+  color: var(--pw-decide);
 }
