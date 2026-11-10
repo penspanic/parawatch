@@ -85,6 +85,7 @@ export function fold(events: PwEvent[], map?: PathMap): State {
         c.status = "closed";
         c.closedAt = ev.ts;
         c.closeNote = ev.note;
+        if (ev.dismissed) c.dismissed = true;
         break;
       }
       case "run.start":

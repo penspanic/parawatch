@@ -241,6 +241,16 @@ export function closeCard(id: string, note?: string): void {
   appendEvent(() => ({ type: "card.close", card: card.id, note: note?.trim() || undefined }));
 }
 
+/**
+ * The human drops a card that no longer matters, without answering it. It closes, and the agent
+ * that asked reads that it was dismissed (a wait wakes for it), so nothing waits on it forever.
+ */
+export function dismissCard(id: string, note?: string): void {
+  const card = requireCard(id);
+  if (card.status === "closed") throw new UserError(`card ${card.id} is already closed`);
+  appendEvent(() => ({ type: "card.close", card: card.id, note: note?.trim() || undefined, dismissed: true }));
+}
+
 export interface RunInput {
   project: string;
   task?: string;
@@ -371,7 +381,7 @@ export interface InboxItem {
   /** the machine whose log holds it (with `seq`, where a reader has read up to) */
   dev?: string;
   at: string;
-  kind: "answer" | "comment" | "pr";
+  kind: "answer" | "comment" | "dismissed" | "pr";
   /** the card answered or commented on; absent for pull request news */
   card?: Card;
   /** pull request news for a PR linked to the project */
@@ -453,6 +463,15 @@ export function inboxFrom(events: PwEvent[], after: Position | number, filter: I
       const link = state.prLinks.get(ev.pr.key);
       if (!link || filter.card || !inScope(link.session, link.project, filter, ended)) continue;
       out.push({ seq: ev.seq, dev: ev.dev, at: ev.ts, kind: "pr", by: ev.by ?? ev.source, pr: { ref: ev.pr, change: ev.change, title: ev.title, text: ev.text, project: link.project } });
+      continue;
+    }
+    if (ev.type === "card.close") {
+      // a card the human dismissed reaches the agent that asked, once
+      if (!ev.dismissed || !isAfter(ev, pos)) continue;
+      const card = state.cards.get(ev.card);
+      if (!card || !inScope(card.session, card.project, filter, ended)) continue;
+      if (filter.card && card.id !== filter.card) continue;
+      out.push({ seq: ev.seq, dev: ev.dev, at: ev.ts, kind: "dismissed", card, by: HUMAN, comment: ev.note });
       continue;
     }
     if (ev.type !== "card.answer" && ev.type !== "card.comment") continue;

@@ -25,6 +25,8 @@ export interface Backend {
   answer(card: string, reply: Reply): Promise<void>;
   /** Open the agent session behind a card (or a session id); resolves to what happened. */
   goto(target: string): Promise<string>;
+  /** Close a card without answering it; the agent that asked is told. */
+  dismiss(card: string): Promise<void>;
   /** Hide a run until it does something new. */
   hideRun(id: string): Promise<void>;
   /** Open a file, app or URL with the system. */

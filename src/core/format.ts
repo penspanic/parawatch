@@ -202,6 +202,7 @@ export function inboxLine(i: InboxItem): string {
   const card = i.card!;
   const head = `[${card.project}] ${card.id} "${card.title}"`;
   if (i.kind === "comment") return `${head} comment: ${i.comment}`;
+  if (i.kind === "dismissed") return `${head} dismissed by the human: no longer needed, do not act on it${i.comment ? `; said: ${i.comment}` : ""}`;
   const parts: string[] = [];
   if (i.choice !== undefined) parts.push(`chose ${i.choice}${i.choiceText ? ` (${i.choiceText})` : ""}`);
   if (i.comment) parts.push(`said: ${i.comment}`);

@@ -93,15 +93,18 @@ const cards: Card[] = [
   },
 ];
 
+/** Active minutes, counted back from now, for the chart. */
+const mins = (...spans: [number, number][]) => spans.flatMap(([a, b]) => Array.from({ length: b - a + 1 }, (_, i) => a + i));
+
 const fakeRuns: Snapshot["runs"] = [
-  { id: "lead-game", runtime: "claude-code", kind: "session", title: "Game Director", project: "game", role: "lead", state: "working", lastActivity: at(0.1), action: "Bash: Wait for answers" },
-  { id: "s139", runtime: "claude-code", kind: "subagent", parent: "lead-game", title: "139 shake round 2", project: "game", model: "sonnet", state: "working", lastActivity: at(0.7), action: "Bash: Run the shake test scene" },
-  { id: "x1", runtime: "codex", kind: "exec", parent: "lead-game", title: "Generate only the TODO icons", project: "game", state: "working", lastActivity: at(1), action: "exec: swift test" },
-  { id: "s137", runtime: "claude-code", kind: "subagent", parent: "lead-game", title: "137 glass tank", project: "game", state: "done", lastActivity: at(8), action: "The tank fills to 60% width and 40% height." },
+  { id: "lead-game", runtime: "claude-code", kind: "session", title: "Game Director", project: "game", role: "lead", state: "working", lastActivity: at(0.1), action: "Bash: Wait for answers", activity: mins([0, 3], [10, 16], [30, 41]) },
+  { id: "s139", runtime: "claude-code", kind: "subagent", parent: "lead-game", title: "139 shake round 2", project: "game", model: "sonnet", state: "working", lastActivity: at(0.7), action: "Bash: Run the shake test scene", activity: mins([0, 9]) },
+  { id: "x1", runtime: "codex", kind: "exec", parent: "lead-game", title: "Generate only the TODO icons", project: "game", state: "working", lastActivity: at(1), action: "exec: swift test", activity: mins([1, 5]) },
+  { id: "s137", runtime: "claude-code", kind: "subagent", parent: "lead-game", title: "137 glass tank", project: "game", state: "done", lastActivity: at(8), action: "The tank fills to 60% width and 40% height.", activity: mins([8, 22]) },
   { id: "s136", runtime: "claude-code", kind: "subagent", parent: "lead-game", title: "136 cup", project: "game", state: "done", lastActivity: at(31) },
-  { id: "lead-app", runtime: "claude-code", kind: "session", title: "App Director", project: "app", role: "lead", state: "idle", lastActivity: at(25), action: "**PR101** passed native tests. Waiting for the runtime install before the UI run." },
-  { id: "r1", runtime: "declared", kind: "declared", title: "PR101 CI, UI tests", project: "app", state: "working", lastActivity: at(6) },
-  { id: "old", runtime: "claude-code", kind: "session", title: "A session in some notes folder", state: "stalled", lastActivity: at(45), action: "Bash: long benchmark" },
+  { id: "lead-app", runtime: "claude-code", kind: "session", title: "App Director", project: "app", role: "lead", state: "idle", lastActivity: at(25), action: "**PR101** passed native tests. Waiting for the runtime install before the UI run.", activity: mins([25, 33], [48, 52]), asks: { text: "Merge PR101 now, or wait for the UI run?", via: "wrap_up", at: at(25) } },
+  { id: "r1", runtime: "declared", kind: "declared", title: "PR101 CI, UI tests", project: "app", state: "working", lastActivity: at(6), activity: mins([6, 24]) },
+  { id: "old", runtime: "claude-code", kind: "session", title: "A session in some notes folder", state: "stalled", lastActivity: at(45), action: "Bash: long benchmark", activity: mins([45, 57]) },
 ];
 
 const media: Record<string, string> = {
@@ -130,7 +133,7 @@ async function load(): Promise<Snapshot> {
     v: 1,
     generatedAt: new Date().toISOString(),
     projects: real?.projects ?? [],
-    cards: useReal ? real!.cards : cards.filter((c) => c.status !== "closed"),
+    cards: useReal ? real!.cards : cards.filter((c) => c.status !== "closed" || c.dismissed),
     runs: useReal ? real!.runs : fakeRuns,
     prs: useReal
       ? real!.prs
@@ -149,6 +152,20 @@ async function load(): Promise<Snapshot> {
             reviewRequested: false,
             mine: true,
             project: "game",
+          },
+          {
+            key: "github.com/example/site#57",
+            url: "https://github.com/example/site/pull/57",
+            repo: "example/site",
+            number: 57,
+            title: "Pricing page copy",
+            state: "open",
+            draft: false,
+            waitingOn: "review",
+            since: at(40),
+            stalled: false,
+            reviewRequested: true,
+            mine: false,
           },
         ],
     github: useReal ? real!.github : undefined,
@@ -169,6 +186,11 @@ const backend: Backend = {
   goto: async (t) => {
     log(`goto ${t}`);
     return "Opened";
+  },
+  dismiss: async (card) => {
+    log(`dismiss ${card}`);
+    const c = cards.find((x) => x.id === card);
+    if (c) Object.assign(c, { status: "closed", closedAt: new Date().toISOString(), dismissed: true });
   },
   hideRun: async (id) => {
     log(`hide ${id}`);

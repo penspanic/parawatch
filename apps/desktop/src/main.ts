@@ -9,7 +9,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { app, autoUpdater as squirrel, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, Notification, protocol, shell, systemPreferences, Tray } from "electron";
 import { readClient, recordClient, versionSkew } from "../../../src/core/clients.js";
-import { answerCard, hideRun, readState, UserError } from "../../../src/core/ops.js";
+import { answerCard, dismissCard, hideRun, readState, UserError } from "../../../src/core/ops.js";
 import { cardContextLine, resolveGoto } from "../../../src/core/desktop.js";
 import { followEvents } from "../../../src/core/follow.js";
 import { syncGithub } from "../../../src/core/github.js";
@@ -659,6 +659,10 @@ function registerIpc(): void {
   ipcMain.handle("pw:set-pref", (_e, key: keyof Prefs, value: unknown) => setPref(key, value));
   ipcMain.handle("pw:answer", (_e, card: string, reply: { choice?: number; comment?: string; attach?: string[] }) => {
     answerCard(card, { ...reply, by: "human" });
+    refresh();
+  });
+  ipcMain.handle("pw:dismiss", (_e, card: string) => {
+    dismissCard(card);
     refresh();
   });
   ipcMain.handle("pw:hide-run", (_e, id: string) => {

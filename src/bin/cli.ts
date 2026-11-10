@@ -8,7 +8,7 @@ import {
   answerCard,
   beatRun,
   claimSession,
-  closeCard,
+  closeCard, dismissCard,
   commentCard,
   inboxScope,
   editCard,
@@ -223,6 +223,12 @@ program
   .description("close a card once it has been acted on")
   .option("-n, --note <text>", "what was done")
   .action((id: string, o) => closeCard(id, o.note));
+
+program
+  .command("dismiss <card>")
+  .description("close a card that no longer matters, without answering it; the agent that asked is told")
+  .option("-n, --note <text>", "why, for the agent")
+  .action((id: string, o) => dismissCard(id, o.note));
 
 program
   .command("show <card>")

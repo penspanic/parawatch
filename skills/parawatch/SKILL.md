@@ -93,6 +93,8 @@ The output looks like `[project] c4 "Ship the top-box ending?" chose 2 (Top box)
 3. Close the card with what you did: `parawatch close c4 -n "Top box shipped in #212"`.
 4. If more cards are open, or a linked pull request is not merged yet, arm the wait again.
 
+A card can also come back as `[project] c4 "…" dismissed by the human: no longer needed, do not act on it`. The human closed it without answering. Drop that step, do not open the card again, and go on with the rest of the work.
+
 To add information to a card without waking anyone, use `parawatch comment <card> "<text>"`. Never answer a card yourself: `answer` is the human's.
 
 ## 6. Long jobs that leave no agent log

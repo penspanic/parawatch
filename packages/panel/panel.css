@@ -38,7 +38,8 @@
 .pw-status {
   display: flex;
   align-items: center;
-  gap: 14px;
+  flex-wrap: wrap;
+  gap: 8px;
   padding: 2px 4px 10px;
 }
 .pw-badge {
@@ -55,6 +56,38 @@
 }
 .pw-badge.is-zero {
   opacity: 0.45;
+}
+/* in the status row a count is a chip on a tint of its section's tone; a click goes there */
+.pw-status .pw-badge:not(.pw-need) {
+  --pw-t: var(--text-muted);
+  padding: 2px 8px 2px 6px;
+  margin: -2px 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--pw-t) 12%, transparent);
+  color: var(--pw-t);
+}
+.pw-status .pw-badge.is-zero {
+  background: transparent;
+}
+.pw-status .pw-badge.pw-asks {
+  --pw-t: var(--color-yellow, #a16207);
+}
+.pw-status .pw-badge.pw-chip-review {
+  --pw-t: var(--color-cyan, #0e9384);
+}
+.pw-status .pw-badge.pw-chip-agents {
+  --pw-t: var(--pw-accent);
+}
+.pw-status .pw-asks .pw-badge-n,
+.pw-status .pw-chip-review .pw-badge-n,
+.pw-status .pw-chip-agents .pw-badge-n {
+  color: inherit;
+}
+.pw-badge.is-jump {
+  cursor: pointer;
+}
+.pw-badge.is-jump:hover {
+  filter: brightness(0.92);
 }
 .pw-need.is-urgent {
   background: var(--pw-accent);
@@ -98,9 +131,111 @@
 }
 .pw-all-clear {
   display: flex;
+  justify-content: center;
+  padding: 28px 4px 20px;
+}
+
+/* ---------------------------------------------------------------- tiles */
+
+/*
+ * A section is told apart by a tile: an icon on a tint of its tone. Tones that need the human
+ * (cards, asks, reviews) are colored; tones that wait on someone else are gray.
+ */
+.pw-tile {
+  --pw-t: var(--text-muted);
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--pw-t);
+  background: color-mix(in srgb, var(--pw-t) 14%, transparent);
+}
+.pw-tile svg {
+  width: 14px;
+  height: 14px;
+}
+.pw-tile-lg {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+}
+.pw-tile-lg svg {
+  width: 30px;
+  height: 30px;
+}
+.pw-tone-project {
+  --pw-t: var(--pw-accent);
+}
+.pw-tone-asks {
+  --pw-t: var(--color-yellow, #a16207);
+}
+.pw-tone-review {
+  --pw-t: var(--color-cyan, #0e9384);
+}
+.pw-tone-todo,
+.pw-tone-wait {
+  --pw-t: var(--text-muted);
+}
+.pw-tone-closed {
+  --pw-t: var(--text-faint);
+}
+.pw-tone-clear {
+  --pw-t: var(--color-green, #1f9d55);
+}
+.pw-sec-n {
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-semibold, 600);
+  color: var(--text-normal);
+}
+.pw-sec-wait > .pw-fold-head .pw-sec-n,
+.pw-sec-closed > .pw-fold-head .pw-sec-n,
+.pw-sec-todo > .pw-fold-head .pw-sec-n {
+  color: var(--text-muted);
+}
+.pw-sec-asks > .pw-fold-head .pw-sec-n {
+  color: var(--color-yellow, #a16207);
+}
+/* the turn changes here: above, the human's; below, someone else's */
+.pw-turn-split {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 12px 4px;
+  gap: 8px;
+  margin: 20px 4px 8px;
+  color: var(--text-faint);
+}
+.pw-turn-split::before,
+.pw-turn-split::after {
+  content: "";
+  flex: 1;
+  border-top: 1px dashed var(--pw-line);
+}
+.pw-turn-mark {
+  display: inline-flex;
+}
+.pw-turn-mark svg {
+  width: 14px;
+  height: 14px;
+}
+.pw-turn-split ~ .pw-fold-group .pw-card {
+  box-shadow: none;
+}
+.pw-turn-split ~ .pw-answered-group,
+.pw-turn-split ~ .pw-closed-group {
+  margin-top: 6px;
+}
+@keyframes pw-flash {
+  from {
+    background: color-mix(in srgb, var(--pw-accent) 14%, transparent);
+  }
+  to {
+    background: transparent;
+  }
+}
+.is-flash > .pw-fold-head,
+.pw-agents.is-flash {
+  animation: pw-flash 900ms ease-out;
 }
 
 /* ---------------------------------------------------------------- folding */
@@ -214,6 +349,53 @@
   font-size: var(--font-ui-smaller, 12px);
 }
 .pw-agents .pw-fold-head:hover {
+  background: transparent;
+}
+/* a project in the chart: a rule above, a tinted head row whose lane sums the project's runs */
+.pw-proj + .pw-proj {
+  border-top: 1px solid var(--pw-line);
+}
+.pw-agents .pw-proj-head {
+  display: grid;
+  grid-template-columns: var(--pw-who) 1fr;
+  gap: 0;
+  padding: 0 12px;
+  min-height: 34px;
+  background: var(--pw-well);
+  font-size: var(--font-ui-small, 13px);
+}
+.pw-agents .pw-proj-head:hover {
+  background: color-mix(in srgb, var(--text-normal) 6%, transparent);
+}
+.pw-proj-who {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding-right: 8px;
+}
+.pw-proj-working {
+  margin-left: auto;
+  color: var(--pw-accent);
+}
+.pw-proj-working .pw-badge-n {
+  color: inherit;
+}
+.pw-agents .pw-proj > .pw-fold-body {
+  padding: 2px 0 4px;
+}
+.pw-lane.pw-lane-sum {
+  min-height: 34px;
+}
+.pw-lane.pw-lane-sum i {
+  height: 12px;
+  margin-top: -6px;
+  background: color-mix(in srgb, var(--pw-accent) 35%, transparent);
+}
+.pw-lane.pw-lane-sum i.is-live {
+  background: var(--pw-accent);
+}
+.pw-proj.is-collapsed .pw-proj-head {
   background: transparent;
 }
 
@@ -482,6 +664,45 @@
   outline-offset: 2px;
 }
 
+/* dismiss: a round x on the card's corner, shown while the card is hovered, as notifications do */
+.pw-card-dismiss {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  z-index: 1;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--pw-line) !important;
+  border-radius: 999px;
+  background: var(--pw-surface) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.pw-card:hover .pw-card-dismiss,
+.pw-card-dismiss:focus-visible,
+.pw-card-dismiss.is-armed {
+  opacity: 1;
+}
+.pw-card-dismiss:hover {
+  color: var(--text-normal);
+}
+.pw-card-dismiss.is-armed {
+  color: var(--text-on-accent, #fff);
+  background: var(--pw-bad) !important;
+  border-color: var(--pw-bad) !important;
+}
+.pw-card-dismiss svg {
+  width: 12px;
+  height: 12px;
+}
+.pw-close-note.is-dismissed {
+  color: var(--text-faint);
+}
 .pw-card-fold {
   display: inline-flex;
   padding: 2px;

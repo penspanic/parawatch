@@ -167,6 +167,8 @@ An agent claims the project the work is for, not the folder it runs in, and clai
 
 An approval (`ask --action`) shows the exact command and the text it sends, with Do it and Don't, so the human can say yes without opening the session.
 
+The human can dismiss a card that no longer matters, with the x on the card in the app or `parawatch dismiss <card> -n "why"`. The card closes without an answer, and the agent that asked gets "dismissed by the human" at its next `wait` or `inbox`.
+
 `parawatch edit <card>` changes a card after the fact: its kind, wording, task, who asked or `--since`. `parawatch goto <card>` opens the session that asked in the Claude desktop app (`--copy` also puts a line about the card on the clipboard, to paste there); sessions outside the desktop app get the `claude --resume` command instead.
 
 `wait` prints the answers, and news on linked pull requests, and exits with code 0. Run from an agent session, it reads that session's own cards and pull requests, and the ones no session owns in the project it claimed, with a cursor of its own: four sessions in one project each wake only for their own news. `wait -p <project>` reads the whole project, for a lead. With `--timeout <seconds>` it exits with code 2 when nothing came. An answer given before `wait` starts is not lost: each consumer has its own cursor, and `wait` returns everything after it. While a `wait` runs, cards say an agent is waiting; when none does, an answered card says the answer is kept until the agent next checks.
