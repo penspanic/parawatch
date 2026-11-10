@@ -24,9 +24,20 @@ function cleanList(xs: string[] | undefined): string[] | undefined {
   return out.length ? out : undefined;
 }
 
+/**
+ * An attachment or a thing to open, as stored. A URL, and a path that is absolute on either
+ * system (`/Users/...`, `C:\...`, `\\server\share`), is kept as written: it may name a place on
+ * another machine, and resolving it here would root it on this one (`E:\Users\...` on Windows,
+ * `<cwd>/C:\...` on a Mac). Only a relative path is resolved.
+ */
+export function storedPath(x: string): string {
+  if (/^[a-z]+:\/\//i.test(x)) return x;
+  if (path.posix.isAbsolute(x) || path.win32.isAbsolute(x)) return x;
+  return path.resolve(x);
+}
+
 function absPaths(xs: string[] | undefined): string[] | undefined {
-  // attachments and things to open are kept as given when they look like URLs
-  return cleanList(xs)?.map((x) => (/^[a-z]+:\/\//i.test(x) ? x : path.resolve(x)));
+  return cleanList(xs)?.map(storedPath);
 }
 
 export function addProject(name: string, paths: string[]): void {
