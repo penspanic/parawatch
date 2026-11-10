@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.5 (2026-11-10)
+
+- Publishing a GitHub release publishes the CLI to npm from GitHub Actions, with npm trusted publishing and a provenance statement.
+- The app shows each card's id in its head (`c58`, or `winpc-c11` for a card from another machine), as agents name it in chat. A click copies it.
+- A card folds to its title with the chevron in its head, and stays folded until you open it again.
+- The to-do group inside a project opens as a box inside the project. Answered cards are a group of their own, and the to-do, answered and closed groups are named.
+- A run that opened a card and has no answer yet shows the card at the end of its timeline, and its line says what it waits on. A click goes to the card.
+- The color for a session that asked in chat is a darker mustard that reads as text, and red text has more contrast.
+
 ## 0.3.4 (2026-11-10)
 
 - A Claude Code run that ended its turn while a background job it started is still running shows as working, with the job's command, instead of done or idle. It counts as stalled only when both its log and the job's output file have been quiet for 20 minutes, so a job that hung shows up instead of dropping out of the list. A `parawatch wait` or `parawatch watch` in the background does not count: that session is waiting for the human.
