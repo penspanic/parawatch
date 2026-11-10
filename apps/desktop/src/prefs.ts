@@ -27,6 +27,8 @@ export interface UpdateState {
   status: "off" | "idle" | "checking" | "latest" | "available" | "downloading" | "ready" | "error";
   /** the new version, once one is found */
   version?: string;
+  /** ready only: an earlier restart to install this version never finished */
+  interrupted?: boolean;
   percent?: number;
   error?: string;
   checkedAt?: string;
