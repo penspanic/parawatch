@@ -30,9 +30,9 @@ The macOS app is on the [latest release](https://github.com/penspanic/parawatch/
 
 | | macOS | Linux | Windows |
 |--|--|--|--|
-| CLI | used daily | tests pass in CI | not supported yet |
-| Desktop app | used daily | untested | untested |
-| Agent logs read | Claude Code, Codex | same | |
+| CLI | used daily | tests pass in CI | used daily |
+| Desktop app | used daily | no build yet | no build yet |
+| Agent logs read | Claude Code, Codex | same | Claude Code; Codex untested |
 
 
 ## More than one machine
@@ -78,7 +78,7 @@ Every session, its subagents and its `codex exec` jobs, grouped by project, with
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/agents-dark.png">
-  <img src="docs/agents-light.png" alt="The desktop app's chart of the last hour: two projects, a lead session in each with its subagents and a codex exec job under it." width="640">
+  <img src="docs/agents-light.png" alt="The desktop app's chart of the last hour, grouped by project: lead sessions with their subagents and a codex exec job, one run stalled, one session that asked in its chat." width="640">
 </picture>
 
 ### Pull requests
