@@ -7,7 +7,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, Notification, protocol, shell, systemPreferences, Tray } from "electron";
+import { app, autoUpdater as squirrel, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, Notification, protocol, shell, systemPreferences, Tray } from "electron";
 import { readClient, recordClient, versionSkew } from "../../../src/core/clients.js";
 import { answerCard, readState, UserError } from "../../../src/core/ops.js";
 import { cardContextLine, resolveGoto } from "../../../src/core/desktop.js";
@@ -658,6 +658,13 @@ if (!app.requestSingleInstanceLock()) {
   app.on("before-quit", () => {
     quitting = true;
   });
+  // Restart to Update quits through Squirrel, which sends this instead of before-quit. Without it
+  // the window's close handler only hides the window, the app never quits and the update waits.
+  if (process.platform === "darwin") {
+    squirrel.on("before-quit-for-update", () => {
+      quitting = true;
+    });
+  }
   app.on("window-all-closed", () => {
     // stay in the menu bar
   });
