@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { scanAll } from "../adapters/index.js";
 import { ACTIVITY_MINUTES, activeMinutes } from "../adapters/jsonl.js";
+import { canonicalPath, insidePath, namesPath, samePath } from "./paths.js";
 import type { State } from "./state.js";
 import { deviceName, sharedDir } from "./store.js";
 import type { Claim, DeclaredRun, Project, Run } from "./types.js";
@@ -16,7 +17,7 @@ function rootsOf(p: string, cache: Map<string, string[]>): string[] {
     const git = (args: string[]) => execFileSync("git", ["-C", p, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 5000 });
     // a folder inside a bigger repo (a notes vault, a monorepo package) must not claim the whole repo
     const top = git(["rev-parse", "--show-toplevel"]).trim();
-    if (path.resolve(top) !== path.resolve(p)) {
+    if (!samePath(top, p)) {
       cache.set(p, roots);
       return roots;
     }
@@ -34,28 +35,27 @@ function rootsOf(p: string, cache: Map<string, string[]>): string[] {
   return roots;
 }
 
-function inside(child: string, parent: string): boolean {
-  const rel = path.relative(parent, child);
-  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
-}
-
 interface Matcher {
   project: string;
-  roots: string[];
+  roots: { path: string; canonical: string }[];
 }
 
 function matchers(projects: Project[]): Matcher[] {
   const cache = new Map<string, string[]>();
-  return projects.map((p) => ({ project: p.name, roots: p.paths.flatMap((x) => rootsOf(x, cache)) }));
+  return projects.map((p) => ({
+    project: p.name,
+    roots: p.paths.flatMap((x) => rootsOf(x, cache)).map((r) => ({ path: r, canonical: canonicalPath(r) })),
+  }));
 }
 
 /** The project whose checkout holds this directory; the deepest root wins. */
 function projectForCwd(cwd: string | undefined, ms: Matcher[]): string | undefined {
   if (!cwd) return undefined;
+  const child = canonicalPath(cwd);
   let best: { project: string; depth: number } | undefined;
   for (const m of ms) {
     for (const r of m.roots) {
-      if (inside(cwd, r) && (!best || r.length > best.depth)) best = { project: m.project, depth: r.length };
+      if (insidePath(cwd, r.path, { child, parent: r.canonical }) && (!best || r.path.length > best.depth)) best = { project: m.project, depth: r.path.length };
     }
   }
   return best?.project;
@@ -66,7 +66,7 @@ function projectForPrompt(prompt: string | undefined, ms: Matcher[]): string | u
   if (!prompt) return undefined;
   const hits = new Set<string>();
   for (const m of ms) {
-    for (const r of m.roots) if (prompt.includes(r)) hits.add(m.project);
+    for (const r of m.roots) if (namesPath(prompt, r.path)) hits.add(m.project);
   }
   return hits.size === 1 ? [...hits][0] : undefined;
 }
