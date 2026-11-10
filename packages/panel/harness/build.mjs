@@ -16,3 +16,4 @@ fs.copyFileSync("panel.css", "harness/out/styles.css");
 fs.copyFileSync("theme.css", "harness/out/theme.css");
 fs.copyFileSync("harness/index.html", "harness/out/index.html");
 if (fs.existsSync("harness/snapshot.json")) fs.copyFileSync("harness/snapshot.json", "harness/out/snapshot.json");
+if (fs.existsSync("harness/icons.json")) fs.copyFileSync("harness/icons.json", "harness/out/icons.json");

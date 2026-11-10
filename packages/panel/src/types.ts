@@ -37,4 +37,6 @@ export interface Backend {
   droppedPath(file: File): string | undefined;
   /** The system's menu for a file, app or URL the card carries (open, show in Finder, copy path). */
   targetMenu?(target: string): void;
+  /** The site's own icon (its favicon) as a URL the panel can put in <img>, if the host fetches them. */
+  siteIcon?(site: string): Promise<string | undefined>;
 }

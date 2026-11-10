@@ -15,6 +15,8 @@ export interface Prefs {
   keepClosed: number;
   /** look for a new version now and then, download it, and offer a restart */
   checkUpdates: boolean;
+  /** show each service's own site icon, fetched from its site; off means no fetches at all */
+  serviceIcons: boolean;
 }
 
 /** Where the app's own update stands, for the settings screen and the menus. */
@@ -59,6 +61,7 @@ export function validPref<K extends keyof Prefs>(key: K, value: unknown): value 
     case "notify":
     case "openAtLogin":
     case "checkUpdates":
+    case "serviceIcons":
       return typeof value === "boolean";
     case "sinceHours":
       return SINCE_HOURS.includes(value as number);

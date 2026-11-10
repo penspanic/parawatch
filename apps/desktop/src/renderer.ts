@@ -58,6 +58,7 @@ const backend: Backend = {
   mediaUrl: (file: string) => call(api.mediaUrl(file) as Promise<string | undefined>),
   saveAttachment: (data: ArrayBuffer, ext: string) => call(api.saveAttachment(data, ext) as Promise<string>),
   droppedPath: (file: File) => api.droppedPath(file),
+  siteIcon: (site: string) => call(api.siteIcon(site)).catch(() => undefined),
   targetMenu: (target: string) => void call(api.targetMenu(target)).catch((err) => toast(plain(err).message)),
 };
 
@@ -114,7 +115,14 @@ function showSettings(on: boolean): void {
   }
 }
 
-api.onPrefs((p) => settings.update(p));
+let showIcons: boolean | undefined;
+api.onPrefs((p) => {
+  settings.update(p);
+  // turning the icons off or on draws the lists again
+  if (showIcons !== undefined && showIcons !== p.serviceIcons) panel.resetSiteIcons();
+  showIcons = p.serviceIcons;
+});
+void api.prefs().then((p) => (showIcons = p.serviceIcons));
 api.onUpdate((u) => settings.setUpdate(u));
 api.onOpenSettings(() => showSettings(true));
 document.addEventListener("keydown", (e) => {

@@ -25,7 +25,7 @@ const cards: Card[] = [
     recommend: 2,
     attach: ["/captures/side-tank.png", "/captures/top-box.png"],
     from: "Game Director",
-    session: "lead-game-0000",
+    session: "lead-game",
     openedAt: at(12),
     status: "open",
     answers: [],
@@ -62,7 +62,7 @@ const cards: Card[] = [
     title: "Check the GitHub bill",
     body: "Not urgent. Organisation settings > Billing.",
     from: "Game Director",
-    session: "lead-game-0000",
+    session: "lead-game",
     since: new Date(now - 37 * 24 * 60 * 60_000).toISOString(),
     openedAt: at(15),
     status: "open",
@@ -132,7 +132,25 @@ async function load(): Promise<Snapshot> {
     projects: real?.projects ?? [],
     cards: useReal ? real!.cards : cards.filter((c) => c.status !== "closed"),
     runs: useReal ? real!.runs : fakeRuns,
-    prs: useReal ? real!.prs : undefined,
+    prs: useReal
+      ? real!.prs
+      : [
+          {
+            key: "github.com/example/game#101",
+            url: "https://github.com/example/game/pull/101",
+            repo: "example/game",
+            number: 101,
+            title: "Shake test scene",
+            state: "open",
+            draft: false,
+            waitingOn: "CI",
+            since: at(12),
+            stalled: false,
+            reviewRequested: false,
+            mine: true,
+            project: "game",
+          },
+        ],
     github: useReal ? real!.github : undefined,
     listeners: useReal ? real!.listeners : undefined,
   };
@@ -161,6 +179,14 @@ const backend: Backend = {
   mediaUrl: async (f) => media[f],
   saveAttachment: async (_d, ext) => `/tmp/pasted.${ext}`,
   droppedPath: (f) => `/Users/me/Desktop/${f.name}`,
+  // site icons as data URLs in harness/icons.json, when that file is there ({ "https://claude.ai/": "data:..." })
+  siteIcon: async (site) => {
+    try {
+      return ((await (await fetch("icons.json")).json()) as Record<string, string>)[site];
+    } catch {
+      return undefined;
+    }
+  },
 };
 
 const root = document.getElementById("panel")!;

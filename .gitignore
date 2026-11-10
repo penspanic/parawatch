@@ -4,5 +4,6 @@ dist/
 .DS_Store
 packages/panel/harness/out
 packages/panel/harness/snapshot.json
+packages/panel/harness/icons.json
 apps/desktop/release
 apps/desktop/build

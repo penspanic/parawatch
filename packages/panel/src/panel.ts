@@ -1,3 +1,4 @@
+import { serviceName, siteForPr, siteForRun } from "../../../src/core/sites.js";
 import { ago, clean, groupRuns, type FoldNode, type RunNode } from "./tree";
 import type { Backend, Card, Listener, PrView, Reply, Run, Snapshot } from "./types";
 
@@ -156,6 +157,8 @@ export class Panel {
   private mediaSize = new ResizeObserver((entries) => {
     for (const e of entries) layoutMedia(e.target as HTMLElement);
   });
+  /** site icons by site; "" when there is none, so it is not asked for again */
+  private siteIcons = new Map<string, string>();
   private collapsed = loadCollapsed();
   private cardsSig = "";
   private head: HTMLElement;
@@ -217,6 +220,45 @@ export class Panel {
     this.host.icon(span, name);
     span.setAttribute("aria-hidden", "true");
     return span;
+  }
+
+  /**
+   * Show the service's own icon in `slot` (which holds a generic icon until then). The icon is asked
+   * for once per site and never blocks drawing: the slot swaps when it arrives.
+   */
+  private siteSlot(slot: HTMLElement, site: string | undefined): void {
+    if (!site || !this.backend.siteIcon) return;
+    slot.dataset.site = site;
+    const known = this.siteIcons.get(site);
+    if (known === undefined) {
+      this.siteIcons.set(site, "");
+      void this.backend
+        .siteIcon(site)
+        .catch(() => undefined)
+        .then((url) => {
+          if (!url) return;
+          this.siteIcons.set(site, url);
+          for (const s of Array.from(this.root.querySelectorAll<HTMLElement>("[data-site]"))) if (s.dataset.site === site) this.paintSite(s, url);
+        });
+    } else if (known) this.paintSite(slot, known);
+  }
+
+  private paintSite(slot: HTMLElement, url: string): void {
+    if (slot.classList.contains("is-site")) return;
+    const img = el("img", "pw-site-img");
+    img.src = url;
+    img.alt = "";
+    img.draggable = false;
+    slot.classList.add("is-site");
+    slot.replaceChildren(img);
+    slot.closest(".pw-run-mark")?.classList.add("has-site");
+  }
+
+  /** Forget the icons and draw again, for when the host turns them on or off. */
+  resetSiteIcons(): void {
+    this.siteIcons.clear();
+    this.cardsSig = "";
+    this.update(undefined, this.error);
   }
 
   /** An icon with a number, worded only for the tooltip and screen readers. */
@@ -554,7 +596,9 @@ export class Panel {
     const who = c.from ?? (c.session ? `session ${c.session.slice(0, 8)}` : "");
     // a session on another machine cannot be opened from here
     const row = el(c.session && !away ? "a" : "span", "pw-meta pw-from", undefined, head);
-    this.icon(row, away ? "monitor" : "bot");
+    const mark = this.icon(row, away ? "monitor" : "bot");
+    const run = !away && c.session ? this.snapshot?.runs?.find((r) => r.id === c.session) : undefined;
+    if (run) this.siteSlot(mark, siteForRun(run));
     el("span", "pw-from-name", [who, away ? `on ${away}` : ""].filter(Boolean).join(" "), row);
     if (away) row.title = `Asked on ${away}`;
     if (!c.session || away) return;
@@ -895,6 +939,7 @@ export class Panel {
   private prRow(p: PrView, now: number): HTMLElement {
     const row = el("div", `pw-pr${p.stalled ? " is-stuck" : ""}`);
     const top = el("div", "pw-pr-top", undefined, row);
+    this.siteSlot(this.icon(top, "git-pull-request", "pw-pr-icon"), siteForPr(p));
     const label = el("a", "pw-pr-label", `${p.repo.split("/")[1]}#${p.number}`, top);
     (label as HTMLAnchorElement).href = "#";
     label.title = `Open ${p.url}`;
@@ -934,8 +979,12 @@ export class Panel {
     const row = el("div", `pw-run pw-state-${r.state}${r.role === "lead" ? " is-lead" : ""}${depth ? " is-child" : ""}`);
     row.style.setProperty("--pw-depth", String(depth));
     const who = el("div", "pw-run-who", undefined, row);
-    const icon = this.icon(who, this.runIcon(r), "pw-run-icon");
-    icon.title = r.role === "lead" ? `lead · ${STATE_LABEL[r.state]}` : STATE_LABEL[r.state];
+    const mark = el("span", "pw-run-mark", undefined, who);
+    this.siteSlot(this.icon(mark, this.runIcon(r), "pw-run-icon"), siteForRun(r));
+    if (r.role === "lead") this.icon(mark, "network", "pw-run-lead");
+    el("span", "pw-run-dot", undefined, mark);
+    const service = serviceName(r);
+    mark.title = `${service ? `${service} ${r.kind}` : r.kind === "declared" ? "declared job" : `${r.runtime} ${r.kind}`}${r.role === "lead" ? " (lead)" : ""} · ${STATE_LABEL[r.state]}`;
     const text = el("div", "pw-run-text", undefined, who);
     const title = el("span", "pw-run-title", r.title, text);
     // a session on another machine cannot be opened from here
