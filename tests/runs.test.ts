@@ -5,7 +5,8 @@ import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { addProject, claimSession, startRun, endRun } from "../src/core/ops.js";
 import { canonicalPath, insidePath, namesPath, samePath } from "../src/core/paths.js";
-import { attribute, declaredRuns } from "../src/core/runs.js";
+import { archivedSessions } from "../src/core/desktop.js";
+import { attribute, declaredRuns, endArchived } from "../src/core/runs.js";
 import { fold } from "../src/core/state.js";
 import { readEvents } from "../src/core/store.js";
 import type { Run } from "../src/core/types.js";
@@ -100,5 +101,71 @@ describe("declared runs", () => {
     const state = fold(readEvents());
     state.runs.set("x", { id: "x", project: "game", title: "ci", startedAt: "2026-11-07T11:57:00Z", lastActivity: "2026-11-07T11:58:00Z", status: "running" });
     expect(declaredRuns(state, now).find((r) => r.id === "x")?.activity).toEqual([0, 1, 2, 3]);
+  });
+});
+
+describe("archived desktop sessions", () => {
+  function desktopDir(sessions: { local: string; cli: string; archived: boolean }[]): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "parawatch-desktop-"));
+    const sub = path.join(dir, "org", "user");
+    fs.mkdirSync(sub, { recursive: true });
+    for (const s of sessions) {
+      fs.writeFileSync(path.join(sub, `local_${s.local}.json`), JSON.stringify({ sessionId: `local_${s.local}`, cliSessionId: s.cli, isArchived: s.archived, lastActivityAt: 1 }));
+    }
+    return dir;
+  }
+
+  it("knows which CLI sessions were archived, by full id or prefix", () => {
+    const dir = desktopDir([
+      { local: "a1", cli: "11111111-aaaa", archived: true },
+      { local: "b1", cli: "22222222-bbbb", archived: false },
+      // the same CLI session run again from a live desktop session is not archived
+      { local: "c1", cli: "33333333-cccc", archived: true },
+      { local: "c2", cli: "33333333-cccc", archived: false },
+    ]);
+    const isArchived = archivedSessions(dir);
+    expect(isArchived("11111111-aaaa")).toBe(true);
+    expect(isArchived("111111")).toBe(true);
+    expect(isArchived("11111")).toBe(false);
+    expect(isArchived("22222222-bbbb")).toBe(false);
+    expect(isArchived("33333333-cccc")).toBe(false);
+    expect(isArchived(undefined)).toBe(false);
+  });
+
+  it("reads a session file again when it changes", () => {
+    const dir = desktopDir([{ local: "a1", cli: "44444444-dddd", archived: false }]);
+    expect(archivedSessions(dir)("44444444-dddd")).toBe(false);
+    const file = path.join(dir, "org", "user", "local_a1.json");
+    fs.writeFileSync(file, JSON.stringify({ sessionId: "local_a1", cliSessionId: "44444444-dddd", isArchived: true }));
+    const later = new Date(Date.now() + 5000);
+    fs.utimesSync(file, later, later);
+    expect(archivedSessions(dir)("44444444-dddd")).toBe(true);
+  });
+
+  it("an archived session is done, with its subagents, however its log ends", () => {
+    const isArchived = (id: string) => id.startsWith("arch");
+    const runs = endArchived(
+      [
+        run("arch-1", { state: "stalled", action: "thinking", asks: { text: "Merge it?", via: "text" } }),
+        run("arch-child", { kind: "subagent", parent: "arch-1", state: "working" }),
+        run("arch-codex", { runtime: "codex", state: "working" }),
+        run("arch-remote", { state: "working", device: "pc" }),
+        run("live-1", { state: "working" }),
+      ],
+      isArchived,
+    );
+    const by = Object.fromEntries(runs.map((r) => [r.id, r]));
+    expect(by["arch-1"]).toMatchObject({ state: "done", done: "archived in the Claude app" });
+    expect(by["arch-1"]!.asks).toBeUndefined();
+    expect(by["arch-child"]!.state).toBe("done");
+    // only Claude Code sessions on this machine are read from this machine's desktop app
+    expect(by["arch-codex"]!.state).toBe("working");
+    expect(by["arch-remote"]!.state).toBe("working");
+    expect(by["live-1"]!.state).toBe("working");
+  });
+
+  it("keeps the summary a session gave with claim --done", () => {
+    const [r] = endArchived([run("arch-2", { state: "idle", done: "Merged #12" })], () => true);
+    expect(r).toMatchObject({ state: "done", done: "Merged #12" });
   });
 });

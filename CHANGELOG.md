@@ -4,6 +4,7 @@
 
 - Folders are compared by their real spelling: symlinks and Windows short names are resolved, and on Windows case and `/` against `\` no longer matter. A run in a worktree reached through a link, or on Windows, finds its project, and so does the Claude Code hook.
 - The test suite passes on Windows.
+- A Claude Code session archived in the Claude desktop app shows as done, with its subagents. One archived in the middle of a turn used to show as stalled for hours.
 
 ## 0.3.2 (2026-11-10)
 
