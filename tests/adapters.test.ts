@@ -31,6 +31,25 @@ describe("claude code transcripts", () => {
     expect(readClaudeTail(recs, "subagent")).toMatchObject({ state: "done", action: "All done." });
   });
 
+  it("a stopped turn is over: idle for a session, done for a subagent", () => {
+    const recs = [
+      user(0, "run the scene tests"),
+      assistant(1, [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "until grep -q PASSED log; do sleep 20; done" } }]),
+      user(2, [{ type: "tool_result", tool_use_id: "t1", content: "The user doesn't want to proceed with this tool use.", is_error: true }]),
+      user(2, [{ type: "text", text: "[Request interrupted by user for tool use]" }]),
+    ];
+    expect(readClaudeTail(recs, "subagent")).toMatchObject({ state: "done", action: "interrupted" });
+    const session = readClaudeTail(recs, "session");
+    expect(session).toMatchObject({ state: "idle", action: "interrupted" });
+    // the stop is not a prompt from the human
+    expect(session.lastPromptAt).toBe(ts(0));
+  });
+
+  it("a new prompt after a stop means working again", () => {
+    const r = readClaudeTail([user(0, "go"), user(1, [{ type: "text", text: "[Request interrupted by user]" }]), user(3, "try the other way")], "session");
+    expect(r).toMatchObject({ state: "working", action: "reading a new message", lastPromptAt: ts(3) });
+  });
+
   it("a tool result waiting for the model means working", () => {
     const r = readClaudeTail([assistant(1, [{ type: "tool_use", id: "t1", name: "Read", input: { file_path: "/a/b.ts" } }]), user(2, [{ type: "tool_result", tool_use_id: "t1", content: "..." }])], "session");
     expect(r).toMatchObject({ state: "working", action: "thinking" });
