@@ -5,6 +5,7 @@ import { furthest, inboxFrom, readInbox, readState, sameSession, sessionConsumer
 import { homeDir, readCursor, readEvents } from "./store.js";
 import { inboxLine } from "./format.js";
 import type { Card } from "./types.js";
+import { insidePath } from "./paths.js";
 
 export const BEGIN = "<!-- parawatch:begin -->";
 export const END = "<!-- parawatch:end -->";
@@ -98,7 +99,7 @@ export function hookContext(input: { session_id?: string; cwd?: string }, projec
   let name = project;
   if (!name && session) name = state.claims.find((c) => sameSession(session, c.session))?.project;
   if (!name && input.cwd) {
-    for (const p of state.projects.values()) if (p.paths.some((x) => input.cwd === x || input.cwd!.startsWith(x + "/"))) name = p.name;
+    for (const p of state.projects.values()) if (p.paths.some((x) => insidePath(input.cwd!, x))) name = p.name;
   }
   if (!name && !session) return undefined;
   // A session reads its own news with its own cursor; one still waiting on its project moves the

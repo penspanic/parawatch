@@ -97,13 +97,15 @@ describe("inbox", () => {
   });
 });
 
+/** tsx's own entry, run with this node: `node_modules/.bin/tsx` is a shell script on Windows. */
+const TSX = path.resolve("node_modules/tsx/dist/cli.mjs");
+
 describe("concurrent writers", () => {
   it("several processes appending at once keep every event and unique ids", async () => {
     const run = promisify(execFile);
     const cli = path.resolve("src/bin/cli.ts");
-    const tsx = path.resolve("node_modules/.bin/tsx");
     await Promise.all(
-      Array.from({ length: 6 }, (_, i) => run(tsx, [cli, "block", "-p", "demo", `job ${i}`], { env: process.env })),
+      Array.from({ length: 6 }, (_, i) => run(process.execPath, [TSX, cli, "block", "-p", "demo", `job ${i}`], { env: process.env })),
     );
     const cards = [...fold(readEvents()).cards.values()];
     expect(cards).toHaveLength(6);
@@ -116,10 +118,9 @@ describe("calling session", () => {
   it("claim and run start default to the agent session in the environment", async () => {
     const run = promisify(execFile);
     const cli = path.resolve("src/bin/cli.ts");
-    const tsx = path.resolve("node_modules/.bin/tsx");
     const env = { ...process.env, CLAUDE_CODE_SESSION_ID: "abcdef12-0000-4000-8000-000000000001" };
-    await run(tsx, [cli, "claim", "-p", "demo", "--role", "lead"], { env });
-    const { stdout } = await run(tsx, [cli, "run", "start", "-p", "demo", "CI"], { env });
+    await run(process.execPath, [TSX, cli, "claim", "-p", "demo", "--role", "lead"], { env });
+    const { stdout } = await run(process.execPath, [TSX, cli, "run", "start", "-p", "demo", "CI"], { env });
     const state = fold(readEvents());
     expect(state.claims[0]).toMatchObject({ session: "abcdef12-0000-4000-8000-000000000001", project: "demo", role: "lead" });
     expect(state.runs.get(stdout.trim())?.parent).toBe("abcdef12-0000-4000-8000-000000000001");

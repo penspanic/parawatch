@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { addProject, claimSession, startRun, endRun } from "../src/core/ops.js";
+import { canonicalPath, insidePath, namesPath, samePath } from "../src/core/paths.js";
 import { attribute, declaredRuns } from "../src/core/runs.js";
 import { fold } from "../src/core/state.js";
 import { readEvents } from "../src/core/store.js";
@@ -32,7 +33,8 @@ describe("attribution", () => {
       [
         run("aaaaaaaa-1111", { cwd: "/vault" }),
         run("child-1", { kind: "subagent", parent: "aaaaaaaa-1111", cwd: "/vault" }),
-        run("loose", { cwd: "/vault", prompt: "Read /vault/notes/game/briefs/12.md and do it" }),
+        // a prompt names a folder as this system writes it
+        run("loose", { cwd: "/vault", prompt: `Read ${path.resolve("/vault/notes/game")}/briefs/12.md and do it` }),
         run("inside", { cwd: "/work/game/src" }),
         run("stranger", { cwd: "/elsewhere" }),
       ],
@@ -62,6 +64,26 @@ describe("attribution", () => {
     addProject("game", [sub]);
     const runs = attribute([run("root", { cwd: repo }), run("deep", { cwd: path.join(sub, "x") })], fold(readEvents()));
     expect(runs.map((r) => r.project)).toEqual([undefined, "game"]);
+  });
+});
+
+describe("paths", () => {
+  it("compares folders by their real spelling, through parts that do not exist yet", () => {
+    const real = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "parawatch-paths-")));
+    const link = `${real}-link`;
+    fs.symlinkSync(real, link, "junction");
+    expect(samePath(link, real)).toBe(true);
+    expect(canonicalPath(path.join(link, "not", "yet"))).toBe(canonicalPath(path.join(real, "not", "yet")));
+    expect(canonicalPath(path.join(link, "not", "yet")).endsWith(path.join("not", "yet"))).toBe(true);
+    expect(insidePath(path.join(link, "src"), real)).toBe(true);
+    expect(insidePath(`${real}-other`, real)).toBe(false);
+  });
+
+  it("finds a folder named in a prompt with either slash", () => {
+    const dir = path.resolve("/work/game");
+    expect(namesPath(`see ${dir.replace(/\\/g, "/")}/a.md`, dir)).toBe(true);
+    expect(namesPath(`see ${dir.replace(/\//g, "\\")}\\a.md`, dir)).toBe(true);
+    expect(namesPath("see /work/other", dir)).toBe(false);
   });
 });
 
