@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { scanAll } from "../adapters/index.js";
 import { ACTIVITY_MINUTES, activeMinutes } from "../adapters/jsonl.js";
+import { archivedSessions } from "./desktop.js";
 import { canonicalPath, insidePath, namesPath, samePath } from "./paths.js";
 import type { State } from "./state.js";
 import { deviceName, sharedDir } from "./store.js";
@@ -156,6 +157,26 @@ export function attribute(runs: Run[], state: State): Run[] {
     const prompt = edits ? undefined : projectForPrompt(r.prompt, ms);
     r.project = edits ?? prompt;
     if (r.project) r.projectSource = edits ? "edits" : "prompt";
+  }
+  return runs;
+}
+
+/**
+ * A Claude Code session the human archived in the Claude desktop app has ended, even when its log
+ * stops mid-turn (archived while a tool ran, say), and so have its subagents.
+ */
+export function endArchived(runs: Run[], isArchived: (session: string) => boolean): Run[] {
+  const ended = new Set<string>();
+  for (const r of runs) {
+    if (r.runtime !== "claude-code" || r.kind !== "session" || r.device || !isArchived(r.id)) continue;
+    ended.add(r.id);
+  }
+  for (const r of runs) {
+    if (!ended.has(r.id) && !(r.parent && ended.has(r.parent))) continue;
+    if (r.state === "failed") continue;
+    r.state = "done";
+    if (ended.has(r.id)) r.done ??= "archived in the Claude app";
+    r.asks = undefined;
   }
   return runs;
 }
@@ -355,7 +376,7 @@ export function collectRuns(state: State, q: RunQuery, now = Date.now()): Run[] 
   const sinceMs = now - q.sinceHours * 3_600_000;
   // a log file can be touched (title records, snapshots) long after its last real activity
   const recent = (r: Run) => !r.lastActivity || Date.parse(r.lastActivity) >= sinceMs;
-  let runs = attribute(scanAll({ sinceMs, now }, q.runtimes), state).filter(recent);
+  let runs = endArchived(attribute(scanAll({ sinceMs, now }, q.runtimes), state), archivedSessions()).filter(recent);
   // a narrower reading (one runtime) would hide the rest from the other machines
   if (!q.runtimes) shareRuns(runs, now);
   runs.push(...otherRuns(state, now).filter(recent));

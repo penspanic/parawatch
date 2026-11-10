@@ -41,31 +41,82 @@ function* sessionFiles(dir: string, depth = 0): Generator<string> {
   }
 }
 
+interface Read {
+  mtimeMs: number;
+  session?: DesktopSession & { ids: string[] };
+}
+
+/** Session files read before, by path; a file is read again only when it changes. */
+const readCache = new Map<string, Read>();
+
+/** Every desktop app session in the folder, read once per change of its file. */
+function desktopSessions(dir: string): (DesktopSession & { ids: string[] })[] {
+  const out: (DesktopSession & { ids: string[] })[] = [];
+  for (const file of sessionFiles(dir)) {
+    let mtimeMs: number;
+    try {
+      mtimeMs = fs.statSync(file).mtimeMs;
+    } catch {
+      continue;
+    }
+    let hit = readCache.get(file);
+    if (!hit || hit.mtimeMs !== mtimeMs) {
+      hit = { mtimeMs, session: readSessionFile(file) };
+      readCache.set(file, hit);
+    }
+    if (hit.session) out.push(hit.session);
+  }
+  return out;
+}
+
+function readSessionFile(file: string): (DesktopSession & { ids: string[] }) | undefined {
+  let d: Record<string, unknown>;
+  try {
+    d = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return undefined;
+  }
+  const ids = [d.cliSessionId, d.lastAssistantCliSessionId].filter((x): x is string => typeof x === "string");
+  if (!ids.length) return undefined;
+  return {
+    id: typeof d.sessionId === "string" ? d.sessionId : path.basename(file, ".json"),
+    cliSessionId: ids[0]!,
+    ids,
+    title: typeof d.title === "string" ? d.title : undefined,
+    cwd: typeof d.cwd === "string" ? d.cwd : undefined,
+    archived: d.isArchived === true,
+    lastActivityAt: typeof d.lastActivityAt === "number" ? d.lastActivityAt : 0,
+  };
+}
+
 /** The desktop app session running a CLI session (full id or a prefix of 6+ characters). */
 export function findDesktopSession(cliSession: string, dir = desktopSessionsDir()): DesktopSession | undefined {
   if (cliSession.length < 6) return undefined;
   let best: DesktopSession | undefined;
-  for (const file of sessionFiles(dir)) {
-    let d: Record<string, unknown>;
-    try {
-      d = JSON.parse(fs.readFileSync(file, "utf8"));
-    } catch {
-      continue;
-    }
-    const ids = [d.cliSessionId, d.lastAssistantCliSessionId].filter((x): x is string => typeof x === "string");
+  for (const { ids, ...s } of desktopSessions(dir)) {
     if (!ids.some((x) => x.startsWith(cliSession))) continue;
-    const s: DesktopSession = {
-      id: typeof d.sessionId === "string" ? d.sessionId : path.basename(file, ".json"),
-      cliSessionId: ids[0]!,
-      title: typeof d.title === "string" ? d.title : undefined,
-      cwd: typeof d.cwd === "string" ? d.cwd : undefined,
-      archived: d.isArchived === true,
-      lastActivityAt: typeof d.lastActivityAt === "number" ? d.lastActivityAt : 0,
-    };
     // prefer a live session, then the most recent one
     if (!best || (best.archived && !s.archived) || (best.archived === s.archived && s.lastActivityAt > best.lastActivityAt)) best = s;
   }
   return best;
+}
+
+/**
+ * The CLI sessions the human archived in the Claude desktop app, as a test for a session id
+ * (full or a prefix of 6+ characters). Such a session never takes another turn, however its log
+ * ends. A CLI session that a live desktop session also runs is not archived.
+ */
+export function archivedSessions(dir = desktopSessionsDir()): (session: string | undefined) => boolean {
+  const archived = new Set<string>();
+  const live = new Set<string>();
+  for (const s of desktopSessions(dir)) for (const id of s.ids) (s.archived ? archived : live).add(id);
+  for (const id of live) archived.delete(id);
+  const ids = [...archived];
+  return (session) => {
+    if (!session || session.length < 6) return false;
+    if (archived.has(session)) return true;
+    return ids.some((id) => id.startsWith(session));
+  };
 }
 
 /** A link that opens the session in the Claude desktop app. */
