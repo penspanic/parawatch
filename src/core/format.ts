@@ -345,6 +345,9 @@ export function runsTree(runs: Run[], v: View = PLAIN, now = Date.now(), indent 
     Math.max(12, ...all.map((row) => textWidth(row.prefix) + 2 + textWidth(row.run?.title ?? ""))),
   );
   const wideW = v.wide ? 24 : 0;
+  // the machine a run is on gets a column of its own, so a long title cannot cut it off
+  const devW = Math.min(12, Math.max(0, ...all.map((row) => (row.run?.device ? textWidth(row.run.device) : 0))));
+  const devCol = devW ? devW + 2 : 0;
 
   const out: string[] = [];
   for (const { name, rows } of blocks) {
@@ -362,15 +365,16 @@ export function runsTree(runs: Run[], v: View = PLAIN, now = Date.now(), indent 
       const ended = ENDED.has(r.state);
       const titlePaint: Paint[] = r.role === "lead" ? ["bold"] : ended ? ["dim"] : [];
       const mark = paint(v, STATE_MARK[r.state], ...STATE_PAINT[r.state]);
-      const label = r.title + (r.repeats ? ` ×${r.repeats + 1}` : "") + (r.prs?.length ? ` (${r.prs.length} PR)` : "") + (r.device ? ` · on ${r.device}` : "");
+      const label = r.title + (r.repeats ? ` ×${r.repeats + 1}` : "") + (r.prs?.length ? ` (${r.prs.length} PR)` : "");
       const title = paint(v, pad(fit(label, room), room), ...titlePaint);
       const age = paint(v, ago(r.lastActivity, now).padStart(4), "dim");
+      const dev = devW ? "  " + paint(v, pad(fit(r.device ?? "", devW), devW), "cyan") : "";
       const src = (r.projectSource && SOURCE_NOTE[r.projectSource]) || "";
       const wide = v.wide ? "  " + paint(v, pad(fit(`${r.kind === "subagent" ? r.model ?? "subagent" : r.runtime} ${r.id.slice(0, 8)}${src ? " " + src : ""}`, wideW - 2), wideW - 2), "dim") : "";
-      const restW = v.width - nameW - 2 - 4 - wideW - 2;
+      const restW = v.width - nameW - 2 - 4 - devCol - wideW - 2;
       const whatPaint: Paint[] = r.error || r.state === "stalled" || r.state === "failed" || r.asks?.blocked ? ["red"] : r.asks ? ["yellow"] : ended ? ["dim"] : [];
       const what = restW >= 8 ? "  " + paint(v, fit(whatText(r), restW), ...whatPaint) : "";
-      out.push(`${lead}${mark} ${title}  ${age}${wide}${what}`.trimEnd());
+      out.push(`${lead}${mark} ${title}  ${age}${dev}${wide}${what}`.trimEnd());
     }
   }
   return out.join("\n");

@@ -60,6 +60,31 @@ describe("runs tree", () => {
   });
 });
 
+describe("runs on other machines", () => {
+  const runs: Run[] = [
+    run("here-1", { project: "game", title: `A long title that fills the name column ${WIDE} `.repeat(3), action: "Bash: npm test" }),
+    run("there-1", { project: "game", title: `Game Director on the other machine ${WIDE} `.repeat(3), device: "winpc", action: "Reading logs" }),
+  ];
+
+  it("shows the machine in its own column, whatever the title's length", () => {
+    for (const width of [60, 80, 140]) {
+      const lines = runsTree(runs, v(width), now).split("\n");
+      for (const l of lines) expect(textWidth(l)).toBeLessThanOrEqual(width);
+      const there = lines.find((l) => l.includes("Game Director"))!;
+      expect(there).toMatch(/\d+[smhd] {2}winpc/);
+      const here = lines.find((l) => l.includes("A long title"))!;
+      expect(here).not.toContain("winpc");
+      // the next column starts at the same place on both rows
+      expect(here.indexOf("Bash")).toBe(there.indexOf("Reading"));
+    }
+  });
+
+  it("takes no room when every run is on this machine", () => {
+    const lines = runsTree([run("a", { project: "game", action: "Bash: ls" })], v(80), now).split("\n");
+    expect(lines[1]).toMatch(/\d+[smhd] {2}Bash: ls$/);
+  });
+});
+
 describe("card rows", () => {
   it("aligns ids, kinds and projects and stays inside the terminal", () => {
     const card = (id: string, kind: Card["kind"], project: string, title: string): Card => ({ id, kind, project, title, openedAt: at(5), status: "open", answers: [], comments: [] });
