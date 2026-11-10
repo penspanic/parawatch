@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { beforeEach, describe, expect, it } from "vitest";
-import { answerCard, claimSession, closeCard, commentCard, editCard, openCard, readInbox, UserError, waitInbox } from "../src/core/ops.js";
+import { answerCard, claimSession, closeCard, commentCard, editCard, openCard, readInbox, storedPath, UserError, waitInbox } from "../src/core/ops.js";
 import { desktopSessionUrl, findDesktopSession } from "../src/core/desktop.js";
 import { recentlyClosed, snapshot } from "../src/core/snapshot.js";
 import { fold } from "../src/core/state.js";
@@ -50,6 +50,32 @@ describe("cards", () => {
     expect(snapshot({ closed: 10 }).cards.map((c) => c.id).sort()).toEqual(["c1", "c2", "c3"]);
     const at = (id: string, closedAt: string) => ({ ...fold(readEvents()).cards.get(id)!, closedAt });
     expect(recentlyClosed([at("c1", "2026-01-02"), at("c2", "2026-01-03")], 1).map((c) => c.id)).toEqual(["c2"]);
+  });
+});
+
+describe("paths on cards", () => {
+  // written for both systems at once, so the test means the same on any host
+  const posix = "/Users/Shared/Try/game/x/Game.app";
+  const drive = "C:\\Users\\alex\\shots\\a.jpg";
+  const unc = "\\\\server\\share\\b.png";
+
+  it("keeps a path absolute on either system as written, and resolves a relative one", () => {
+    const c = openCard({ kind: "try", project: "demo", title: "Try it", open: [posix, drive], attach: [unc, "shots/c.png", "https://example.com/d.png"] });
+    const card = fold(readEvents()).cards.get(c.id)!;
+    expect(card.open).toEqual([posix, drive]);
+    expect(card.attach).toEqual([unc, path.resolve("shots/c.png"), "https://example.com/d.png"]);
+  });
+
+  it("keeps answers' attachments the same way", () => {
+    const c = openCard({ kind: "decide", project: "demo", title: "Which?" });
+    answerCard(c.id, { attach: [posix, drive, "e.png"] });
+    expect(fold(readEvents()).cards.get(c.id)!.answers[0]!.attach).toEqual([posix, drive, path.resolve("e.png")]);
+  });
+
+  it("tells absolute from relative on both systems", () => {
+    expect(path.posix.isAbsolute(drive) || path.win32.isAbsolute(drive)).toBe(true);
+    expect(storedPath("C:relative\\f.png")).toBe(path.resolve("C:relative\\f.png"));
+    expect(storedPath("./g.png")).toBe(path.resolve("g.png"));
   });
 });
 

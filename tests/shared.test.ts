@@ -217,6 +217,9 @@ describe("two machines", () => {
     expect(mapPath("/Users/sam/Library/CloudStorage/GoogleDrive-x/My Drive/b.png", macInfo, pcInfo)).toBe("G:\\My Drive\\b.png");
     expect(mapPath("/Users/sam/dev/x", macInfo, pcInfo)).toBe("C:\\Users\\alex\\dev\\x");
     expect(mapPath("D:\\elsewhere\\c.png", pcInfo, macInfo)).toBe("D:\\elsewhere\\c.png");
+    // a place on the reading machine, named by the writing one, is left alone
+    expect(mapPath("/Users/Shared/Try/game/Game.app", pcInfo, macInfo)).toBe("/Users/Shared/Try/game/Game.app");
+    expect(mapPath("C:\\Users\\Public\\Game.exe", macInfo, pcInfo)).toBe("C:\\Users\\Public\\Game.exe");
     expect(mapPath("https://example.com/x.png", pcInfo, macInfo)).toBe("https://example.com/x.png");
   });
 

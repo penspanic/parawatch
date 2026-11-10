@@ -11,6 +11,7 @@
 - The settings screen has a Back control with a chevron at the leading edge of its header instead of a close button on the right. Esc still goes back.
 - Restart to Update now says "Installing 0.x.y. Parawatch reopens in about 30 seconds." before it quits, because the install takes about half a minute with nothing on screen. Opening Parawatch again during that time used to make the update fail; it now tells you the install is still going and closes itself so the update can finish.
 - If an update was downloaded but the restart never finished, Parawatch says so the next time it starts and offers Restart to Update again, in settings and in the menus.
+- Fix: a path to open or attach that is absolute on the other system was rooted on this one: `/Users/Shared/...` became `E:\Users\Shared\...` on Windows, and `C:\...` became `<folder>/C:\...` on a Mac. A path absolute on either system is now kept as written, so a card opened on the PC can name an app on the Mac. In Git Bash, use `MSYS_NO_PATHCONV=1`.
 
 ## 0.3.2 (2026-11-10)
 
