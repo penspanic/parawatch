@@ -14,12 +14,14 @@ import { cardContextLine, resolveGoto } from "../../../src/core/desktop.js";
 import { followEvents } from "../../../src/core/follow.js";
 import { syncGithub } from "../../../src/core/github.js";
 import { desktopPidPath } from "../../../src/core/integrate.js";
+import { allowedSite, siteForPr } from "../../../src/core/sites.js";
 import { snapshot as takeSnapshot } from "../../../src/core/snapshot.js";
 import { attachmentsDir, deviceName, homeDir } from "../../../src/core/store.js";
 import { syncStatus, touchDevice } from "../../../src/core/sync.js";
 import type { PwEvent, Snapshot } from "../../../src/core/types.js";
 import { artPng, trayPng, type TrayState } from "./art.js";
 import { logger, logPath } from "./logger.js";
+import { siteIcon } from "./siteIcons.js";
 import { KEEP_CLOSED, SINCE_HOURS, THEMES, validPref, type AboutInfo, type Prefs, type Theme, type UpdateState } from "./prefs.js";
 import { alertFor, agentsWorking, issueUrl, needsYou, newlyStuck, summary } from "./rules.js";
 import { checkNow, installNow, RELEASES_URL, resumeUnfinished, scheduleUpdates, stopUpdates, updateState } from "./updater.js";
@@ -33,7 +35,7 @@ interface Settings extends Omit<Prefs, "openAtLogin"> {
   bounds?: { x: number; y: number; width: number; height: number };
 }
 
-const DEFAULTS: Settings = { sinceHours: 6, notify: true, theme: "system", keepClosed: 20, checkUpdates: true };
+const DEFAULTS: Settings = { sinceHours: 6, notify: true, theme: "system", keepClosed: 20, checkUpdates: true, serviceIcons: true };
 const REPO_URL = "https://github.com/penspanic/parawatch";
 
 function settingsPath(): string {
@@ -48,6 +50,7 @@ function loadSettings(): Settings {
     if (!KEEP_CLOSED.includes(s.keepClosed)) s.keepClosed = DEFAULTS.keepClosed;
     if (typeof s.notify !== "boolean") s.notify = DEFAULTS.notify;
     if (typeof s.checkUpdates !== "boolean") s.checkUpdates = DEFAULTS.checkUpdates;
+    if (typeof s.serviceIcons !== "boolean") s.serviceIcons = DEFAULTS.serviceIcons;
     return s;
   } catch {
     return { ...DEFAULTS };
@@ -501,6 +504,7 @@ function prefs(): Prefs {
     sinceHours: settings.sinceHours,
     keepClosed: settings.keepClosed,
     checkUpdates: settings.checkUpdates,
+    serviceIcons: settings.serviceIcons,
   };
 }
 
@@ -684,6 +688,13 @@ function registerIpc(): void {
     // keep the menu alive while it is open; a menu only the popup refers to can be collected
     shownMenu = targetMenu(target);
     shownMenu.popup({ window: owner, callback: () => (shownMenu = undefined) });
+  });
+  ipcMain.handle("pw:site-icon", async (_e, site: unknown) => {
+    if (!settings.serviceIcons) return undefined;
+    // only the fixed sites and the hosts of pull requests the store lists
+    const hosts = new Set((latest?.prs ?? []).map((p) => siteForPr(p)).filter((s): s is string => !!s).map((s) => new URL(s).host));
+    if (!allowedSite(site, hosts)) return undefined;
+    return siteIcon(path.join(app.getPath("userData"), "icons"), site);
   });
   ipcMain.handle("pw:about", () => aboutInfo());
   ipcMain.handle("pw:update-state", () => updateState());

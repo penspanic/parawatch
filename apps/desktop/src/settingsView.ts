@@ -83,6 +83,8 @@ export class SettingsView {
     this.row(look, "bell", "Notifications", "New cards and failed jobs", (c) => this.toggle(c, p.notify, (v) => this.change("notify", v)));
     this.row(look, "log-in", "Open at login", "Waits in the menu bar", (c) => this.toggle(c, p.openAtLogin, (v) => this.change("openAtLogin", v)));
 
+    this.row(look, "bot", "Show service icons", "Fetched from each service's site", (c) => this.toggle(c, p.serviceIcons, (v) => this.change("serviceIcons", v)));
+
     const lists = this.group();
     this.row(lists, "activity", "Agents", "Active in the last", (c) =>
       this.segmented(

@@ -44,6 +44,7 @@
   --color-yellow: #e2b33c;
   --color-green: #3ccb7f;
   --color-cyan: #2fc4b2;
+  --pw-site-icon-bg: rgba(255, 255, 255, 0.92);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -63,6 +64,7 @@
     --color-yellow: #e2b33c;
     --color-green: #3ccb7f;
     --color-cyan: #2fc4b2;
+    --pw-site-icon-bg: rgba(255, 255, 255, 0.92);
   }
 }
 

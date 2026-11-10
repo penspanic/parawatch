@@ -223,6 +223,40 @@
 .pw-run:hover {
   background: var(--pw-hover);
 }
+.pw-run {
+  position: relative;
+}
+/* hide: over the right end of the lane, only while the row is hovered or focused */
+.pw-run-hide {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  display: none;
+  padding: 3px;
+  border: none;
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.pw-run-hide svg {
+  width: 14px;
+  height: 14px;
+}
+.pw-run:hover > .pw-run-hide,
+.pw-run:focus-within > .pw-run-hide {
+  display: flex;
+}
+.pw-run-hide:hover {
+  color: var(--text-normal);
+}
+@media (hover: none) {
+  .pw-run > .pw-run-hide {
+    display: flex;
+    opacity: 0.5;
+  }
+}
 .pw-run-who {
   display: flex;
   align-items: center;
@@ -238,6 +272,75 @@
 .pw-run-icon svg {
   width: 15px;
   height: 15px;
+}
+/* a service's own icon, shown as fetched; the state moves to a dot and a lead gets a small mark */
+.pw-run-mark {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+.pw-site-img {
+  display: block;
+  width: 15px;
+  height: 15px;
+  object-fit: contain;
+  border-radius: 3px;
+  background: var(--pw-site-icon-bg, transparent);
+}
+.pw-run-icon.is-site,
+.pw-pr-icon.is-site,
+.pw-from .is-site {
+  display: inline-flex;
+}
+.pw-run-dot,
+.pw-run-lead {
+  display: none;
+  position: absolute;
+}
+.pw-run-mark.has-site .pw-run-dot {
+  display: block;
+  right: -3px;
+  bottom: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  box-shadow: 0 0 0 1.5px var(--pw-surface);
+}
+.pw-run-mark.has-site .pw-run-lead {
+  display: inline-flex;
+  left: -5px;
+  top: -5px;
+  color: var(--text-normal);
+  background: var(--pw-surface);
+  border-radius: 3px;
+}
+.pw-run-lead svg {
+  width: 9px;
+  height: 9px;
+}
+.pw-state-working .pw-run-mark .pw-run-dot,
+.pw-state-waiting .pw-run-mark .pw-run-dot {
+  background: var(--pw-accent);
+}
+.pw-state-stalled .pw-run-mark .pw-run-dot,
+.pw-state-failed .pw-run-mark .pw-run-dot {
+  background: var(--pw-bad);
+}
+.pw-pr-icon {
+  display: inline-flex;
+  flex: none;
+  align-self: center;
+  color: var(--text-faint);
+}
+.pw-pr-icon svg,
+.pw-pr-icon .pw-site-img {
+  width: 14px;
+  height: 14px;
+}
+.pw-from .pw-site-img {
+  width: 13px;
+  height: 13px;
 }
 .pw-state-working .pw-run-icon,
 .pw-state-waiting .pw-run-icon {
@@ -813,6 +916,13 @@ button.pw-round.pw-send:disabled {
   padding: 2px 6px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+.pw-action-text {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .pw-action-full {
   display: block;

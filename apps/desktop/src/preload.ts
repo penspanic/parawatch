@@ -29,6 +29,7 @@ const api = {
   hideRun: (id: string) => ipcRenderer.invoke("pw:hide-run", id),
   open: (target: string) => ipcRenderer.invoke("pw:open", target),
   mediaUrl: (file: string) => ipcRenderer.invoke("pw:media-url", file),
+  siteIcon: (site: string) => ipcRenderer.invoke("pw:site-icon", site) as Promise<string | undefined>,
   targetMenu: (target: string) => ipcRenderer.invoke("pw:target-menu", target),
   saveAttachment: (data: ArrayBuffer, ext: string) => ipcRenderer.invoke("pw:save-attachment", data, ext),
   droppedPath: (file: File) => webUtils.getPathForFile(file) || undefined,
