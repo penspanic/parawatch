@@ -292,6 +292,7 @@ parawatch sync            # this machine, the others, how the sync tool is doing
 - **Paths follow the machine.** Attachments, things to open and project folders written on another machine are read as the same place here, under its home folder or the shared folder. Name other folders that sit in different places on each machine (a cloud drive, say): `parawatch sync root gdrive "G:\My Drive"` on one machine and `parawatch sync root gdrive ~/Library/CloudStorage/…/My\ Drive` on the other. Pasted pictures are saved in the shared folder, so every machine can open them.
 - **Waits are seen everywhere.** A card on your laptop says whether an agent on the PC is waiting for it.
 - **Every machine reads GitHub for itself.** The same news is delivered once.
+- **Cards reach you as far as the sync tool does.** With Syncthing, leave global discovery and relays on (its defaults) to stay in step from another network; with them off, machines only meet on the same network or a VPN. `parawatch sync` shows each connection's address, a relay included.
 
 The shared folder holds `events/`, `devices/` (each machine's paths, version and last sign of life), `listeners/` and `attachments/`. Cursors, the lock, the GitHub reading and settings stay on each machine.
 
