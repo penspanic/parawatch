@@ -121,6 +121,8 @@ parawatch runs --since 12        # agents seen in the last 12 hours
 parawatch runs -p game --all    # include finished ones
 parawatch runs --wide            # with runtime and ids
 parawatch runs --every           # each run of a scheduled task, not one row per task
+parawatch run hide <id>         # hide a run (6+ characters of its id) until it does something new; `runs --all` still shows it
+parawatch run unhide <id>
 parawatch pr list                # open pull requests: what each waits on, since when, whose it is
 parawatch goto api#88            # open the session that owns a pull request
 parawatch digest                 # what each session did today (--date, --json)

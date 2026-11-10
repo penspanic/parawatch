@@ -13,6 +13,8 @@ import {
   inboxScope,
   editCard,
   endRun,
+  hideRun,
+  unhideRun,
   linkPr,
   listeners,
   listenersFor,
@@ -333,6 +335,15 @@ run
   .option("--failed", "it failed")
   .option("-n, --note <text>", "how it ended")
   .action((id: string, o) => endRun(id, o.failed ? "failed" : "done", o.note));
+
+run
+  .command("hide <id>")
+  .description("hide a run from the lists until it does something new (id or its first 6+ characters; `runs --all` still shows it)")
+  .action((id: string) => void process.stdout.write(`hidden ${hideRun(id)}\n`));
+run
+  .command("unhide <id>")
+  .description("show a hidden run again")
+  .action((id: string) => void process.stdout.write(`shown ${unhideRun(id)}\n`));
 
 program
   .command("claim [session]")

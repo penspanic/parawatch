@@ -135,6 +135,7 @@ When `parawatch sync` shows other machines, the human may answer from any of the
 ```
 parawatch status                     # everything: what needs the human, what waits on others, what is running
 parawatch runs -p <project> --wide   # agents with ids
+parawatch run hide <id>              # the human asks to hide a run; it returns when it does something new
 parawatch pr list                    # open pull requests and what each waits on
 parawatch digest                     # what each session did today
 parawatch show <card>                # one card in full

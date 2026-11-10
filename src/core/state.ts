@@ -12,6 +12,8 @@ export interface State {
   cards: Map<string, Card>;
   runs: Map<string, DeclaredRun>;
   claims: Claim[];
+  /** runs the human hid, by run id, with when */
+  hidden: Map<string, string>;
   /** pull requests linked to sessions, by PR key */
   prLinks: Map<string, PrLink>;
   lastSeq: number;
@@ -29,7 +31,7 @@ function mapAll(xs: string[] | undefined, map: PathMap | undefined, from: string
 
 /** Rebuild current state from the event log. `map` makes other machines' paths local. */
 export function fold(events: PwEvent[], map?: PathMap): State {
-  const s: State = { projects: new Map(), cards: new Map(), runs: new Map(), claims: [], prLinks: new Map(), lastSeq: 0 };
+  const s: State = { projects: new Map(), cards: new Map(), runs: new Map(), claims: [], hidden: new Map(), prLinks: new Map(), lastSeq: 0 };
   for (const ev of events) {
     s.lastSeq = Math.max(s.lastSeq, ev.seq);
     switch (ev.type) {
@@ -109,6 +111,12 @@ export function fold(events: PwEvent[], map?: PathMap): State {
         // a later claim of the same session replaces the earlier one
         s.claims = s.claims.filter((c) => c.session !== ev.claim.session);
         s.claims.push({ ...ev.claim, at: ev.ts });
+        break;
+      case "run.hide":
+        s.hidden.set(ev.run, ev.ts);
+        break;
+      case "run.unhide":
+        s.hidden.delete(ev.run);
         break;
       case "pr.link":
         s.prLinks.set(ev.link.pr.key, { ...ev.link, at: ev.ts });

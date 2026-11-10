@@ -152,6 +152,11 @@ const backend: Backend = {
     log(`goto ${t}`);
     return "Opened";
   },
+  hideRun: async (id) => {
+    log(`hide ${id}`);
+    const i = fakeRuns.findIndex((r) => r.id === id);
+    if (i >= 0) fakeRuns.splice(i, 1);
+  },
   open: (t) => log(`open ${t}`),
   mediaUrl: async (f) => media[f],
   saveAttachment: async (_d, ext) => `/tmp/pasted.${ext}`,

@@ -3,10 +3,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { addProject, claimSession, startRun, endRun } from "../src/core/ops.js";
+import { addProject, claimSession, hideRun, startRun, endRun, readState, unhideRun } from "../src/core/ops.js";
 import { canonicalPath, insidePath, namesPath, samePath } from "../src/core/paths.js";
 import { archivedSessions } from "../src/core/desktop.js";
-import { attribute, declaredRuns, endArchived } from "../src/core/runs.js";
+import { attribute, collectRuns, declaredRuns, endArchived } from "../src/core/runs.js";
 import { fold } from "../src/core/state.js";
 import { readEvents } from "../src/core/store.js";
 import type { Run } from "../src/core/types.js";
@@ -186,5 +186,44 @@ describe("archived desktop sessions", () => {
   it("keeps the summary a session gave with claim --done", () => {
     const [r] = endArchived([run("arch-2", { state: "idle", done: "Merged #12" })], () => true);
     expect(r).toMatchObject({ state: "done", done: "Merged #12" });
+  });
+});
+
+describe("hiding runs", () => {
+  const list = (all = false, now = Date.now()) => collectRuns(readState(), { sinceHours: 24, runtimes: ["none"], includeEnded: all, keepRepeats: true }, now).map((r) => r.id);
+
+  it("a hidden run leaves the list, --all still shows it, and it comes back when it does something new", () => {
+    const a = startRun({ project: "game", title: "bake" });
+    const b = startRun({ project: "game", title: "bench" });
+    expect(list().sort()).toEqual([a, b].sort());
+    expect(hideRun(a.slice(0, 6))).toBe(a);
+    expect(list()).toEqual([b]);
+    expect(list(true).sort()).toEqual([a, b].sort());
+    unhideRun(a);
+    expect(list().sort()).toEqual([a, b].sort());
+    hideRun(a);
+    expect(list()).toEqual([b]);
+    // activity after the hide brings it back
+    const events = readEvents();
+    const hideTs = events.filter((e) => e.type === "run.hide").at(-1)!.ts;
+    const state = readState();
+    state.runs.get(a)!.lastActivity = new Date(Date.parse(hideTs) + 1000).toISOString();
+    expect(collectRuns(state, { sinceHours: 24, runtimes: ["none"], keepRepeats: true }).map((r) => r.id).sort()).toEqual([a, b].sort());
+  });
+
+  it("children of a hidden run are hidden with it", () => {
+    const parent = startRun({ project: "game", title: "parent" });
+    const child = startRun({ project: "game", title: "child", parent });
+    hideRun(parent);
+    expect(list()).toEqual([]);
+    expect(list(true).sort()).toEqual([parent, child].sort());
+    unhideRun(parent);
+    expect(list().sort()).toEqual([parent, child].sort());
+  });
+
+  it("asks for an id that exists and is not ambiguous", () => {
+    startRun({ project: "game", title: "one" });
+    expect(() => hideRun("nothing-here")).toThrow(/no run/);
+    expect(() => hideRun("r")).toThrow(/6 characters/);
   });
 });
