@@ -223,6 +223,40 @@
 .pw-run:hover {
   background: var(--pw-hover);
 }
+.pw-run {
+  position: relative;
+}
+/* hide: over the right end of the lane, only while the row is hovered or focused */
+.pw-run-hide {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  display: none;
+  padding: 3px;
+  border: none;
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.pw-run-hide svg {
+  width: 14px;
+  height: 14px;
+}
+.pw-run:hover > .pw-run-hide,
+.pw-run:focus-within > .pw-run-hide {
+  display: flex;
+}
+.pw-run-hide:hover {
+  color: var(--text-normal);
+}
+@media (hover: none) {
+  .pw-run > .pw-run-hide {
+    display: flex;
+    opacity: 0.5;
+  }
+}
 .pw-run-who {
   display: flex;
   align-items: center;
@@ -882,6 +916,13 @@ button.pw-round.pw-send:disabled {
   padding: 2px 6px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+.pw-action-text {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .pw-action-full {
   display: block;
