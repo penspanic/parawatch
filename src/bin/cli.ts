@@ -10,7 +10,7 @@ import {
   claimSession,
   closeCard,
   commentCard,
-  consumerName,
+  inboxScope,
   editCard,
   endRun,
   linkPr,
@@ -244,22 +244,28 @@ program
 
 function inboxOptions(c: Command) {
   return c
-    .option("-p, --project <name>", "only answers for this project")
+    .option("-p, --project <name>", "everything in this project, whoever owns it (for a lead)")
     .option("--card <id>", "only answers to this card")
-    .option("--as <consumer>", "cursor name (defaults to the project)")
+    .option("--as <consumer>", "cursor name (defaults to the session, or the project with -p)")
     .option("--json", "JSON output");
 }
 
-inboxOptions(program.command("wait").description("block until the human answers, print the answers and exit"))
+inboxOptions(
+  program
+    .command("wait")
+    .description("block until the human answers or a linked pull request has news, print it and exit. In an agent session it reads that session's own cards and pull requests"),
+)
   .option("--timeout <seconds>", "give up after this long (exit code 2); 0 waits forever", int, 0)
   .action(async (o) => {
-    startListening({ consumer: consumerName(o), project: o.project, card: o.card, session: currentSession() });
+    const session = currentSession();
+    const { consumer, filter } = inboxScope(o, session);
+    startListening({ consumer, project: filter.project, card: filter.card, session, ...(filter.session ? { scope: "session" as const } : {}) });
     // while waiting, keep GitHub fresh so news on linked pull requests wakes this wait
     const tick = () => void refreshGithub();
     tick();
     const timer = setInterval(tick, 60_000);
     timer.unref();
-    const items = await waitInbox(consumerName(o), { project: o.project, card: o.card }, o.timeout * 1000);
+    const items = await waitInbox(consumer, filter, o.timeout * 1000);
     clearInterval(timer);
     if (!items.length) {
       process.exitCode = 2;
@@ -272,7 +278,8 @@ inboxOptions(program.command("wait").description("block until the human answers,
 inboxOptions(program.command("inbox").description("print unhandled answers without waiting"))
   .option("--peek", "do not mark them as seen")
   .action((o) => {
-    const items = readInbox(consumerName(o), { project: o.project, card: o.card }, !o.peek);
+    const { consumer, filter } = inboxScope(o, currentSession());
+    const items = readInbox(consumer, filter, !o.peek);
     if (o.json) print({ v: SCHEMA_VERSION, items });
     else if (items.length) process.stdout.write(items.map(inboxLine).join("\n") + "\n");
   });

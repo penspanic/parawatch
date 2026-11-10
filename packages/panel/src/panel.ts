@@ -31,7 +31,16 @@ function cardStart(c: Card): string {
 
 /** The waits an answer to this card would wake now (the CLI's `listenersFor`). */
 function waitingFor(c: Card, ls: Listener[]): Listener[] {
-  return ls.filter((l) => (l.card ? l.card === c.id : !l.project || l.project === c.project));
+  const same = (x?: string, y?: string) => !!x && !!y && (x.startsWith(y) || y.startsWith(x));
+  return ls.filter((l) =>
+    l.card
+      ? l.card === c.id
+      : l.scope === "session"
+        ? c.session
+          ? same(l.session, c.session)
+          : !!l.project && l.project === c.project
+        : !l.project || l.project === c.project,
+  );
 }
 
 function shortDate(iso: string): string {

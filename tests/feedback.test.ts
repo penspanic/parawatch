@@ -12,15 +12,19 @@ import {
   answerCard,
   claimSession,
   inboxFrom,
+  inboxScope,
   linkPr,
   listeners,
   listenersFor,
   openCard,
   prEvent,
+  readInbox,
+  sessionConsumer,
   startListening,
   startRun,
   beatRun,
 } from "../src/core/ops.js";
+import { hookContext } from "../src/core/integrate.js";
 import { attribute, declaredRuns, foldRepeats } from "../src/core/runs.js";
 import { fold } from "../src/core/state.js";
 import { homeDir, readEvents } from "../src/core/store.js";
@@ -300,6 +304,96 @@ describe("pull requests", () => {
     let called = false;
     await syncGithub({ state: fold(readEvents()), force: true, gh: async () => ((called = true), "") });
     expect(called).toBe(false);
+  });
+});
+
+describe("waits per session", () => {
+  const sessions = ["aaaa1111-0001", "bbbb2222-0002", "cccc3333-0003", "dddd4444-0004"];
+  const setup = () => {
+    sessions.forEach((s, i) => {
+      claimSession({ session: s, project: "bugs", task: `BUG-${i + 1}` });
+      linkPr({ pr: parsePrRef(`acme/app#${i + 1}`)!, session: s });
+    });
+  };
+  const read = (s: string) => {
+    const { consumer, filter } = inboxScope({}, s);
+    return readInbox(consumer, filter, true);
+  };
+
+  it("news on one PR reaches only the session that linked it, once", () => {
+    setup();
+    prEvent(parsePrRef("acme/app#2")!, "ci_failed");
+    expect(read(sessions[0]!)).toHaveLength(0);
+    expect(read(sessions[2]!)).toHaveLength(0);
+    expect(read(sessions[3]!)).toHaveLength(0);
+    const mine = read(sessions[1]!);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatchObject({ kind: "pr", pr: { change: "ci_failed" } });
+    expect(read(sessions[1]!)).toHaveLength(0);
+    // a lead waiting on the whole project still sees it
+    expect(readInbox("bugs", { project: "bugs" }, false)).toHaveLength(1);
+  });
+
+  it("an answer goes to the session that opened the card; an unowned card to the project's sessions", () => {
+    setup();
+    const own = openCard({ kind: "decide", project: "bugs", title: "Ship?", session: sessions[0] });
+    const loose = openCard({ kind: "block", project: "bugs", title: "Sign in" });
+    const away = openCard({ kind: "block", project: "web", title: "Elsewhere" });
+    answerCard(own.id, { comment: "yes" });
+    answerCard(loose.id, { comment: "done" });
+    answerCard(away.id, { comment: "done" });
+    expect(read(sessions[0]!).map((i) => i.card?.id)).toEqual([own.id, loose.id]);
+    expect(read(sessions[1]!).map((i) => i.card?.id)).toEqual([loose.id]);
+    // an unclaimed session gets only what it owns
+    expect(read("eeee5555-0005")).toHaveLength(0);
+  });
+
+  it("a short claimed id matches the full session id", () => {
+    claimSession({ session: "abcd1234", project: "bugs" });
+    linkPr({ pr: parsePrRef("acme/app#9")!, session: "abcd1234" });
+    prEvent(parsePrRef("acme/app#9")!, "merged");
+    expect(read("abcd1234-5678-90ab")).toHaveLength(1);
+  });
+
+  it("outside a session, or with -p or --card, the scope is what it was", () => {
+    expect(inboxScope({}, undefined)).toEqual({ consumer: "default", filter: { project: undefined, card: undefined } });
+    expect(inboxScope({ project: "bugs" }, sessions[0])).toEqual({ consumer: "bugs", filter: { project: "bugs", card: undefined } });
+    expect(inboxScope({ card: "c1" }, sessions[0]).consumer).toBe("card-c1");
+  });
+
+  it("moving from a project wait starts where that wait stopped", () => {
+    setup();
+    prEvent(parsePrRef("acme/app#1")!, "ci_failed");
+    readInbox("bugs", { project: "bugs" }, true); // the old project wait handled it
+    expect(read(sessions[0]!)).toHaveLength(0);
+    prEvent(parsePrRef("acme/app#1")!, "approved");
+    expect(read(sessions[0]!)).toHaveLength(1);
+  });
+
+  it("a session wait counts as listening only for its own cards and the project's unowned ones", () => {
+    setup();
+    const stop = startListening({ consumer: sessionConsumer(sessions[0]!), project: "bugs", session: sessions[0], scope: "session" });
+    const own = openCard({ kind: "decide", project: "bugs", title: "Mine?", session: sessions[0] });
+    const theirs = openCard({ kind: "decide", project: "bugs", title: "Theirs?", session: sessions[1] });
+    const loose = openCard({ kind: "decide", project: "bugs", title: "Anyone?" });
+    expect(listenersFor(own, listeners())).toHaveLength(1);
+    expect(listenersFor(theirs, listeners())).toHaveLength(0);
+    expect(listenersFor(loose, listeners())).toHaveLength(1);
+    stop();
+  });
+
+  it("the hook names only the session's own news", () => {
+    setup();
+    prEvent(parsePrRef("acme/app#2")!, "ci_failed");
+    expect(hookContext({ session_id: sessions[0] })).toBeUndefined();
+    expect(hookContext({ session_id: sessions[1] })).toContain("acme/app#2");
+    // handled by the session's own wait, or by an old project wait: either cursor counts
+    const { consumer, filter } = inboxScope({}, sessions[1]);
+    readInbox(consumer, filter, true);
+    expect(hookContext({ session_id: sessions[1] })).toBeUndefined();
+    prEvent(parsePrRef("acme/app#2")!, "approved");
+    readInbox("bugs", { project: "bugs" }, true);
+    expect(hookContext({ session_id: sessions[1] })).toBeUndefined();
   });
 });
 

@@ -154,7 +154,7 @@ parawatch ask -p api "Merge PR 88?" --action "gh pr merge 88 --squash" --preview
 parawatch try -p game "Try build 139" --open /path/Game.app --look "does the glass read?"
 parawatch block -p app "Install the iPad simulator runtime"
 parawatch todo -p game "Check the GitHub bill" --since 2026-10-01
-parawatch wait -p game           # run in the background; exits when the human answers
+parawatch wait                   # run in the background; exits when the human answers
 parawatch comment c4 "baking the top box now"   # a note on the card; does not wake anyone
 parawatch close c4 -n "used the top box"
 parawatch run start -p game "overnight bench" --heartbeat 600 --log bench.log   # a job with no agent log
@@ -167,7 +167,7 @@ An approval (`ask --action`) shows the exact command and the text it sends, with
 
 `parawatch edit <card>` changes a card after the fact: its kind, wording, task, who asked or `--since`. `parawatch goto <card>` opens the session that asked in the Claude desktop app (`--copy` also puts a line about the card on the clipboard, to paste there); sessions outside the desktop app get the `claude --resume` command instead.
 
-`wait` prints the answers, and news on the project's linked pull requests, and exits with code 0. With `--timeout <seconds>` it exits with code 2 when nothing came. An answer given before `wait` starts is not lost: each consumer has its own cursor, and `wait` returns everything after it. While a `wait` runs, cards say an agent is waiting; when none does, an answered card says the answer is kept until the agent next checks.
+`wait` prints the answers, and news on linked pull requests, and exits with code 0. Run from an agent session, it reads that session's own cards and pull requests, and the ones no session owns in the project it claimed, with a cursor of its own: four sessions in one project each wake only for their own news. `wait -p <project>` reads the whole project, for a lead. With `--timeout <seconds>` it exits with code 2 when nothing came. An answer given before `wait` starts is not lost: each consumer has its own cursor, and `wait` returns everything after it. While a `wait` runs, cards say an agent is waiting; when none does, an answered card says the answer is kept until the agent next checks.
 
 ### Agent skill
 
@@ -177,9 +177,9 @@ An approval (`ask --action`) shows the exact command and the text it sends, with
 
 ### Waking a Claude Code session
 
-Claude Code re-invokes a session when one of its background commands exits. So an agent that runs `parawatch wait -p <project>` as a background command is woken by your answer, with the answer as the command's output.
+Claude Code re-invokes a session when one of its background commands exits. So an agent that runs `parawatch wait` as a background command is woken by your answer, with the answer as the command's output.
 
-As a backstop, the hook adds any unhandled answers to the next turn of a session in that project:
+As a backstop, the hook adds the session's unhandled answers and pull request news to its next turn:
 
 ```json
 {

@@ -338,6 +338,22 @@ export interface InboxItem {
 export interface InboxFilter {
   project?: string;
   card?: string;
+  /**
+   * Only what belongs to this agent session: cards it opened and pull requests linked to it. With
+   * `project`, cards and pull requests that no session owns in that project come along.
+   */
+  session?: string;
+}
+
+/** Whether two session ids name the same session. A claim or a link may hold a short prefix. */
+export function sameSession(a?: string, b?: string): boolean {
+  return !!a && !!b && (a.startsWith(b) || b.startsWith(a));
+}
+
+/** Whether something owned by `owner` in `project` is for a reader with this filter. */
+function inScope(owner: string | undefined, project: string | undefined, f: InboxFilter): boolean {
+  if (f.session) return owner ? sameSession(owner, f.session) : !!f.project && project === f.project;
+  return !f.project || project === f.project;
 }
 
 /** Two machines that both read GitHub report the same change; the later report is an echo. */
@@ -362,7 +378,7 @@ export function inboxFrom(events: PwEvent[], after: Position | number, filter: I
       if (prev && prev.dev !== ev.dev && at - prev.at < ECHO_MS) continue;
       if (!isAfter(ev, pos)) continue;
       const link = state.prLinks.get(ev.pr.key);
-      if (!link || filter.card || (filter.project && link.project !== filter.project)) continue;
+      if (!link || filter.card || !inScope(link.session, link.project, filter)) continue;
       out.push({ seq: ev.seq, dev: ev.dev, at: ev.ts, kind: "pr", by: ev.by ?? ev.source, pr: { ref: ev.pr, change: ev.change, title: ev.title, text: ev.text, project: link.project } });
       continue;
     }
@@ -377,7 +393,7 @@ export function inboxFrom(events: PwEvent[], after: Position | number, filter: I
     if (ev.by !== HUMAN || late) continue;
     const card = state.cards.get(ev.card);
     if (!card || card.status === "closed") continue;
-    if (filter.project && card.project !== filter.project) continue;
+    if (!inScope(card.session, card.project, filter)) continue;
     if (filter.card && card.id !== filter.card) continue;
     if (ev.type === "card.answer") {
       out.push({
@@ -489,11 +505,56 @@ export function listeners(now = Date.now()): Listener[] {
 
 /** The waits an answer to this card would wake right now. */
 export function listenersFor(card: Card, ls: Listener[]): Listener[] {
-  return ls.filter((l) => (l.card ? l.card === card.id : !l.project || l.project === card.project));
+  return ls.filter((l) =>
+    l.card
+      ? l.card === card.id
+      : l.scope === "session"
+        ? card.session
+          ? sameSession(l.session, card.session)
+          : !!l.project && l.project === card.project
+        : !l.project || l.project === card.project,
+  );
 }
 
 export function consumerName(opts: { as?: string; project?: string; card?: string }): string {
   return opts.as || opts.project || (opts.card ? `card-${opts.card}` : "default");
+}
+
+/** The cursor a session reads with when it waits for its own news. */
+export function sessionConsumer(session: string): string {
+  return `session-${session.replace(/[^A-Za-z0-9._-]/g, "_")}`;
+}
+
+/** Per device, the further of two positions. */
+export function furthest(a: Position, b: Position): Position {
+  const out = { ...a };
+  for (const [d, seq] of Object.entries(b)) if (seq > (out[d] ?? 0)) out[d] = seq;
+  return out;
+}
+
+export interface InboxScope {
+  consumer: string;
+  filter: InboxFilter;
+}
+
+/**
+ * What a wait or an inbox reads. `--card` and `--project` read what they name, with a cursor of
+ * that name. Called from an agent session without either, it reads that session's own cards and
+ * pull requests, plus unowned ones in the project the session claimed, with a cursor of its own:
+ * sessions in one project neither wake for each other's news nor take it from each other.
+ * Outside a session, it reads everything.
+ */
+export function inboxScope(opts: { as?: string; project?: string; card?: string }, session?: string): InboxScope {
+  if (opts.card || opts.project || !session) return { consumer: consumerName(opts), filter: { project: opts.project, card: opts.card } };
+  const claim = readState().claims.find((c) => sameSession(session, c.session));
+  const consumer = opts.as || sessionConsumer(session);
+  // A session that used to wait on its project starts where that wait stopped, so moving to its
+  // own cursor does not bring back news it has already handled.
+  if (claim && !Object.keys(readCursor(consumer)).length) {
+    const from = readCursor(claim.project);
+    if (Object.keys(from).length) writeCursor(consumer, from);
+  }
+  return { consumer, filter: { session, project: claim?.project } };
 }
 
 export function readInbox(consumer: string, filter: InboxFilter, move: boolean): InboxItem[] {

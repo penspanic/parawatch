@@ -74,10 +74,12 @@ News from somewhere GitHub does not show (a merge bot, a ticket system) can be r
 
 ## 4. Waiting for the answer
 
-Right after opening cards or linking a pull request, keep exactly one wait armed for your project:
+Right after opening cards or linking a pull request, keep exactly one wait armed:
 
-- **Claude Code**: run `parawatch wait -p <project>` as a background Bash command (`run_in_background: true`). When the human answers, the command exits, its output is the answer, and you are woken. Do not poll, do not sleep-loop, do not start a second wait while one is running.
-- **Other runtimes**: check `parawatch inbox -p <project>` at the start of every turn.
+- **Claude Code**: run `parawatch wait` as a background Bash command (`run_in_background: true`). When the human answers, the command exits, its output is the answer, and you are woken. Do not poll, do not sleep-loop, do not start a second wait while one is running.
+- **Other runtimes**: check `parawatch inbox` at the start of every turn.
+
+Inside your session, `wait` and `inbox` read only what is yours: answers on cards you opened, news on pull requests linked to you, and cards or pull requests no session owns in the project you claimed. Other sessions in the same project are not woken by your news and cannot take it from you. `-p <project>` reads the whole project instead; leave it to a lead (section 8).
 
 Keep working on other things meanwhile. A wait with `--timeout <seconds>` exits with code 2 when nothing came; re-arm it if you still need the answer. While no wait runs, an answer is kept, and the card tells the human that no agent is waiting; it reaches you on your next turn or your next wait.
 
@@ -119,6 +121,7 @@ The session then shows as done, not as idle, and the line goes into the human's 
 
 ## 8. Leads and workers
 
+- A lead that watches the whole project waits with `parawatch wait -p <project>`.
 - The lead owns the cards for its project. Workers (subagents, `codex exec` jobs, other sessions you start) report back to the lead instead of opening cards, unless the lead told them to ask the human directly.
 - Tell workers in their brief what to return to you, so the lead can turn it into one clear card.
 - Before ending a session, close cards you handled, end runs you started, and claim `--done`.
