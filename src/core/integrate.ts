@@ -22,7 +22,7 @@ The human follows this work through \`parawatch\`. Use it instead of asking in c
 - When the work is finished: \`parawatch claim --done "<one line on how it ended>"\`.
 
 - Need a decision: \`parawatch ask --project ${p} "question" --option "..." --option "..." --recommend N --body "two or three lines"\`
-- Need approval for a step you have prepared (a merge, a message, a status change): \`parawatch ask --project ${p} "title" --action "<exact command>" [--preview <file with the text>]\`. \`--action\` is the exact command, one line if possible; steps and reasons go in \`--body\`; \`--preview\` is the file with the text it sends. Change them with \`parawatch edit\` while nobody has answered.
+- Need approval for a step you have prepared (a merge, a message, a status change): \`parawatch ask --project ${p} "title" --action "<exact command>" [--preview <file with the text>]\`
 - Need the human to try something (a build, a video, a screen): \`parawatch try --project ${p} "title" --open <app or file> --attach <video or image> --look "what to look at"\`
 - Stuck until the human does something only they can do (install, sudo, sign in): \`parawatch block --project ${p} "what to do"\`
 - Something only the human can do, but nothing waits on it now: \`parawatch todo --project ${p} "what to do"\`
