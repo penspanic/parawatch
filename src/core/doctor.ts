@@ -128,7 +128,7 @@ export async function doctor(input: DoctorInput): Promise<Check[]> {
       return false;
     }
   });
-  add("hook", hooked.length ? "ok" : "info", hooked.length ? `Claude Code hook in ${hooked.join(", ")}` : "no Claude Code hook (optional; see the README)");
+  add("hook", hooked.length ? "ok" : "info", hooked.length ? `Claude Code hook in ${hooked.join(", ")}` : "no Claude Code hook (optional; see docs/agents.md)");
 
   // GitHub
   const g = githubConfig();

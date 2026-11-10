@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 322" width="960" height="322" role="img" aria-label="An agent asks with parawatch ask and waits. The question reaches you as a card. Your answer is returned to the waiting agent, which goes back to work.">
+<text x="0" y="22" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#ececef"><tspan fill="#4d86ff">1</tspan><tspan dx="8">An agent asks</tspan></text>
+<text x="320" y="22" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#ececef"><tspan fill="#4d86ff">2</tspan><tspan dx="8">You answer on a card</tspan></text>
+<text x="692" y="22" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#ececef"><tspan fill="#4d86ff">3</tspan><tspan dx="8">The agent goes on</tspan></text>
+<rect x="0.5" y="38.5" width="267" height="269" rx="12" fill="#0a0b0d" stroke="#2c2e33"/>
+<text x="18" y="66" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#6c717a">Game Director · Claude Code</text>
+<text x="18.0" y="102" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="14.5" fill="#e6e8eb"><tspan fill="#6c717a">$</tspan><tspan dx="8.7">parawatch ask -p game \</tspan></text>
+<text x="52.8" y="126" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="14.5" fill="#e6e8eb">&quot;Which ending?&quot; \</text>
+<text x="52.8" y="150" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="14.5" fill="#e6e8eb">-o &quot;Side tank&quot; \</text>
+<text x="52.8" y="174" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="14.5" fill="#e6e8eb">-o &quot;Top box&quot;</text>
+<text x="18.0" y="212" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="14.5" fill="#e6e8eb"><tspan fill="#6c717a">$</tspan><tspan dx="8.7">parawatch wait</tspan></text>
+<line x1="18" y1="262" x2="250" y2="262" stroke="#6c717a" stroke-opacity="0.35"/>
+<text x="18" y="288" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="13.5" fill="#a3a8b0">◐  waiting for you</text>
+<rect x="692.5" y="38.5" width="267" height="269" rx="12" fill="#0a0b0d" stroke="#2c2e33"/>
+<text x="710" y="66" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#6c717a">Game Director · Claude Code</text>
+<text x="710.0" y="102" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="14.5" fill="#6c717a"># wait returns your answer</text>
+<text x="710.0" y="140" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="14.5" fill="#e6e8eb">[game] c1 &quot;Which ending?&quot;</text>
+<text x="710.0" y="164" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="14.5" fill="#e6e8eb">chose 2 (Top box)</text>
+<line x1="710" y1="262" x2="942" y2="262" stroke="#6c717a" stroke-opacity="0.35"/>
+<text x="710" y="288" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="13.5" fill="#79a6ff">●  working</text>
+<rect x="320.5" y="38.5" width="319" height="269" rx="12" fill="#131417" stroke="#2c2e33"/>
+<rect x="336.5" y="54.5" width="287" height="178" rx="10" fill="#1c1d21" stroke="#2c2e33"/>
+<rect x="352" y="70" width="26" height="26" rx="7" fill="#1c2947"/>
+<path d="M365 90v-5m0 0l-5-6m5 6l5-6m-10 0h3m-3 0v3m10-3h-3m3 0v3" fill="none" stroke="#4d86ff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="388" y="88" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13" fill="#a3a8b0">Game Director</text>
+<text x="608" y="88" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13" fill="#6c717a">13m</text>
+<text x="352" y="124" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="17" font-weight="600" fill="#ececef">Which ending?</text>
+<clipPath id="o"><rect x="352" y="138" width="256" height="80" rx="8"/></clipPath>
+<g clip-path="url(#o)"><rect x="352" y="138" width="256" height="80" fill="#1c1d21"/><rect x="352" y="178" width="256" height="40" fill="#1b2540"/><rect x="352" y="178" width="3" height="40" fill="#4d86ff"/></g>
+<rect x="352.5" y="138.5" width="255" height="79" rx="8" fill="none" stroke="#2c2e33"/>
+<line x1="353" y1="178" x2="607" y2="178" stroke="#2c2e33"/>
+<text x="368" y="163" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="14" fill="#ececef"><tspan fill="#a3a8b0">1.</tspan><tspan dx="10">Side tank</tspan></text>
+<text x="368" y="203" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="14" fill="#ececef"><tspan fill="#a3a8b0">2.</tspan><tspan dx="10">Top box</tspan></text>
+<path d="M582 198l4.5 4.5 8-9" fill="none" stroke="#4d86ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="336" y="262" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="13" fill="#a3a8b0">In the app, or in the terminal:</text>
+<text x="336" y="288" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="13.5" fill="#ececef">parawatch answer c1 -c 2</text>
+<text x="294" y="162" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12.5" fill="#a3a8b0">card</text>
+<path d="M280 174h28m-7-6l7 6-7 6" fill="none" stroke="#6c717a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="666" y="162" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12.5" fill="#a3a8b0">answer</text>
+<path d="M652 174h28m-7-6l7 6-7 6" fill="none" stroke="#6c717a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
