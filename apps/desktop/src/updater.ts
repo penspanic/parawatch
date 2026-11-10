@@ -19,6 +19,8 @@ let listener: (s: UpdateState) => void = () => {};
 let timer: NodeJS.Timeout | undefined;
 let first: NodeJS.Timeout | undefined;
 let wired = false;
+/** The version an earlier restart failed to install; its next update-downloaded is flagged. */
+let unfinished: string | undefined;
 
 function set(next: UpdateState): void {
   state = next;
@@ -48,7 +50,7 @@ function wire(): void {
   autoUpdater.on("update-not-available", () => set({ status: "latest", checkedAt: stamp() }));
   autoUpdater.on("update-available", (i: UpdateInfo) => set({ status: "available", version: i.version, checkedAt: stamp() }));
   autoUpdater.on("download-progress", (p: { percent: number }) => set({ ...state, status: "downloading", percent: Math.round(p.percent) }));
-  autoUpdater.on("update-downloaded", (i: UpdateInfo) => set({ status: "ready", version: i.version, checkedAt: stamp() }));
+  autoUpdater.on("update-downloaded", (i: UpdateInfo) => set({ status: "ready", version: i.version, checkedAt: stamp(), ...(unfinished === i.version ? { interrupted: true } : {}) }));
   autoUpdater.on("error", (err: Error) => {
     logger.warn("update check failed:", err);
     if (state.status !== "ready") set({ status: "error", error: shortError(err), checkedAt: stamp() });
@@ -77,6 +79,16 @@ export async function checkNow(): Promise<UpdateState> {
     logger.warn("update check threw:", err);
   }
   return state;
+}
+
+/**
+ * An earlier restart to update never finished. Look right away instead of waiting for the first
+ * scheduled check: the downloaded file is still in electron-updater's cache, so the check finds
+ * it, hands it to Squirrel again and reports update-downloaded without downloading anything.
+ */
+export function resumeUnfinished(version: string): Promise<UpdateState> {
+  unfinished = version;
+  return checkNow();
 }
 
 /** Start or stop looking on a schedule. */

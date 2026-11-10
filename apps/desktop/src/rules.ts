@@ -114,7 +114,7 @@ export function updateLabel(u: UpdateState | undefined, now = Date.now()): strin
     case "downloading":
       return `Downloading ${u.version ?? "the update"}${u.percent !== undefined ? ` · ${u.percent}%` : ""}`;
     case "ready":
-      return `${u.version} is ready · restart to use it`;
+      return u.interrupted ? `${u.version} was not installed · restart to try again` : `${u.version} is ready · restart to use it`;
     case "error":
       return `Could not check: ${u.error ?? "unknown error"}`;
   }

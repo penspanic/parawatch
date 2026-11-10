@@ -22,7 +22,8 @@ import { artPng, trayPng, type TrayState } from "./art.js";
 import { logger, logPath } from "./logger.js";
 import { KEEP_CLOSED, SINCE_HOURS, THEMES, validPref, type AboutInfo, type Prefs, type Theme, type UpdateState } from "./prefs.js";
 import { alertFor, agentsWorking, issueUrl, needsYou, newlyStuck, summary } from "./rules.js";
-import { checkNow, installNow, RELEASES_URL, scheduleUpdates, stopUpdates, updateState } from "./updater.js";
+import { checkNow, installNow, RELEASES_URL, resumeUnfinished, scheduleUpdates, stopUpdates, updateState } from "./updater.js";
+import { clearMarker, installingNotice, interruptedNotice, readMarker, startState, stillInstallingNotice, writeMarker } from "./updateInstall.js";
 
 const MEDIA_SCHEME = "pwfile";
 const MAX_MEDIA_BYTES = 200 * 1024 * 1024;
@@ -186,7 +187,7 @@ function trayMenu(): Menu {
     { label: "Open Parawatch", click: () => showWindow() },
     { label: summary(latest), enabled: false },
     { type: "separator" },
-    ...(u.status === "ready" ? [{ label: `Restart to Update to ${u.version}`, click: () => installNow() }, { type: "separator" as const }] : []),
+    ...(u.status === "ready" ? [{ label: `Restart to Update to ${u.version}`, click: () => void restartToUpdate() }, { type: "separator" as const }] : []),
     { label: "Settings…", click: () => openSettings() },
     { label: "Check for Updates…", click: () => void checkForUpdatesByHand() },
     { type: "separator" },
@@ -229,17 +230,84 @@ function installedAt(): string {
 
 let toldReady: string | undefined;
 
+/**
+ * Show a notification and resolve once it is on screen (or after a moment), so a quit right after
+ * it does not swallow it.
+ */
+function notifyAndWait(alert: { title: string; body: string }): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => resolve();
+    setTimeout(done, 1500);
+    // macOS refuses notifications until the user allows them; then the system's own notifier says it
+    const fallback = () => {
+      if (process.platform !== "darwin") return done();
+      const esc = (x: string) => x.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      execFile("osascript", ["-e", `display notification "${esc(alert.body)}" with title "Parawatch" subtitle "${esc(alert.title)}"`], done);
+    };
+    if (!Notification.isSupported()) return fallback();
+    const n = new Notification({ title: alert.title, body: alert.body, silent: false });
+    n.on("show", done);
+    n.on("failed", fallback);
+    n.show();
+  });
+}
+
+/**
+ * Restart to Update. The install takes about half a minute with nothing on screen, and opening the
+ * app again meanwhile makes it fail, so say so first and leave a marker for the next start.
+ */
+async function restartToUpdate(): Promise<void> {
+  const u = updateState();
+  if (u.status !== "ready" || !u.version) return;
+  writeMarker(app.getPath("userData"), u.version);
+  logger.info(`quitting to install ${u.version}`);
+  await notifyAndWait(installingNotice(u.version));
+  installNow();
+}
+
+/**
+ * What an earlier restart to update left behind. Returns true when the app should step aside
+ * because the install is still going on.
+ */
+function checkUnfinishedInstall(): boolean {
+  const dir = app.getPath("userData");
+  const marker = readMarker(dir);
+  const state = startState(marker, app.getVersion());
+  if (!marker) return false;
+  if (state === "none") {
+    logger.info(`now running ${app.getVersion()}; the update to ${marker.version} is done`);
+    clearMarker(dir);
+    return false;
+  }
+  if (state === "installing") {
+    logger.info(`started while ${marker.version} is still being installed; quitting so it can finish`);
+    void notifyAndWait(stillInstallingNotice(marker.version)).then(() => app.quit());
+    return true;
+  }
+  logger.warn(`the update to ${marker.version} never finished (asked ${marker.at}); looking for it again`);
+  void resumeUnfinished(marker.version);
+  return false;
+}
+
 function onUpdate(s: UpdateState): void {
   if (win && !win.isDestroyed()) win.webContents.send("pw:update", s);
   if (tray) tray.setContextMenu(trayMenu());
   buildAppMenu();
+  if (s.status === "latest") clearUnfinishedMarker();
   if (s.status === "ready" && s.version && toldReady !== s.version) {
     toldReady = s.version;
     logger.info(`update ${s.version} downloaded`);
-    const n = settings.notify && Notification.isSupported() ? new Notification({ title: `Parawatch ${s.version} is ready`, body: "Restart Parawatch to use it. It also updates when you quit." }) : undefined;
+    const text = s.interrupted ? interruptedNotice(s.version) : { title: `Parawatch ${s.version} is ready`, body: "Restart Parawatch to use it. It also updates when you quit." };
+    const n = settings.notify && Notification.isSupported() ? new Notification(text) : undefined;
     n?.on("click", () => openSettings());
     n?.show();
   }
+}
+
+/** The check found nothing newer, so an install that never finished is moot (the release is gone). */
+function clearUnfinishedMarker(): void {
+  const dir = app.getPath("userData");
+  if (readMarker(dir)) clearMarker(dir);
 }
 
 /** The menu item: look now and say what came of it, even when nothing is new. */
@@ -249,7 +317,7 @@ async function checkForUpdatesByHand(): Promise<void> {
   const box = (o: Electron.MessageBoxOptions) => (owner ? dialog.showMessageBox(owner, o) : dialog.showMessageBox(o));
   if (s.status === "ready") {
     const r = await box({ type: "info", message: `Parawatch ${s.version} is ready`, detail: "Restart now to use it, or it updates the next time you quit.", buttons: ["Restart Now", "Later"], defaultId: 0, cancelId: 1 });
-    if (r.response === 0) installNow();
+    if (r.response === 0) void restartToUpdate();
   } else if (s.status === "available" || s.status === "downloading") {
     await box({ type: "info", message: `Parawatch ${s.version ?? ""} is downloading`.replace("  ", " "), detail: "You will be asked to restart when it is ready.", buttons: ["OK"] });
   } else if (s.status === "latest") {
@@ -291,7 +359,7 @@ function buildAppMenu(): void {
         submenu: [
           { role: "about" },
           u.status === "ready"
-            ? { label: `Restart to Update to ${u.version}`, click: () => installNow() }
+            ? { label: `Restart to Update to ${u.version}`, click: () => void restartToUpdate() }
             : { label: "Check for Updates…", click: () => void checkForUpdatesByHand() },
           { type: "separator" },
           { label: "Settings…", accelerator: "Cmd+,", click: () => openSettings() },
@@ -616,7 +684,7 @@ function registerIpc(): void {
   ipcMain.handle("pw:about", () => aboutInfo());
   ipcMain.handle("pw:update-state", () => updateState());
   ipcMain.handle("pw:check-updates", () => checkNow());
-  ipcMain.handle("pw:install-update", () => installNow());
+  ipcMain.handle("pw:install-update", () => restartToUpdate());
   ipcMain.handle("pw:open-link", (_e, which: string) => openLink(String(which)));
   ipcMain.handle("pw:media-url", (_e, file: string) => {
     const p = path.resolve(file);
@@ -698,6 +766,7 @@ if (!app.requestSingleInstanceLock()) {
       credits: "github.com/penspanic/parawatch",
       website: REPO_URL,
     });
+    if (checkUnfinishedInstall()) return;
     buildAppMenu();
     // a packaged macOS app shows its Liquid Glass icon; only a development run needs a dock icon
     if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(nativeImage.createFromBuffer(artPng("app", 512)));

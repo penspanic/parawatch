@@ -9,6 +9,8 @@
 - `claim --done` also ends a session that shows as stalled, not only an idle one.
 - `runs` and `status` show the machine a run is on in a column of its own. It used to follow the title and was cut off with it at most terminal widths.
 - The settings screen has a Back control with a chevron at the leading edge of its header instead of a close button on the right. Esc still goes back.
+- Restart to Update now says "Installing 0.x.y. Parawatch reopens in about 30 seconds." before it quits, because the install takes about half a minute with nothing on screen. Opening Parawatch again during that time used to make the update fail; it now tells you the install is still going and closes itself so the update can finish.
+- If an update was downloaded but the restart never finished, Parawatch says so the next time it starts and offers Restart to Update again, in settings and in the menus.
 
 ## 0.3.2 (2026-11-10)
 
