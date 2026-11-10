@@ -27,6 +27,7 @@ const api = {
   answer: (card: string, reply: unknown) => ipcRenderer.invoke("pw:answer", card, reply),
   goto: (target: string) => ipcRenderer.invoke("pw:goto", target),
   hideRun: (id: string) => ipcRenderer.invoke("pw:hide-run", id),
+  dismiss: (card: string) => ipcRenderer.invoke("pw:dismiss", card),
   open: (target: string) => ipcRenderer.invoke("pw:open", target),
   mediaUrl: (file: string) => ipcRenderer.invoke("pw:media-url", file),
   siteIcon: (site: string) => ipcRenderer.invoke("pw:site-icon", site) as Promise<string | undefined>,

@@ -1,5 +1,5 @@
 import { serviceName, siteForPr, siteForRun } from "../../../src/core/sites.js";
-import { ago, clean, groupRuns, type FoldNode, type RunNode } from "./tree";
+import { ago, clean, groupRuns, OTHER, type FoldNode, type Group, type RunNode } from "./tree";
 import type { Backend, Card, Listener, PrView, Reply, Run, Snapshot } from "./types";
 
 /** What the panel needs from its host (the desktop app, or the harness page). */
@@ -274,6 +274,31 @@ export class Panel {
 
   // ---------------------------------------------------------------- head
 
+  /** A status chip that opens and scrolls to the section it counts. */
+  private jumpTo(chip: HTMLElement, selector: string): void {
+    chip.classList.add("is-jump");
+    chip.setAttribute("role", "button");
+    chip.tabIndex = 0;
+    const go = () => {
+      const sec = this.root.querySelector<HTMLElement>(selector);
+      if (!sec) return;
+      for (let p: HTMLElement | null = sec; p && p !== this.root; p = p.parentElement) {
+        if (p.classList.contains("is-collapsed")) p.querySelector<HTMLElement>(":scope > .pw-fold-head, :scope > .pw-agents-head")?.click();
+      }
+      sec.scrollIntoView({ block: "start", behavior: "smooth" });
+      sec.classList.remove("is-flash");
+      void sec.offsetWidth;
+      sec.classList.add("is-flash");
+    };
+    chip.onclick = go;
+    chip.onkeydown = (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        go();
+      }
+    };
+  }
+
   private renderHead(): void {
     const h = this.head;
     h.replaceChildren();
@@ -282,15 +307,19 @@ export class Panel {
     const todo = s?.cards.filter((c) => c.status === "open" && c.kind === "todo").length ?? 0;
     const working = s?.runs.filter((r) => r.state === "working" || r.state === "waiting").length ?? 0;
     const row = el("div", "pw-status", undefined, h);
-    const need = this.badge(row, "inbox", open, open ? `${open} card${open === 1 ? "" : "s"} need${open === 1 ? "s" : ""} you` : "Nothing needs you", open ? "pw-need is-urgent" : "pw-need");
+    const need = this.badge(row, "inbox", open, open ? `${open} card${open === 1 ? "" : "s"} need${open === 1 ? "s" : ""} you` : "Nothing needs you", open ? "pw-need is-urgent" : "pw-need is-zero");
     need.setAttribute("aria-live", "polite");
-    this.badge(row, "list-checks", todo, `${todo} to do`, todo ? "" : "is-zero");
+    if (open) this.jumpTo(need, '[data-sec^="cards:"]');
+    const todoChip = this.badge(row, "list-checks", todo, `${todo} to do: only you can do these, nothing waits on them`, todo ? "pw-chip-todo" : "is-zero");
+    if (todo) this.jumpTo(todoChip, '[data-sec^="todo:"]');
     const asks = s?.runs.filter((r) => r.asks).length ?? 0;
-    if (asks) this.badge(row, "message-circle-question", asks, `${asks} session${asks === 1 ? "" : "s"} asked you in chat, without a card`, "pw-asks");
+    if (asks) this.jumpTo(this.badge(row, "message-circle-question", asks, `${asks} session${asks === 1 ? "" : "s"} asked you in chat, without a card`, "pw-asks"), '[data-sec="asks"]');
+    const reviews = s?.prs?.filter((p) => p.reviewRequested && !p.mine).length ?? 0;
+    if (reviews) this.jumpTo(this.badge(row, "eye", reviews, `${reviews} pull request${reviews === 1 ? "" : "s"} asking for your review`, "pw-chip-review"), '[data-sec="reviews"]');
     const stuck = s?.prs?.filter((p) => p.stalled && !(p.reviewRequested && !p.mine)).length ?? 0;
-    const prs = s?.prs?.length ?? 0;
-    if (prs) this.badge(row, "git-pull-request", prs, `${prs} open pull request${prs === 1 ? "" : "s"}${stuck ? `, ${stuck} stuck` : ""}`, stuck ? "pw-prs is-stuck" : "pw-prs");
-    this.badge(row, "activity", working, `${working} agent${working === 1 ? "" : "s"} working`, working ? "" : "is-zero");
+    const prs = (s?.prs?.length ?? 0) - reviews;
+    if (prs > 0) this.jumpTo(this.badge(row, "git-pull-request", prs, `${prs} open pull request${prs === 1 ? "" : "s"} waiting on others${stuck ? `, ${stuck} stuck` : ""}`, stuck ? "pw-prs is-stuck" : "pw-prs"), '[data-sec="waiting"]');
+    this.jumpTo(this.badge(row, "activity", working, `${working} agent${working === 1 ? "" : "s"} working`, working ? "pw-chip-agents" : "is-zero"), ".pw-agents");
     const btn = el("button", "pw-icon-btn clickable-icon", undefined, row);
     btn.setAttribute("aria-label", "Refresh");
     btn.title = "Refresh";
@@ -332,10 +361,16 @@ export class Panel {
     const answered = cards.filter((c) => c.status === "answered");
     const closed = cards.filter((c) => c.status === "closed");
 
-    if (!open.length) {
-      const empty = el("div", "pw-empty pw-all-clear", undefined, root);
-      this.icon(empty, "check");
-      el("span", undefined, this.snapshot ? "Nothing needs you" : "Loading…", empty);
+    const othersAsk = (this.snapshot?.runs ?? []).some((r) => r.asks) || (this.snapshot?.prs ?? []).some((p) => p.reviewRequested && !p.mine);
+    if (!open.length && !othersAsk) {
+      const empty = el("div", "pw-all-clear", undefined, root);
+      if (this.snapshot) {
+        const t = el("span", "pw-tile pw-tile-lg pw-tone-clear", undefined, empty);
+        this.host.icon(t, "circle-check");
+        empty.title = "Nothing needs you";
+        empty.setAttribute("role", "img");
+        empty.setAttribute("aria-label", "Nothing needs you");
+      } else el("span", "pw-empty", "Loading…", empty);
     }
     // one light section per project, the project with the oldest card first
     const byProject = new Map<string, Card[]>();
@@ -346,7 +381,7 @@ export class Panel {
     for (const [project, list] of byProject) {
       const now_ = list.filter((c) => c.kind !== "todo");
       const later = list.filter((c) => c.kind === "todo");
-      const body = this.foldGroup(root, `cards:${project}`, project, false, (head) => {
+      const body = this.foldGroup(root, `cards:${project}`, project, false, { tile: "folder", tone: "project", label: `${project}: cards that need you` }, (head) => {
         for (const k of KIND_ORDER) {
           const n = list.filter((c) => c.kind === k).length;
           if (n) this.badge(head, KIND_ICON[k], n, `${n} ${KIND_LABEL[k].toLowerCase()}`, `pw-kind-${k}`);
@@ -355,8 +390,11 @@ export class Panel {
       for (const c of now_) body.appendChild(this.card(c, now));
       if (later.length) {
         // nothing waits on these, so they start folded under a quiet line
-        const todo = this.foldGroup(body, `todo:${project}`, "To do", true, (head) => {
-          this.badge(head, KIND_ICON.todo, later.length, `${later.length} to do, nothing waits on these`, "pw-kind-todo");
+        const todo = this.foldGroup(body, `todo:${project}`, "", true, {
+          tile: KIND_ICON.todo,
+          tone: "todo",
+          count: later.length,
+          label: `To do: ${later.length} thing${later.length === 1 ? "" : "s"} only you can do, nothing waits on them`,
         });
         todo.parentElement!.classList.add("pw-todo-group", "pw-nested");
         for (const c of later) todo.appendChild(this.card(c, now));
@@ -366,8 +404,11 @@ export class Panel {
     // a session that ended its turn with a question in chat, read from its log
     const asking = (this.snapshot?.runs ?? []).filter((r) => r.asks);
     if (asking.length) {
-      const body = this.foldGroup(root, "asks", "Asked in chat", false, (head) => {
-        this.badge(head, "message-circle-question", asking.length, `${asking.length} asked in chat, without a card (read from the session log)`, "pw-asks");
+      const body = this.foldGroup(root, "asks", "", false, {
+        tile: "message-circle-question",
+        tone: "asks",
+        count: asking.length,
+        label: `Asked in chat: ${asking.length} session${asking.length === 1 ? "" : "s"} ended a turn with a question, without a card`,
       });
       for (const r of asking) body.appendChild(this.askRow(r, now));
     }
@@ -376,22 +417,42 @@ export class Panel {
     const reviews = prs.filter((p) => p.reviewRequested && !p.mine);
     const waiting = prs.filter((p) => !(p.reviewRequested && !p.mine));
     if (reviews.length) {
-      const body = this.foldGroup(root, "reviews", "Reviews for you", false, (head) => {
-        this.badge(head, "git-pull-request", reviews.length, `${reviews.length} pull request${reviews.length === 1 ? "" : "s"} asking for your review`);
+      const body = this.foldGroup(root, "reviews", "", false, {
+        tile: "eye",
+        tone: "review",
+        count: reviews.length,
+        label: `Reviews for you: ${reviews.length} pull request${reviews.length === 1 ? "" : "s"} asking for your review`,
       });
       for (const p of reviews) body.appendChild(this.prRow(p, now));
     }
+    // below this line nothing waits on the human: pull requests with others, answers with the agents
+    if (waiting.length || answered.length) {
+      const split = el("div", "pw-turn-split", undefined, root);
+      const t = el("span", "pw-turn-mark", undefined, split);
+      this.host.icon(t, "hourglass");
+      split.title = "Below: waiting on others. Pull requests with reviewers or CI, and answers the agents have not picked up yet";
+      split.setAttribute("role", "separator");
+      split.setAttribute("aria-label", "Waiting on others");
+    }
     if (waiting.length) {
       const stuck = waiting.filter((p) => p.stalled).length;
-      const body = this.foldGroup(root, "waiting", "Waiting on others", false, (head) => {
-        this.badge(head, "git-pull-request", waiting.length, `${waiting.length} open pull request${waiting.length === 1 ? "" : "s"}${stuck ? `, ${stuck} stuck` : ""}`, stuck ? "is-stuck" : "");
+      const body = this.foldGroup(root, "waiting", "", false, {
+        tile: "git-pull-request",
+        tone: "wait",
+        count: waiting.length,
+        label: `Waiting on others: ${waiting.length} open pull request${waiting.length === 1 ? "" : "s"}${stuck ? `, ${stuck} stuck` : ""}`,
+      }, (head) => {
+        if (stuck) this.badge(head, "clock", stuck, `${stuck} stuck: no change for a long time`, "is-stuck");
       });
       for (const p of waiting) body.appendChild(this.prRow(p, now));
     }
 
     if (answered.length) {
-      const body = this.foldGroup(root, "answered", "Answered", false, (head) => {
-        this.badge(head, "hourglass", answered.length, `${answered.length} answered, waiting for the agent`);
+      const body = this.foldGroup(root, "answered", "", false, {
+        tile: "bot",
+        tone: "wait",
+        count: answered.length,
+        label: `Answered: ${answered.length} card${answered.length === 1 ? "" : "s"} you answered, waiting for the agent to pick up`,
       });
       body.parentElement!.classList.add("pw-answered-group");
       for (const c of answered) body.appendChild(this.pastCard(c, now));
@@ -399,8 +460,11 @@ export class Panel {
 
     if (closed.length) {
       // done with, kept so their builds, videos and pictures can be opened again; starts folded
-      const body = this.foldGroup(root, "closed", "Closed", true, (head) => {
-        this.badge(head, "archive", closed.length, `${closed.length} closed, newest first`);
+      const body = this.foldGroup(root, "closed", "", true, {
+        tile: "archive",
+        tone: "closed",
+        count: closed.length,
+        label: `Closed: ${closed.length} card${closed.length === 1 ? "" : "s"}, newest first, kept so their files can be opened again`,
       });
       body.parentElement!.classList.add("pw-closed-group");
       for (const c of closed) body.appendChild(this.pastCard(c, now));
@@ -416,14 +480,33 @@ export class Panel {
   }
 
   /** A light, collapsible section; returns the element to put its rows in. */
-  private foldGroup(parent: HTMLElement, key: string, name: string, startCollapsed = false, decorate?: (head: HTMLElement) => void): HTMLElement {
+  private foldGroup(
+    parent: HTMLElement,
+    key: string,
+    name: string,
+    startCollapsed = false,
+    look?: { tile: string; tone: string; count?: number; label?: string },
+    decorate?: (head: HTMLElement) => void,
+  ): HTMLElement {
     const box = el("div", "pw-fold-group", undefined, parent);
+    box.dataset.sec = key;
     const head = el("div", "pw-fold-head", undefined, box);
     head.setAttribute("role", "button");
     head.tabIndex = 0;
     const chevron = el("span", "pw-chevron", undefined, head);
     this.host.icon(chevron, "chevron-down");
+    if (look) {
+      // a section is a colored tile and a count; what it is goes in the tooltip
+      box.classList.add("pw-sec", `pw-sec-${look.tone}`);
+      const tile = el("span", `pw-tile pw-tone-${look.tone}`, undefined, head);
+      this.host.icon(tile, look.tile);
+      if (look.label) {
+        head.title = look.label;
+        head.setAttribute("aria-label", look.label);
+      }
+    }
     if (name) el("span", "pw-fold-name", name, head);
+    if (look?.count !== undefined) el("span", "pw-sec-n", String(look.count), head);
     if (decorate) decorate(el("span", "pw-fold-badges", undefined, head));
     const body = el("div", "pw-fold-body", undefined, box);
     // a group that starts collapsed remembers being opened instead of being closed
@@ -520,8 +603,43 @@ export class Panel {
     const main = el("div", "pw-card-main");
     while (title.nextSibling) main.appendChild(title.nextSibling);
     box.appendChild(main);
+    this.cardDismiss(c, box);
     this.cardFold(c, box, title);
     return box;
+  }
+
+  /**
+   * Dismiss: close the card without answering it. The first click arms the button, a second one
+   * within a few seconds dismisses, so a stray click does not wake the agent.
+   */
+  private cardDismiss(c: Card, box: HTMLElement): void {
+    const b = el("button", "pw-card-dismiss clickable-icon", undefined, box);
+    this.host.icon(b, "x");
+    const idle = "Dismiss: close without answering. The agent that asked is told";
+    b.title = idle;
+    b.setAttribute("aria-label", idle);
+    let armed: number | undefined;
+    b.onclick = (e) => {
+      e.stopPropagation();
+      if (armed === undefined) {
+        b.classList.add("is-armed");
+        b.title = "Click again to dismiss";
+        armed = window.setTimeout(() => {
+          armed = undefined;
+          b.classList.remove("is-armed");
+          b.title = idle;
+        }, 3000);
+        return;
+      }
+      window.clearTimeout(armed);
+      armed = undefined;
+      this.busy.add(c.id);
+      void this.backend
+        .dismiss(c.id)
+        .then(() => this.host.refresh())
+        .catch((err) => this.host.notice(`Could not dismiss ${c.id}: ${err instanceof Error ? err.message : String(err)}`))
+        .finally(() => this.busy.delete(c.id));
+    };
   }
 
   /** A card folds to its head and title; the choice is kept per card. */
@@ -842,10 +960,10 @@ export class Panel {
       const n = el("div", "pw-delivery", "No agent is waiting. It gets your answer on its next turn.", top);
       n.title = "No `parawatch wait` is running for this project";
     }
-    if (c.status === "closed" && c.closeNote) {
-      const line = el("div", "pw-answer pw-close-note", undefined, top);
-      this.icon(line, "archive").title = "Closed";
-      el("span", undefined, c.closeNote, line);
+    if (c.status === "closed" && (c.closeNote || c.dismissed)) {
+      const line = el("div", `pw-answer pw-close-note${c.dismissed ? " is-dismissed" : ""}`, undefined, top);
+      this.icon(line, c.dismissed ? "circle-slash" : "archive").title = c.dismissed ? "Dismissed without an answer" : "Closed";
+      if (c.closeNote) el("span", undefined, c.closeNote, line);
     }
     const toggle = () => {
       if (this.reopened.has(c.id)) this.reopened.delete(c.id);
@@ -965,13 +1083,38 @@ export class Panel {
     // minutes in the chart count back from when the snapshot was taken
     const at = this.snapshot ? Date.parse(this.snapshot.generatedAt) : now;
     for (const g of groupRuns(runs, now, this.expanded)) {
-      const other = g.name === "other";
-      const rows = this.foldGroup(body, `agents:${g.name}`, other ? "Other" : g.name, false, (h) => {
-        if (other) h.title = "Not in a registered project";
-        if (g.working) this.badge(h, "activity", g.working, `${g.working} working`);
-      });
+      const rows = this.projectLanes(body, g, at, now);
       for (const row of g.rows) rows.appendChild("run" in row ? this.runRow(row, now, at) : this.foldRow(row, now));
     }
+  }
+
+  /**
+   * A project's block in the chart: a tinted head row whose lane is every run of the project at
+   * once, so a folded project still shows when it was busy, and a rule above it.
+   */
+  private projectLanes(parent: HTMLElement, g: Group, at: number, now: number): HTMLElement {
+    const other = g.name === OTHER;
+    const box = el("div", "pw-fold-group pw-proj", undefined, parent);
+    box.dataset.sec = `agents:${g.name}`;
+    const head = el("div", "pw-fold-head pw-proj-head", undefined, box);
+    head.setAttribute("role", "button");
+    head.tabIndex = 0;
+    const who = el("div", "pw-proj-who", undefined, head);
+    const chevron = el("span", "pw-chevron", undefined, who);
+    this.host.icon(chevron, "chevron-down");
+    const tile = el("span", `pw-tile pw-tone-${other ? "closed" : "project"}`, undefined, who);
+    this.host.icon(tile, "folder");
+    el("span", "pw-fold-name", other ? "Other" : g.name, who);
+    const all = g.rows.flatMap((r) => ("run" in r ? [r.run] : r.folded));
+    if (g.working) this.badge(who, "activity", g.working, `${g.working} working`, "pw-proj-working");
+    head.title = `${other ? "Not in a registered project" : g.name}: ${all.length} run${all.length === 1 ? "" : "s"}${g.working ? `, ${g.working} working` : ""}. The lane is all of them together`;
+    const minutes = [...new Set(all.flatMap((r) => r.activity ?? []))].sort((a, b) => a - b);
+    const sum = this.lane({ ...all[0]!, activity: minutes, state: g.working ? "working" : "idle" }, at, now);
+    sum.classList.add("pw-lane-sum");
+    head.appendChild(sum);
+    const body = el("div", "pw-fold-body", undefined, box);
+    this.foldable(box, head, `agents:${g.name}`);
+    return body;
   }
 
   /** A session that asked the human something in chat: open it to answer. */

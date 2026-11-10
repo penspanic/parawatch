@@ -11,6 +11,7 @@ import {
   addProject,
   answerCard,
   claimSession,
+  dismissCard,
   inboxFrom,
   inboxScope,
   linkPr,
@@ -26,6 +27,7 @@ import {
 } from "../src/core/ops.js";
 import { hookContext } from "../src/core/integrate.js";
 import { attribute, declaredRuns, foldRepeats } from "../src/core/runs.js";
+import { inboxLine } from "../src/core/format.js";
 import { snapshot } from "../src/core/snapshot.js";
 import { fold } from "../src/core/state.js";
 import { homeDir, readEvents } from "../src/core/store.js";
@@ -354,6 +356,21 @@ describe("waits per session", () => {
     linkPr({ pr: parsePrRef("acme/app#9")!, session: "abcd1234" });
     prEvent(parsePrRef("acme/app#9")!, "merged");
     expect(read("abcd1234-5678-90ab")).toHaveLength(1);
+  });
+
+  it("a dismissed card is closed, marked, and its asker is told once; a closed card cannot be dismissed", () => {
+    setup();
+    const own = openCard({ kind: "decide", project: "bugs", title: "Publish by hand?", session: sessions[0] });
+    dismissCard(own.id, "npm publishes itself now");
+    const card = fold(readEvents()).cards.get(own.id);
+    expect(card).toMatchObject({ status: "closed", dismissed: true, closeNote: "npm publishes itself now" });
+    expect(read(sessions[1]!)).toHaveLength(0);
+    const mine = read(sessions[0]!);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatchObject({ kind: "dismissed", comment: "npm publishes itself now" });
+    expect(inboxLine(mine[0]!)).toContain("dismissed by the human");
+    expect(read(sessions[0]!)).toHaveLength(0);
+    expect(() => dismissCard(own.id)).toThrow(/already closed/);
   });
 
   it("outside a session, or with -p or --card, the scope is what it was", () => {

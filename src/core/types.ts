@@ -65,6 +65,8 @@ export interface Card {
   comments: Comment[];
   closedAt?: string;
   closeNote?: string;
+  /** the human closed it without answering ("dismissed"); the agent that asked is told */
+  dismissed?: boolean;
   /** an approval: the exact command or step that runs if the human says yes */
   action?: string;
   /** text the action would send or change (a message, a diff), shown with the card */
@@ -180,7 +182,8 @@ export type EventBody =
   /** `seen`: how many answers the card had where it was written (shared folders only) */
   | { type: "card.answer"; card: string; by: string; choice?: number; comment?: string; attach?: string[]; seen?: number }
   | { type: "card.comment"; card: string; by: string; text: string }
-  | { type: "card.close"; card: string; note?: string }
+  /** `dismissed`: the human closed it without an answer, and the agent that asked is told */
+  | { type: "card.close"; card: string; note?: string; dismissed?: boolean }
   | { type: "card.edit"; card: string; set: CardEdit & Pick<Card, "action" | "preview" | "previewFile" | "attach"> }
   | { type: "run.start"; run: { id: string; project: string; task?: string; title: string; parent?: string; heartbeat?: number; log?: string } }
   | { type: "run.note"; run: string; text: string }
