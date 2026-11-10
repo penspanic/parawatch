@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- `wait` and `inbox` run from an agent session read only that session's news: answers on cards it opened, news on pull requests linked to it, and cards or pull requests no session owns in the project it claimed. Each session reads with a cursor of its own, so sessions in one project no longer wake for each other's pull requests or take each other's news. A session that used to wait with `-p` starts where that wait stopped.
+- `wait -p <project>` still reads the whole project, for a lead. Outside an agent session nothing changes.
+- The instruction block (`parawatch init`) and the skill now say `parawatch wait`. `doctor` reports an older block as outdated; run `parawatch init` again to update it.
+- The Claude Code hook reports only the session's own unhandled news.
+
 ## 0.3.1 (2026-11-10)
 
 - Fix: Restart to Update only hid the window and the app kept running, so the update waited until the next Quit. Updating from 0.3.0 still needs that one Quit; later versions restart on their own.

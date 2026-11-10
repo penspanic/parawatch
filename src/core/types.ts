@@ -212,6 +212,11 @@ export interface Listener {
   project?: string;
   card?: string;
   session?: string;
+  /**
+   * "session": the wait reads only what belongs to `session` (its cards and pull requests), plus
+   * what has no owner in `project`. Without it, `project` or `card` say what the wait reads.
+   */
+  scope?: "session";
   since: string;
 }
 

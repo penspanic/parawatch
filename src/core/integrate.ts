@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { readInbox, inboxFrom, readState } from "./ops.js";
+import { furthest, inboxFrom, readInbox, readState, sameSession, sessionConsumer } from "./ops.js";
 import { homeDir, readCursor, readEvents } from "./store.js";
 import { inboxLine } from "./format.js";
 import type { Card } from "./types.js";
@@ -26,7 +26,7 @@ The human follows this work through \`parawatch\`. Use it instead of asking in c
 - Stuck until the human does something only they can do (install, sudo, sign in): \`parawatch block --project ${p} "what to do"\`
 - Something only the human can do, but nothing waits on it now: \`parawatch todo --project ${p} "what to do"\`
 - Put every question for the human on a card, not only in your reply: a question left in chat is easy to miss.
-- After opening a card or linking a pull request, keep a background wait armed: \`parawatch wait --project ${p}\`. It prints the human's answers and pull request news and exits; act on them, \`parawatch close <card> --note "what you did"\`, then arm it again.
+- After opening a card or linking a pull request, keep a background wait armed: \`parawatch wait\`. It prints the human's answers to your cards and news on your pull requests and exits; act on them, \`parawatch close <card> --note "what you did"\`, then arm it again. A lead watching the whole project waits with \`parawatch wait --project ${p}\`.
 - A long job with no agent log (a bake, a benchmark): \`parawatch run start --project ${p} "title" --heartbeat <seconds> [--log <file>]\`, \`parawatch run note <id> "..."\`, \`parawatch run end <id>\`.
 - Never answer a card yourself. \`parawatch status\` shows everything that is open.
 ${END}`;
@@ -94,18 +94,23 @@ export function instructionState(file: string): "current" | "outdated" | "absent
 export function hookContext(input: { session_id?: string; cwd?: string }, project?: string): string | undefined {
   const events = readEvents();
   const state = readState(events);
+  const session = input.session_id;
   let name = project;
-  if (!name && input.session_id) name = state.claims.find((c) => input.session_id!.startsWith(c.session))?.project;
+  if (!name && session) name = state.claims.find((c) => sameSession(session, c.session))?.project;
   if (!name && input.cwd) {
     for (const p of state.projects.values()) if (p.paths.some((x) => input.cwd === x || input.cwd!.startsWith(x + "/"))) name = p.name;
   }
-  if (!name) return undefined;
-  const items = inboxFrom(events, readCursor(name), { project: name }, state);
+  if (!name && !session) return undefined;
+  // A session reads its own news with its own cursor; one still waiting on its project moves the
+  // project's cursor instead, so whichever is further says what it has handled.
+  const items = session
+    ? inboxFrom(events, furthest(readCursor(sessionConsumer(session)), name ? readCursor(name) : {}), { session, project: name }, state)
+    : inboxFrom(events, readCursor(name!), { project: name }, state);
   if (!items.length) return undefined;
   const cards = items.filter((i) => i.kind !== "pr").length;
   const prs = items.length - cards;
   const what = [cards ? `${cards} answer(s) on cards` : "", prs ? `${prs} pull request update(s)` : ""].filter(Boolean).join(" and ");
-  return [`Parawatch: ${what} for ${name} that you have not handled yet.`, ...items.map(inboxLine), cards ? `Act on them, then \`parawatch close <card>\`.` : `Act on them.`].join("\n");
+  return [`Parawatch: ${what}${name ? ` for ${name}` : ""} that you have not handled yet.`, ...items.map(inboxLine), cards ? `Act on them, then \`parawatch close <card>\`.` : `Act on them.`].join("\n");
 }
 
 /** Best-effort desktop notification. Never throws, never blocks. */
