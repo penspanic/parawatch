@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { addProject, answerCard, claimSession, closeCard, hideRun, unhideRun, listeners, openCard, prEvent, readInbox, readState, startListening, startRun, endRun, waitInbox, linkPr } from "../src/core/ops.js";
+import { addProject, editCard, answerCard, claimSession, closeCard, hideRun, unhideRun, listeners, openCard, prEvent, readInbox, readState, startListening, startRun, endRun, waitInbox, linkPr } from "../src/core/ops.js";
 import { snapshot } from "../src/core/snapshot.js";
 import { collectRuns, otherRuns, shareRuns, SHARED_RUNS_GONE_MS } from "../src/core/runs.js";
 import type { Run } from "../src/core/types.js";
@@ -242,6 +242,26 @@ describe("two machines", () => {
       expect(s.projects.get("spill")!.paths).toEqual([path.join(root, "mac", "work", "spill")]);
       expect(s.cards.get("pc-c1")!.attach).toEqual([path.join(root, "mac", "work", "spill", "a.png")]);
       expect(snapshot().devices).toEqual({ me: "mac", others: ["pc"] });
+    });
+  });
+
+  it("maps the preview file, opened or edited on the other machine, when reading", () => {
+    const body = path.join(root, "pc", "work", "spill", "pr-body.md");
+    on("pc", () => {
+      setRoot("work", path.join(root, "pc", "work"));
+      fs.mkdirSync(path.dirname(body), { recursive: true });
+      fs.writeFileSync(body, "first");
+      openCard({ kind: "decide", project: "spill", title: "Send?", action: "gh pr create", preview: body });
+      fs.writeFileSync(body, "second");
+      editCard("pc-c1", { preview: body });
+    });
+    on("mac", () => setRoot("work", path.join(root, "mac", "work")));
+    both();
+    on("mac", () => {
+      const c = readState().cards.get("pc-c1")!;
+      expect(c.previewFile).toBe(path.join(root, "mac", "work", "spill", "pr-body.md"));
+      expect(c.preview).toBe("second");
+      expect(c.changedAt).toBeDefined();
     });
   });
 

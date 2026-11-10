@@ -46,6 +46,7 @@ export function fold(events: PwEvent[], map?: PathMap): State {
         if (ev.v >= 2 && ev.dev) card.dev = ev.dev;
         card.attach = mapAll(card.attach, map, ev.dev);
         card.open = mapAll(card.open, map, ev.dev);
+        if (card.previewFile) card.previewFile = mapAll([card.previewFile], map, ev.dev)?.[0];
         s.cards.set(ev.card.id, card);
         break;
       }
@@ -71,8 +72,11 @@ export function fold(events: PwEvent[], map?: PathMap): State {
         const target = c as unknown as Record<string, unknown>;
         for (const [k, v] of Object.entries(ev.set)) {
           if (v === null || v === undefined) delete target[k];
+          else if (k === "attach") c.attach = mapAll(ev.set.attach, map, ev.dev);
+          else if (k === "previewFile") c.previewFile = mapAll([ev.set.previewFile as string], map, ev.dev)?.[0];
           else target[k] = v;
         }
+        if ("action" in ev.set || "preview" in ev.set) c.changedAt = ev.ts;
         break;
       }
       case "card.close": {

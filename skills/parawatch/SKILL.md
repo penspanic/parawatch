@@ -56,6 +56,7 @@ A good card:
 - **Add `-t <task>`** when the project runs several tasks at once, so the human can tell them apart.
 - **`block` is red and counts as needing them now.** Use it only when your work stops until they act. Errands for later (a bill, a registration, a policy check, a measurement whenever the machine is free) are `todo`; they wait folded in the panel and do not pop up.
 - **Moving items from a board or a note:** pass `--since <YYYY-MM-DD>` with the date the item first came up, so the card does not look new. `parawatch edit <card>` fixes a card's kind, wording or date later.
+- **`--action` is the exact command, one line if possible.** Steps and reasons go in the body, and `--preview` is the file with the text it sends (the human can open that file from the card). Change `--action`, `--preview` or `--attach` with `parawatch edit` while the card is unanswered; once answered, close it and open a new one.
 - **An approval shows exactly what runs.** With `--action` the human sees the command and the preview and answers Do it or Don't, without opening your session. Run exactly that on yes; say in the close note that you ran it.
 - **Never leave a question only in your reply.** If your turn ends needing the human, the question goes on a card. Parawatch flags questions it finds at the end of a turn as "asked in chat, no card", but that is a guess and easy to miss.
 - Do not open a card for something you can decide yourself, or that the project's own rules already settle.

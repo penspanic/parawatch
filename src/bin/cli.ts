@@ -149,7 +149,7 @@ cardCommand("todo", "todo", "something only the human can do, but nothing waits 
 
 program
   .command("edit <card>")
-  .description("change a card: its kind, wording, task, who asked or when it came up (an empty value clears)")
+  .description("change a card: its kind, wording, task, who asked, when it came up, or (before anyone answered) its action, preview and attachments (an empty value clears)")
   .option("-k, --kind <kind>", "decide, try, block or todo")
   .option("--title <text>", "new title")
   .option("-b, --body <text>", "new body")
@@ -157,9 +157,24 @@ program
   .option("--from <who>", "who asked")
   .option("--session <id>", "the agent session that asked")
   .option("--since <date>", "when the matter first came up (YYYY-MM-DD)")
+  .option("--action <text>", "the exact command or step that runs on yes (only before anyone answered)")
+  .option("--preview <file>", "a file with the text the action sends; its text is read again (only before anyone answered)")
+  .option("--attach <file>", "replace the attachments with these files (repeatable; only before anyone answered)", collect)
+  .option("--no-attach", "remove the attachments (only before anyone answered)")
   .option("--json", "print the card as JSON")
   .action((id: string, o) => {
-    const card = editCard(id, { kind: o.kind, title: o.title, body: o.body, task: o.task, from: o.from, session: o.session, since: o.since });
+    const card = editCard(id, {
+      kind: o.kind,
+      title: o.title,
+      body: o.body,
+      task: o.task,
+      from: o.from,
+      session: o.session,
+      since: o.since,
+      action: o.action,
+      preview: o.preview,
+      attach: o.attach === false ? [] : o.attach,
+    });
     if (o.json) print(card);
     else process.stdout.write(cardLine(card) + "\n");
   });

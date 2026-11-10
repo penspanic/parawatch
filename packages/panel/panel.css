@@ -793,7 +793,18 @@ button.pw-round.pw-send:disabled {
   height: 13px;
   margin-top: 3px;
 }
-.pw-action-text {
+.pw-action-main {
+  min-width: 0;
+  flex: 1;
+}
+.pw-action-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pw-action-text,
+.pw-action-full {
   font-family: var(--font-monospace);
   font-size: var(--font-ui-smaller);
   color: var(--text-normal);
@@ -803,9 +814,24 @@ button.pw-round.pw-send:disabled {
   white-space: pre-wrap;
   word-break: break-word;
 }
+.pw-action-full {
+  display: block;
+  margin-top: 4px;
+}
+.pw-action-more summary {
+  cursor: pointer;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+}
+.pw-changed {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+.pw-preview-wrap {
+  margin-top: 8px;
+}
 .pw-preview {
-  margin: 8px 0 0;
-  max-height: 180px;
+  margin: 0;
   overflow: auto;
   padding: 8px 10px;
   font-family: var(--font-monospace);
@@ -816,6 +842,27 @@ button.pw-round.pw-send:disabled {
   border-radius: var(--radius-s);
   white-space: pre-wrap;
   word-break: break-word;
+}
+.pw-preview.markdown-rendered {
+  font-family: inherit;
+  font-size: var(--font-ui-small);
+  white-space: normal;
+}
+/* about six lines, whatever the content */
+.pw-preview.is-collapsed {
+  max-height: 9em;
+  overflow: hidden;
+}
+.pw-preview-toggle {
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  height: auto;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  cursor: pointer;
 }
 .pw-delivery {
   margin-top: 4px;
