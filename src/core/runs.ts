@@ -115,7 +115,8 @@ function applyClaim(r: Run, claim: Claim): void {
   // done until someone writes to the session again
   if (claim.done && claim.at && (!r.lastPromptAt || r.lastPromptAt < claim.at)) {
     r.done = claim.done;
-    if (r.state === "idle") r.state = "done";
+    // a session that says it is finished is not stuck, even if its log ends mid-turn
+    if (r.state === "idle" || r.state === "stalled") r.state = "done";
     r.asks = undefined;
   }
 }
