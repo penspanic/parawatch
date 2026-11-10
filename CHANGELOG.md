@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.6 (2026-11-10)
+
+- Fix: a Claude Code turn the human stopped showed as working and then stalled, and so did the subagents stopped with it. A stopped session now shows as idle and a stopped subagent as done, both marked "interrupted".
+
 ## 0.3.5 (2026-11-10)
 
 - Publishing a GitHub release publishes the CLI to npm from GitHub Actions, with npm trusted publishing and a provenance statement.
