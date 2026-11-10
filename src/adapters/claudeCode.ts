@@ -43,13 +43,22 @@ function toolSummary(b: Block): string {
 }
 
 /** A prompt the human (or parent agent) typed, not a tool result or system notice. */
+/** What Claude Code writes as a user record when the human stops a turn (or its parent was stopped). */
+const INTERRUPTED = /^\[Request interrupted by user\b/;
+
+function isInterrupt(rec: Record<string, unknown>): boolean {
+  if (rec.type !== "user") return false;
+  const text = blocks(rec).filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n").trim();
+  return INTERRUPTED.test(text);
+}
+
 function promptText(rec: Record<string, unknown>): string | undefined {
   if (rec.type !== "user" || rec.isMeta === true) return undefined;
   if (isObj(rec.origin) && rec.origin.kind === "task-notification") return undefined;
   const bs = blocks(rec);
   if (bs.some((b) => b.type === "tool_result")) return undefined;
   const text = bs.filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n").trim();
-  if (!text || text.startsWith("<")) return undefined;
+  if (!text || text.startsWith("<") || INTERRUPTED.test(text)) return undefined;
   return text;
 }
 
@@ -246,6 +255,10 @@ export function readClaudeTail(recs: unknown[], kind: "session" | "subagent"): R
       out.state = "working";
       out.action = "thinking";
     }
+  } else if (isInterrupt(lastConv)) {
+    // the turn was stopped and nothing came after: a session waits for the human, a subagent is over
+    out.state = kind === "subagent" ? "done" : "idle";
+    out.action = "interrupted";
   } else {
     out.state = "working";
     const result = bs.find((b) => b.type === "tool_result");
