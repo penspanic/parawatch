@@ -26,6 +26,7 @@ const api = {
   onUpdate: (fn: Listener<UpdateState>) => on("pw:update", fn),
   answer: (card: string, reply: unknown) => ipcRenderer.invoke("pw:answer", card, reply),
   goto: (target: string) => ipcRenderer.invoke("pw:goto", target),
+  hideRun: (id: string) => ipcRenderer.invoke("pw:hide-run", id),
   open: (target: string) => ipcRenderer.invoke("pw:open", target),
   mediaUrl: (file: string) => ipcRenderer.invoke("pw:media-url", file),
   targetMenu: (target: string) => ipcRenderer.invoke("pw:target-menu", target),

@@ -4,6 +4,7 @@ import { UserError } from "./errors.js";
 import { advance, appendEvent, deviceName, eventsDir, homeDir, isAfter, readCursor, readEvents, sharedDir, writeCursor, type Position } from "./store.js";
 import { archivedSessions } from "./desktop.js";
 import { findId, fold, nextId, sessionTitle, type State } from "./state.js";
+import { collectRuns } from "./runs.js";
 import { pathMap } from "./sync.js";
 import { CARD_KINDS, HUMAN, PR_CHANGES, type Card, type CardEdit, type CardKind, type Claim, type Listener, type PrChange, type PrRef, type PwEvent } from "./types.js";
 
@@ -261,6 +262,33 @@ export function beatRun(id: string): void {
 export function endRun(id: string, status: "done" | "failed", note?: string): void {
   const run = requireRun(id);
   appendEvent(() => ({ type: "run.end", run, status, note }));
+}
+
+/** The id of a seen or declared run from the start of it (6+ characters), or the exact id. */
+function resolveRunId(id: string, state: State): string {
+  const exact = (xs: string[]) => (xs.includes(id) ? [id] : xs.filter((x) => x.startsWith(id)));
+  if (id.length < 6 && !state.runs.has(id)) throw new UserError("give at least 6 characters of the run id");
+  const seen = collectRuns(state, { sinceHours: 24 * 7, includeEnded: true, keepRepeats: true }).map((r) => r.id);
+  const found = [...new Set(exact([...seen, ...state.runs.keys(), ...state.hidden.keys()]))];
+  if (found.length === 1) return found[0]!;
+  if (!found.length) throw new UserError(`no run "${id}" (parawatch runs --wide shows ids)`);
+  throw new UserError(`"${id}" matches ${found.length} runs; give more of the id`);
+}
+
+/** Hide a run from the lists until it does something new. Works for runs other machines shared. */
+export function hideRun(id: string): string {
+  const run = resolveRunId(id, readState());
+  appendEvent(() => ({ type: "run.hide", run }));
+  return run;
+}
+
+export function unhideRun(id: string): string {
+  const state = readState();
+  const hidden = [...state.hidden.keys()].filter((k) => k === id || k.startsWith(id));
+  const run = hidden.length === 1 ? hidden[0]! : hidden.length ? hidden.find((k) => k === id) : resolveRunId(id, state);
+  if (!run) throw new UserError(`"${id}" matches ${hidden.length} hidden runs; give more of the id`);
+  appendEvent(() => ({ type: "run.unhide", run }));
+  return run;
 }
 
 export interface ClaimInput {

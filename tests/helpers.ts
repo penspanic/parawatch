@@ -9,5 +9,8 @@ export function freshHome(): string {
   process.env.PARAWATCH_NOTIFY = "0";
   // never read this machine's Claude desktop sessions
   process.env.PARAWATCH_CLAUDE_DESKTOP_DIR = path.join(dir, "claude-desktop");
+  // never read this machine's agent logs
+  process.env.PARAWATCH_CLAUDE_DIR = path.join(dir, "claude");
+  process.env.PARAWATCH_CODEX_DIR = path.join(dir, "codex");
   return dir;
 }

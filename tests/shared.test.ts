@@ -2,9 +2,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { addProject, answerCard, claimSession, closeCard, listeners, openCard, prEvent, readInbox, readState, startListening, startRun, endRun, waitInbox, linkPr } from "../src/core/ops.js";
+import { addProject, answerCard, claimSession, closeCard, hideRun, unhideRun, listeners, openCard, prEvent, readInbox, readState, startListening, startRun, endRun, waitInbox, linkPr } from "../src/core/ops.js";
 import { snapshot } from "../src/core/snapshot.js";
-import { otherRuns, shareRuns, SHARED_RUNS_GONE_MS } from "../src/core/runs.js";
+import { collectRuns, otherRuns, shareRuns, SHARED_RUNS_GONE_MS } from "../src/core/runs.js";
 import type { Run } from "../src/core/types.js";
 import { eventFiles, eventsPath, readCursor, readEvents, writeCursor } from "../src/core/store.js";
 import { findConflicts, mapPath, readDevice, setRoot, setupSync, syncStatus, type DeviceInfo } from "../src/core/sync.js";
@@ -70,11 +70,17 @@ beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "parawatch-shared-"));
   process.env.PARAWATCH_NOTIFY = "0";
   process.env.PARAWATCH_GITHUB = "0";
+  process.env.PARAWATCH_CLAUDE_DIR = path.join(root, "claude");
+  process.env.PARAWATCH_CODEX_DIR = path.join(root, "codex");
+  process.env.PARAWATCH_CLAUDE_DESKTOP_DIR = path.join(root, "claude-desktop");
   for (const m of machines) fs.mkdirSync(home(m), { recursive: true });
 });
 
 afterEach(() => {
   delete process.env.PARAWATCH_GITHUB;
+  delete process.env.PARAWATCH_CLAUDE_DIR;
+  delete process.env.PARAWATCH_CODEX_DIR;
+  delete process.env.PARAWATCH_CLAUDE_DESKTOP_DIR;
 });
 
 describe("one machine", () => {
@@ -303,6 +309,69 @@ describe("two machines", () => {
     expect(on("pc", () => otherRuns(readState(), now))).toHaveLength(0);
     // a machine that stopped writing is left out
     expect(on("mac", () => otherRuns(readState(), now + SHARED_RUNS_GONE_MS + 1000))).toHaveLength(0);
+  });
+
+  describe("runs the other machine shared", () => {
+    const lead = (now: number, minutesAgo: number): Run => ({
+      id: "c004f2a7-1111-2222",
+      runtime: "claude-code",
+      kind: "session",
+      title: "spill director",
+      state: "idle",
+      lastActivity: new Date(now - minutesAgo * 60_000).toISOString(),
+    });
+    // the summary a machine writes for the others (shareRuns itself writes at most every 30 seconds)
+    const share = (m: Machine, runs: Run[], at: number) => {
+      // the sync tool carries it at once, so both copies of the folder get it
+      for (const to of machines) {
+        const dir = path.join(shared(to), "runs");
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, `${m}.json`), JSON.stringify({ v: 1, device: m, at: new Date(at).toISOString(), runs }));
+      }
+    };
+    // no local adapters: only declared runs and what the other machine shared
+    const list = (m: Machine, now: number, all = false) => on(m, () => collectRuns(readState(), { sinceHours: 24, runtimes: ["none"], includeEnded: all }, now));
+
+    it("a lead that claimed done drops after half an hour, an idle lead stays", () => {
+      const now = Date.now();
+      share("pc", [lead(now, 45)], now);
+      on("pc", () => claimSession({ session: "c004f2a7", project: "spill", role: "lead" }));
+      both();
+      expect(list("mac", now).map((r) => r.id)).toEqual(["c004f2a7-1111-2222"]);
+      on("pc", () => claimSession({ session: "c004f2a7", done: "finished" }));
+      both();
+      expect(list("mac", now)).toHaveLength(0);
+      expect(list("mac", now, true)).toHaveLength(1);
+      // a done lead is still listed in its first half hour
+      share("pc", [lead(now, 10)], now);
+      both();
+      expect(list("mac", now).map((r) => r.state)).toEqual(["done"]);
+    });
+
+    it("hiding on one machine hides the other machine's run until it does something new", () => {
+      const now = Date.now();
+      share("pc", [lead(now, 1)], now);
+      on("pc", () => claimSession({ session: "c004f2a7", project: "spill", role: "lead" }));
+      both();
+      expect(list("mac", now)).toHaveLength(1);
+      expect(on("mac", () => hideRun("c004f2a7"))).toBe("c004f2a7-1111-2222");
+      both();
+      expect(list("mac", now)).toHaveLength(0);
+      expect(list("pc", now)).toHaveLength(0);
+      expect(list("mac", now, true)).toHaveLength(1);
+      // it does something new
+      const later = Date.now() + 5000;
+      share("pc", [lead(later, 0)], later);
+      both();
+      expect(list("mac", later).map((r) => r.id)).toEqual(["c004f2a7-1111-2222"]);
+      // unhide brings back a run that has not moved
+      share("pc", [lead(now, 1)], now);
+      both();
+      on("mac", () => hideRun("c004f2a7"));
+      expect(list("mac", now)).toHaveLength(0);
+      on("mac", () => unhideRun("c004"));
+      expect(list("mac", now)).toHaveLength(1);
+    });
   });
 
   it("runs declared on either machine get their own ids and can be ended by the short id", () => {

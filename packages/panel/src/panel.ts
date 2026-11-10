@@ -899,6 +899,12 @@ export class Panel {
     if (r.device) el("span", "pw-run-device", `on ${r.device}`, sub);
     if (what || r.state === "stalled") el("span", "pw-run-action", r.state === "stalled" ? `stalled${what ? ` · ${what}` : ""}` : what, sub);
     row.appendChild(this.lane(r, at, now));
+    const hide = el("button", "pw-run-hide clickable-icon", undefined, row);
+    this.host.icon(hide, "eye-off");
+    hide.title = "Hide until it does something new";
+    hide.setAttribute("aria-label", "Hide until it does something new");
+    hide.onclick = () =>
+      void this.backend.hideRun(r.id).then(() => this.host.refresh(), (err) => this.host.notice(err instanceof Error ? err.message : String(err)));
     row.title = [
       `${r.title}`,
       `${STATE_LABEL[r.state]}${r.lastActivity ? `, last activity ${new Date(r.lastActivity).toLocaleTimeString()}` : ""}`,

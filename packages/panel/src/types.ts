@@ -25,6 +25,8 @@ export interface Backend {
   answer(card: string, reply: Reply): Promise<void>;
   /** Open the agent session behind a card (or a session id); resolves to what happened. */
   goto(target: string): Promise<string>;
+  /** Hide a run until it does something new. */
+  hideRun(id: string): Promise<void>;
   /** Open a file, app or URL with the system. */
   open(target: string): void;
   /** A URL the panel can put in <img> or <video> for a file outside the vault. */

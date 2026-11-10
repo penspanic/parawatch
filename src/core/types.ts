@@ -174,6 +174,9 @@ export type EventBody =
   | { type: "run.beat"; run: string }
   | { type: "run.end"; run: string; status: "done" | "failed"; note?: string }
   | { type: "run.claim"; claim: Claim }
+  /** the human hid a run from the list; it comes back when it does something new */
+  | { type: "run.hide"; run: string }
+  | { type: "run.unhide"; run: string }
   | { type: "pr.link"; link: Omit<PrLink, "at"> }
   | { type: "pr.unlink"; pr: string }
   /** something happened on a pull request: read from GitHub, or reported by another tool */

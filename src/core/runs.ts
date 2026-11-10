@@ -360,6 +360,26 @@ export function otherRuns(state: State, now = Date.now()): Run[] {
   return out;
 }
 
+/**
+ * Leave out runs the human hid. A run comes back once it has done something after it was hidden.
+ * Children of a hidden session stay hidden by the same rule, measured from the parent's hide time.
+ */
+function withoutHidden(runs: Run[], state: State): Run[] {
+  if (!state.hidden.size) return runs;
+  const byId = new Map(runs.map((r) => [r.id, r]));
+  const hiddenAt = (r: Run, seen = new Set<string>()): number | undefined => {
+    seen.add(r.id);
+    const own = state.hidden.get(r.id);
+    const at = own !== undefined ? Date.parse(own) : r.parent && !seen.has(r.parent) && byId.has(r.parent) ? hiddenAt(byId.get(r.parent)!, seen) : undefined;
+    return at !== undefined && Number.isFinite(at) ? at : undefined;
+  };
+  return runs.filter((r) => {
+    const at = hiddenAt(r);
+    if (at === undefined) return true;
+    return r.lastActivity ? Date.parse(r.lastActivity) > at : false;
+  });
+}
+
 export interface RunQuery {
   sinceHours: number;
   project?: string;
@@ -393,10 +413,12 @@ export function collectRuns(state: State, q: RunQuery, now = Date.now()): Run[] 
       if (!ENDED.has(r.state)) return true;
       if (r.asks) return true; // still waiting for the human to read it
       if (live.has(r.id)) return true;
-      if (r.role === "lead") return true;
+      // a lead idle between turns stays; one that really ended (claimed done, archived) follows the normal rule
+      if (r.role === "lead" && !r.done) return true;
       return r.lastActivity ? now - Date.parse(r.lastActivity) < RECENT_END_MS : false;
     });
   }
   if (!q.keepRepeats) runs = foldRepeats(runs);
+  if (!q.includeEnded) runs = withoutHidden(runs, state);
   return runs.sort((a, b) => (b.lastActivity ?? "").localeCompare(a.lastActivity ?? ""));
 }
