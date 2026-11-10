@@ -138,6 +138,12 @@ export function cardLine(c: Card, now = Date.now()): string {
   return cardRows([c], PLAIN, now)[0]!.trimEnd();
 }
 
+/** Local clock time, as in "14:05". */
+function hhmm(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 export function cardDetail(c: Card): string {
   const out: string[] = [];
   out.push(`${c.id} · ${KIND_LABEL[c.kind]} · ${c.project}${c.task ? ` [${c.task}]` : ""} · ${c.status}`);
@@ -147,8 +153,9 @@ export function cardDetail(c: Card): string {
     out.push("");
     c.options.forEach((o, i) => out.push(`  ${i + 1}. ${o}${c.recommend === i + 1 ? "  (recommended)" : ""}`));
   }
-  if (c.action) out.push("", `Runs on yes: ${c.action}`);
-  if (c.preview) out.push("", "Preview:", ...c.preview.split("\n").map((l) => `  ${l}`));
+  const changed = c.changedAt ? ` (changed ${hhmm(c.changedAt)})` : "";
+  if (c.action) out.push("", `Runs on yes${changed}: ${c.action}`);
+  if (c.preview) out.push("", `Preview${c.action ? "" : changed}${c.previewFile ? ` of ${c.previewFile}` : ""}:`, ...c.preview.split("\n").map((l) => `  ${l}`));
   if (c.look) out.push("", `Look at: ${c.look}`);
   for (const o of c.open ?? []) out.push(`Open: ${o}`);
   for (const a of c.attach ?? []) out.push(`Attached: ${a}`);

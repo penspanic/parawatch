@@ -70,6 +70,22 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return e;
 }
 
+/** How much of an approval shows before its details, and how many preview lines show folded. */
+const ACTION_CHARS = 120;
+const PREVIEW_LINES = 6;
+
+/** The text without a leading `---` frontmatter block. */
+function stripFrontmatter(text: string): string {
+  const m = /^---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/.exec(text);
+  return m ? text.slice(m[0].length).replace(/^\s*\n/, "") : text;
+}
+
+/** Local clock time, as in "14:05". */
+function clock(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 function basename(p: string): string {
   if (URL_RE.test(p)) {
     try {
@@ -130,6 +146,8 @@ export class Panel {
   private snapshot?: Snapshot;
   private error?: string;
   private drafts = new Map<string, Draft>();
+  /** folds the human opened (a preview shown whole, an action's details), kept across redraws */
+  private unfolded = new Set<string>();
   private busy = new Set<string>();
   private expanded = new Set<string>();
   /** answered and closed cards the human opened to read again */
@@ -441,18 +459,15 @@ export class Panel {
   /** What the card says and carries: body, what to look at, things to open, media, comments. */
   private cardDetail(c: Card, box: HTMLElement): void {
     if (c.body) this.host.renderMarkdown(c.body, el("div", "pw-card-body markdown-rendered", undefined, box));
-    if (c.action) {
-      const act = el("div", "pw-action", undefined, box);
-      this.icon(act, "play").title = "Runs if you say yes";
-      el("code", "pw-action-text", c.action, act);
-    }
-    if (c.preview) el("pre", "pw-preview", c.preview, box);
+    if (c.action) this.actionLine(c, box);
+    if (c.preview) this.previewBlock(c, box);
     if (c.look) {
       const look = el("div", "pw-look", undefined, box);
       this.icon(look, "eye").title = "Look at";
       el("span", "pw-look-text", c.look, look);
     }
     const refs = el("div", "pw-refs", undefined, box);
+    if (c.previewFile) refs.appendChild(this.fileLink(c.previewFile, "file", "Open the file the preview came from"));
     for (const target of c.open ?? []) {
       const b = el("button", "pw-ref", undefined, refs);
       this.icon(b, "external-link", "pw-btn-icon");
@@ -474,6 +489,56 @@ export class Panel {
         el("span", undefined, m.text, line);
       }
     }
+  }
+
+  /** The first line of the action next to the play icon; the whole text under a disclosure. */
+  private actionLine(c: Card, box: HTMLElement): void {
+    const act = el("div", "pw-action", undefined, box);
+    this.icon(act, "play").title = "Runs if you say yes";
+    const action = c.action ?? "";
+    const first = action.split("\n")[0] ?? "";
+    const short = first.length > ACTION_CHARS ? first.slice(0, ACTION_CHARS).trimEnd() + "…" : first;
+    const more = short !== action;
+    const main = el("div", "pw-action-main", undefined, act);
+    const row = el("div", "pw-action-row", undefined, main);
+    el("code", "pw-action-text", short, row);
+    if (c.changedAt) el("span", "pw-meta pw-changed", `changed ${clock(c.changedAt)}`, row).title = `The approval text was changed at ${new Date(c.changedAt).toLocaleString()}`;
+    if (!more) return;
+    const key = `action:${c.id}`;
+    const d = el("details", "pw-action-more", undefined, main);
+    d.open = this.unfolded.has(key);
+    d.addEventListener("toggle", () => {
+      if (d.open) this.unfolded.add(key);
+      else this.unfolded.delete(key);
+    });
+    el("summary", undefined, "details", d);
+    el("code", "pw-action-full", action, d);
+  }
+
+  /** The preview text, folded to a few lines; Markdown files are rendered without their frontmatter. */
+  private previewBlock(c: Card, box: HTMLElement): void {
+    const text = c.preview ?? "";
+    const markdown = /\.(md|markdown)$/i.test(c.previewFile ?? "") || /^---\r?\n/.test(text);
+    const shown = markdown ? stripFrontmatter(text) : text;
+    const long = shown.split("\n").length > PREVIEW_LINES;
+    const key = `preview:${c.id}`;
+    const wrap = el("div", "pw-preview-wrap", undefined, box);
+    const view = el(markdown ? "div" : "pre", `pw-preview${markdown ? " markdown-rendered" : ""}`, undefined, wrap);
+    if (markdown) this.host.renderMarkdown(shown, view);
+    else view.textContent = shown;
+    if (!long) return;
+    const toggle = el("button", "pw-preview-toggle", undefined, wrap);
+    const apply = () => {
+      const open = this.unfolded.has(key);
+      view.classList.toggle("is-collapsed", !open);
+      toggle.textContent = open ? "Show less" : "Show all";
+    };
+    toggle.onclick = () => {
+      if (this.unfolded.has(key)) this.unfolded.delete(key);
+      else this.unfolded.add(key);
+      apply();
+    };
+    apply();
   }
 
   /** Who asked, with a link that opens their session and puts a line about the card on the clipboard. */
@@ -746,11 +811,11 @@ export class Panel {
     }
   }
 
-  private fileLink(f: string): HTMLElement {
+  private fileLink(f: string, icon?: string, hint?: string): HTMLElement {
     const b = el("button", "pw-ref pw-file");
-    this.icon(b, URL_RE.test(f) ? "link" : "paperclip", "pw-btn-icon");
+    this.icon(b, icon ?? (URL_RE.test(f) ? "link" : "paperclip"), "pw-btn-icon");
     el("span", undefined, basename(f), b);
-    b.title = f;
+    b.title = hint ? `${hint}: ${f}` : f;
     b.onclick = () => this.backend.open(f);
     this.withMenu(b, f);
     return b;

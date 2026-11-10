@@ -174,6 +174,48 @@ describe("card kinds, origin and editing", () => {
   });
 });
 
+describe("approval cards", () => {
+  const write = (name: string, text: string) => {
+    const f = path.join(os.tmpdir(), `parawatch-preview-${process.pid}-${name}`);
+    fs.writeFileSync(f, text);
+    return f;
+  };
+
+  it("keeps the preview text and the absolute path of its file", () => {
+    const f = write("a.md", "---\ntitle: x\n---\nBody");
+    const c = openCard({ kind: "decide", project: "demo", title: "Send?", action: "gh pr create", preview: f });
+    expect(c.preview).toBe("---\ntitle: x\n---\nBody");
+    expect(c.previewFile).toBe(f);
+    expect(c.changedAt).toBeUndefined();
+    fs.writeFileSync(f, "changed on disk");
+    expect(fold(readEvents()).cards.get("c1")!.preview).toContain("Body");
+  });
+
+  it("edits action, preview and attachments on an unanswered card and records when", () => {
+    const f1 = write("b1.md", "one");
+    const f2 = write("b2.md", "two");
+    openCard({ kind: "decide", project: "demo", title: "Send?", action: "old", preview: f1, attach: ["x.png"] });
+    const c = editCard("c1", { action: "new command", preview: f2, attach: ["y.png", "z.png"] });
+    expect(c).toMatchObject({ action: "new command", preview: "two", previewFile: f2 });
+    expect(c.attach).toEqual([path.resolve("y.png"), path.resolve("z.png")]);
+    expect(c.changedAt).toBeDefined();
+    const cleared = editCard("c1", { preview: "", attach: [] });
+    expect(cleared.preview).toBeUndefined();
+    expect(cleared.previewFile).toBeUndefined();
+    expect(cleared.attach).toBeUndefined();
+    expect(cleared.action).toBe("new command");
+    expect(() => editCard("c1", { preview: "/no/such/file.md" })).toThrow(UserError);
+  });
+
+  it("does not change the approval text of a card that was already answered", () => {
+    openCard({ kind: "decide", project: "demo", title: "Send?", action: "old" });
+    answerCard("c1", { choice: 1 });
+    expect(() => editCard("c1", { action: "new" })).toThrow(/already answered/);
+    expect(() => editCard("c1", { attach: [] })).toThrow(UserError);
+    expect(editCard("c1", { title: "Send it?" }).title).toBe("Send it?");
+  });
+});
+
 describe("desktop sessions", () => {
   it("finds the desktop session that runs a CLI session, preferring a live one", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "parawatch-desk-"));

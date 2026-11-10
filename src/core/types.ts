@@ -69,6 +69,10 @@ export interface Card {
   action?: string;
   /** text the action would send or change (a message, a diff), shown with the card */
   preview?: string;
+  /** where the preview text came from, as stored (absolute); the text above is the snapshot the human sees */
+  previewFile?: string;
+  /** when the action or preview was last changed by `edit` (filled from the event time) */
+  changedAt?: string;
   /**
    * In a snapshot: the session that opened the card has ended (claimed done, or archived), so an
    * answer goes to whoever waits on the project. Never stored.
@@ -78,6 +82,15 @@ export interface Card {
 
 /** Fields `parawatch edit` may change on a card. */
 export type CardEdit = Partial<Pick<Card, "kind" | "title" | "body" | "task" | "from" | "session" | "since">>;
+
+/** What `edit` may change on a card nobody has answered yet: the approval text and the attachments. */
+export interface CardEditInput extends CardEdit {
+  action?: string;
+  /** a file; its text replaces the preview and its path is kept */
+  preview?: string;
+  /** the whole list of attachments; an empty list clears it */
+  attach?: string[];
+}
 
 export interface Project {
   name: string;
@@ -168,7 +181,7 @@ export type EventBody =
   | { type: "card.answer"; card: string; by: string; choice?: number; comment?: string; attach?: string[]; seen?: number }
   | { type: "card.comment"; card: string; by: string; text: string }
   | { type: "card.close"; card: string; note?: string }
-  | { type: "card.edit"; card: string; set: CardEdit }
+  | { type: "card.edit"; card: string; set: CardEdit & Pick<Card, "action" | "preview" | "previewFile" | "attach"> }
   | { type: "run.start"; run: { id: string; project: string; task?: string; title: string; parent?: string; heartbeat?: number; log?: string } }
   | { type: "run.note"; run: string; text: string }
   | { type: "run.beat"; run: string }

@@ -6,7 +6,7 @@ import { archivedSessions } from "./desktop.js";
 import { findId, fold, nextId, sessionTitle, type State } from "./state.js";
 import { collectRuns } from "./runs.js";
 import { pathMap } from "./sync.js";
-import { CARD_KINDS, HUMAN, PR_CHANGES, type Card, type CardEdit, type CardKind, type Claim, type Listener, type PrChange, type PrRef, type PwEvent } from "./types.js";
+import { CARD_KINDS, HUMAN, PR_CHANGES, type Card, type CardEditInput, type CardKind, type Claim, type Listener, type PrChange, type PrRef, type PwEvent } from "./types.js";
 
 export { UserError, sessionTitle };
 
@@ -79,15 +79,16 @@ export interface CardInput {
 
 const PREVIEW_MAX = 20_000;
 
-function readPreview(file: string | undefined): string | undefined {
+function readPreview(file: string | undefined): { preview: string; previewFile: string } | undefined {
   if (!file?.trim()) return undefined;
+  const abs = path.resolve(file);
   let text: string;
   try {
-    text = fs.readFileSync(path.resolve(file), "utf8");
+    text = fs.readFileSync(abs, "utf8");
   } catch {
     throw new UserError(`cannot read the preview file ${file}`);
   }
-  return text.length > PREVIEW_MAX ? text.slice(0, PREVIEW_MAX) + "\n…" : text;
+  return { preview: text.length > PREVIEW_MAX ? text.slice(0, PREVIEW_MAX) + "\n…" : text, previewFile: abs };
 }
 
 /** A date or timestamp as ISO text; a bare date counts as local midnight. */
@@ -110,7 +111,7 @@ export function openCard(input: CardInput): Card {
   const action = input.action?.trim() || undefined;
   // an approval with no choices of its own is a yes or a no
   const options = cleanList(input.options) ?? (action ? ["Do it", "Don't"] : undefined);
-  const preview = readPreview(input.preview);
+  const pv = readPreview(input.preview);
   if (input.recommend !== undefined) {
     if (!options) throw new UserError("--recommend needs --option");
     if (!Number.isInteger(input.recommend) || input.recommend < 1 || input.recommend > options.length) {
@@ -142,7 +143,8 @@ export function openCard(input: CardInput): Card {
         session,
         since,
         action,
-        preview,
+        preview: pv?.preview,
+        previewFile: pv?.previewFile,
       },
     };
   });
@@ -201,9 +203,10 @@ export function commentCard(id: string, text: string, by: string): void {
   appendEvent(() => ({ type: "card.comment", card: id, by, text: text.trim() }));
 }
 
-export function editCard(id: string, set: CardEdit): Card {
-  id = requireCard(id).id;
-  const clean: CardEdit = {};
+export function editCard(id: string, set: CardEditInput): Card {
+  const card = requireCard(id);
+  id = card.id;
+  const clean: Extract<PwEvent, { type: "card.edit" }>["set"] = {};
   if (set.kind !== undefined) clean.kind = checkKind(set.kind);
   if (set.title !== undefined) {
     if (!set.title.trim()) throw new UserError("a card needs a title");
@@ -216,6 +219,17 @@ export function editCard(id: string, set: CardEdit): Card {
   if (set.from !== undefined) clean.from = set.from.trim() || cleared;
   if (set.session !== undefined) clean.session = set.session.trim() || cleared;
   if (set.since !== undefined) clean.since = set.since.trim() ? parseWhen(set.since) : cleared;
+  const approval = set.action !== undefined || set.preview !== undefined || set.attach !== undefined;
+  if (approval && card.answers.length) {
+    throw new UserError(`card ${id} was already answered; close it and open a new one (a yes must not apply to text the human did not see)`);
+  }
+  if (set.action !== undefined) clean.action = set.action.trim() || cleared;
+  if (set.preview !== undefined) {
+    const pv = readPreview(set.preview);
+    clean.preview = pv?.preview ?? cleared;
+    clean.previewFile = pv?.previewFile ?? cleared;
+  }
+  if (set.attach !== undefined) clean.attach = absPaths(set.attach) ?? cleared;
   if (!Object.keys(clean).length) throw new UserError("nothing to change");
   appendEvent(() => ({ type: "card.edit", card: id, set: clean }));
   return requireCard(id);
