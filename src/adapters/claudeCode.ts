@@ -76,6 +76,8 @@ interface Job {
 const JOB_STARTED = /(?:running in background with ID|moved to the background \(ID): ([\w-]+)\)?[^\n]{0,80}?\.\s*Output is being written to: (.+?)\.\s+You will be notified/s;
 const JOB_STARTED_NO_PATH = /(?:running in background with ID|moved to the background \(ID): ([\w-]+)/;
 const NOTICE = /<task-notification>([\s\S]*?)<\/task-notification>/g;
+/** `parawatch wait` / `parawatch watch` at a command start: it blocks for the human and prints nothing. */
+const HUMAN_WAIT = /(?:^|&&|;|\||\bnpx\s+)\s*(?:parawatch\s+(?:wait|watch)\b|node\s+\S*cli\.js\s+(?:wait|watch)\b)/;
 const STOP_TOOLS = new Set(["TaskStop", "KillShell", "KillBash"]);
 
 function tag(xml: string, name: string): string | undefined {
@@ -124,7 +126,7 @@ function pendingJobs(recs: unknown[]): Job[] {
       if (id && status && status.toLowerCase() !== "running") ended.add(id);
     }
   }
-  return [...jobs.values()].filter((j) => !ended.has(j.id));
+  return [...jobs.values()].filter((j) => !ended.has(j.id) && !(j.command && HUMAN_WAIT.test(j.command.trim())));
 }
 
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);

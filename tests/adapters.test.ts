@@ -102,6 +102,20 @@ describe("background jobs", () => {
     expect(readClaudeTail([user(0, "go"), bash, started, stop, stopped, closing], "subagent").state).toBe("done");
   });
 
+  it("parawatch wait and watch jobs are the human's wait, not a pending job", () => {
+    const cmds = ["parawatch wait", "parawatch wait --card c1", "cd /x && parawatch watch", "npx parawatch wait --card c1", "node /opt/parawatch/dist/cli.js wait", "sleep 1; parawatch wait"];
+    for (const command of cmds) {
+      const b = assistant(1, [{ type: "tool_use", id: "t1", name: "Bash", input: { command, run_in_background: true } }]);
+      expect(readClaudeTail([user(0, "go"), b, started, waitingText], "session").state, command).toBe("idle");
+      expect(readClaudeTail([user(0, "go"), b, started, waitingText], "subagent").state, command).toBe("done");
+    }
+  });
+
+  it("a dev server job still counts as pending", () => {
+    const b = assistant(1, [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "npm run dev", run_in_background: true } }]);
+    expect(readClaudeTail([user(0, "go"), b, started, waitingText], "session").state).toBe("working");
+  });
+
   it("a job that started before the tail is unknown", () => {
     expect(readClaudeTail([waitingText], "subagent").state).toBe("done");
   });
