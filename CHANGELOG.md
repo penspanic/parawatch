@@ -5,6 +5,7 @@
 - Folders are compared by their real spelling: symlinks and Windows short names are resolved, and on Windows case and `/` against `\` no longer matter. A run in a worktree reached through a link, or on Windows, finds its project, and so does the Claude Code hook.
 - The test suite passes on Windows.
 - A Claude Code session archived in the Claude desktop app shows as done, with its subagents. One archived in the middle of a turn used to show as stalled for hours.
+- Cards and pull requests of a session that has ended (it said `claim --done`, or it was archived in the Claude desktop app) belong to its project again: an answer reaches the other sessions waiting in that project, as for a card no session owns. Before, it reached only a wait on the whole project (`wait -p`). The card in `status` and the app counts those waits.
 
 ## 0.3.2 (2026-11-10)
 

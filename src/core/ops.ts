@@ -2,11 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { UserError } from "./errors.js";
 import { advance, appendEvent, deviceName, eventsDir, homeDir, isAfter, readCursor, readEvents, sharedDir, writeCursor, type Position } from "./store.js";
-import { findId, fold, nextId, type State } from "./state.js";
+import { archivedSessions } from "./desktop.js";
+import { findId, fold, nextId, sessionTitle, type State } from "./state.js";
 import { pathMap } from "./sync.js";
 import { CARD_KINDS, HUMAN, PR_CHANGES, type Card, type CardEdit, type CardKind, type Claim, type Listener, type PrChange, type PrRef, type PwEvent } from "./types.js";
 
-export { UserError };
+export { UserError, sessionTitle };
 
 /** Current state, with other machines' paths made local. */
 export function readState(events = readEvents()): State {
@@ -85,12 +86,6 @@ export function parseWhen(s: string): string {
   return d.toISOString();
 }
 
-/** The claimed name of a session (claims may hold an id prefix). */
-export function sessionTitle(claims: Claim[], session: string | undefined): string | undefined {
-  if (!session) return undefined;
-  const c = claims.find((x) => session.startsWith(x.session) || x.session.startsWith(session));
-  return c?.title;
-}
 
 function checkKind(kind: string): CardKind {
   if (!CARD_KINDS.includes(kind as CardKind)) throw new UserError(`kind must be one of ${CARD_KINDS.join(", ")}`);
@@ -340,9 +335,12 @@ export interface InboxFilter {
   card?: string;
   /**
    * Only what belongs to this agent session: cards it opened and pull requests linked to it. With
-   * `project`, cards and pull requests that no session owns in that project come along.
+   * `project`, cards and pull requests that no session owns in that project come along, and so
+   * do those of sessions that have ended.
    */
   session?: string;
+  /** whether a session has ended; read from the claims and the Claude desktop app when absent */
+  ended?: (session: string) => boolean;
 }
 
 /** Whether two session ids name the same session. A claim or a link may hold a short prefix. */
@@ -350,9 +348,30 @@ export function sameSession(a?: string, b?: string): boolean {
   return !!a && !!b && (a.startsWith(b) || b.startsWith(a));
 }
 
+/**
+ * Whether a session has ended: it said so with `claim --done`, or the human archived it in the
+ * Claude desktop app. Cards and pull requests it owned then belong to its project, so an answer
+ * still reaches a session waiting there. The desktop app is read only when asked about a session
+ * that has not claimed done.
+ */
+export function endedSessions(state: State, isArchived?: (session: string) => boolean): (session: string) => boolean {
+  let archived = isArchived;
+  return (session) => {
+    const claim = state.claims.find((c) => sameSession(c.session, session));
+    if (claim?.done) return true;
+    archived ??= archivedSessions();
+    return archived(session);
+  };
+}
+
 /** Whether something owned by `owner` in `project` is for a reader with this filter. */
-function inScope(owner: string | undefined, project: string | undefined, f: InboxFilter): boolean {
-  if (f.session) return owner ? sameSession(owner, f.session) : !!f.project && project === f.project;
+function inScope(owner: string | undefined, project: string | undefined, f: InboxFilter, ended: (session: string) => boolean): boolean {
+  if (f.session) {
+    if (owner && sameSession(owner, f.session)) return true;
+    // what a session that has ended owned is the project's now
+    if (owner && !ended(owner)) return false;
+    return !!f.project && project === f.project;
+  }
   return !f.project || project === f.project;
 }
 
@@ -369,6 +388,7 @@ export function inboxFrom(events: PwEvent[], after: Position | number, filter: I
   const out: InboxItem[] = [];
   const reported = new Map<string, { dev?: string; at: number }>();
   const answerNo = new Map<string, number>();
+  const ended = filter.ended ?? endedSessions(state);
   for (const ev of events) {
     if (ev.type === "pr.change") {
       const k = `${ev.pr.key}|${ev.change}|${ev.text ?? ""}`;
@@ -378,7 +398,7 @@ export function inboxFrom(events: PwEvent[], after: Position | number, filter: I
       if (prev && prev.dev !== ev.dev && at - prev.at < ECHO_MS) continue;
       if (!isAfter(ev, pos)) continue;
       const link = state.prLinks.get(ev.pr.key);
-      if (!link || filter.card || !inScope(link.session, link.project, filter)) continue;
+      if (!link || filter.card || !inScope(link.session, link.project, filter, ended)) continue;
       out.push({ seq: ev.seq, dev: ev.dev, at: ev.ts, kind: "pr", by: ev.by ?? ev.source, pr: { ref: ev.pr, change: ev.change, title: ev.title, text: ev.text, project: link.project } });
       continue;
     }
@@ -393,7 +413,7 @@ export function inboxFrom(events: PwEvent[], after: Position | number, filter: I
     if (ev.by !== HUMAN || late) continue;
     const card = state.cards.get(ev.card);
     if (!card || card.status === "closed") continue;
-    if (!inScope(card.session, card.project, filter)) continue;
+    if (!inScope(card.session, card.project, filter, ended)) continue;
     if (filter.card && card.id !== filter.card) continue;
     if (ev.type === "card.answer") {
       out.push({
@@ -503,15 +523,21 @@ export function listeners(now = Date.now()): Listener[] {
   return out;
 }
 
-/** The waits an answer to this card would wake right now. */
-export function listenersFor(card: Card, ls: Listener[]): Listener[] {
+/**
+ * The waits an answer to this card would wake right now. A card whose session has ended reaches
+ * the session waits in its project, as an unowned card does. A snapshot's card says so itself
+ * (`ownerEnded`); otherwise `ended` tells.
+ */
+export function listenersFor(card: Card, ls: Listener[], ended?: (session: string) => boolean): Listener[] {
+  let gone: boolean | undefined = card.ownerEnded;
+  const ownerGone = () => (gone ??= !!card.session && (ended ?? endedSessions(readState()))(card.session));
   return ls.filter((l) =>
     l.card
       ? l.card === card.id
       : l.scope === "session"
-        ? card.session
-          ? sameSession(l.session, card.session)
-          : !!l.project && l.project === card.project
+        ? card.session && sameSession(l.session, card.session)
+          ? true
+          : (!card.session || ownerGone()) && !!l.project && l.project === card.project
         : !l.project || l.project === card.project,
   );
 }

@@ -1,5 +1,5 @@
 import { prViews, keyOf, parsePrRef, readCache, githubConfig } from "./github.js";
-import { linkPr, listeners, readState } from "./ops.js";
+import { endedSessions, linkPr, listeners, readState } from "./ops.js";
 import { collectRuns } from "./runs.js";
 import type { State } from "./state.js";
 import { deviceName, eventFiles, sharedDir } from "./store.js";
@@ -18,7 +18,10 @@ export function snapshot(opts: { sinceHours?: number; project?: string; closed?:
   const runs = collectRuns(state, { sinceHours: opts.sinceHours ?? 6, project: opts.project, keepRepeats: opts.keepRepeats });
   if (linkCreatedPrs(runs, state)) state = readState();
   const all = [...state.cards.values()].filter((c) => !opts.project || c.project === opts.project);
-  const cards = [...all.filter((c) => c.status !== "closed"), ...recentlyClosed(all, opts.closed ?? 0)];
+  const ended = endedSessions(state);
+  const cards = [...all.filter((c) => c.status !== "closed"), ...recentlyClosed(all, opts.closed ?? 0)].map((c) =>
+    c.status !== "closed" && c.session && ended(c.session) ? { ...c, ownerEnded: true } : c,
+  );
   quietAnsweredAsks(runs, all);
   const cache = readCache();
   const enabled = githubConfig().enabled && (cache.hosts === undefined ? false : cache.hosts.length > 0);

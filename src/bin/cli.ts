@@ -462,7 +462,8 @@ program
     }
     if (answered.length) {
       const notes: Record<string, string> = {};
-      for (const c of answered) if (!listenersFor(c, ls).length) notes[c.id] = "no agent waiting";
+      // the snapshot already marked the cards whose session has ended
+      for (const c of answered) if (!listenersFor(c, ls, () => false).length) notes[c.id] = "no agent waiting";
       out.push("", head("ANSWERED, WAITING FOR THE AGENT", answered.length));
       out.push(...cardRows(answered, v, now, "  ", notes));
     }
