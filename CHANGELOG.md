@@ -7,6 +7,7 @@
 - The instruction block (`parawatch init`) and the skill now say `parawatch wait`. `doctor` reports an older block as outdated; run `parawatch init` again to update it.
 - The Claude Code hook reports only the session's own unhandled news.
 - Fix: a machine reading GitHub for the first time in a while wrote again the pull request news another machine had already reported, and every wait woke a second time. News another machine wrote since this machine last read GitHub is now left out.
+- Runs on another machine show in `runs`, `status` and the app, marked with the machine. Each machine writes a summary of its sessions to `runs/<device>.json` in the shared folder about every half minute while `status`, a `wait` or the app runs; the agent logs stay where they are. A summary older than 15 minutes is left out. Claims made on any machine apply to those runs.
 
 ## 0.3.1 (2026-11-10)
 

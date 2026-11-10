@@ -4,7 +4,8 @@ import path from "node:path";
 import { scanAll } from "../adapters/index.js";
 import { ACTIVITY_MINUTES, activeMinutes } from "../adapters/jsonl.js";
 import type { State } from "./state.js";
-import type { DeclaredRun, Project, Run } from "./types.js";
+import { deviceName, sharedDir } from "./store.js";
+import type { Claim, DeclaredRun, Project, Run } from "./types.js";
 
 /** All checkouts of a project path: the path itself plus its git worktrees. */
 function rootsOf(p: string, cache: Map<string, string[]>): string[] {
@@ -103,24 +104,28 @@ function claimFor(id: string, state: State) {
  * unless it only edits files of another project; its parent's project; the project whose files it
  * edits most; a project path named in its first prompt.
  */
+function applyClaim(r: Run, claim: Claim): void {
+  r.project = claim.project;
+  r.projectSource = "claim";
+  r.task = claim.task ?? r.task;
+  r.role = claim.role ?? r.role;
+  if (claim.title) r.title = claim.title;
+  if (claim.kind === "scheduled") r.scheduled = true;
+  // done until someone writes to the session again
+  if (claim.done && claim.at && (!r.lastPromptAt || r.lastPromptAt < claim.at)) {
+    r.done = claim.done;
+    if (r.state === "idle") r.state = "done";
+    r.asks = undefined;
+  }
+}
+
 export function attribute(runs: Run[], state: State): Run[] {
   const ms = matchers([...state.projects.values()]);
   const byId = new Map(runs.map((r) => [r.id, r]));
   for (const r of runs) {
     const claim = claimFor(r.id, state);
     if (claim) {
-      r.project = claim.project;
-      r.projectSource = "claim";
-      r.task = claim.task ?? r.task;
-      r.role = claim.role ?? r.role;
-      if (claim.title) r.title = claim.title;
-      if (claim.kind === "scheduled") r.scheduled = true;
-      // done until someone writes to the session again
-      if (claim.done && claim.at && (!r.lastPromptAt || r.lastPromptAt < claim.at)) {
-        r.done = claim.done;
-        if (r.state === "idle") r.state = "done";
-        r.asks = undefined;
-      }
+      applyClaim(r, claim);
       continue;
     }
     const here = projectForCwd(r.cwd, ms);
@@ -242,6 +247,97 @@ export function declaredRuns(state: State, now = Date.now()): Run[] {
   });
 }
 
+// ---------------------------------------------------------------- other machines
+
+/** How often a machine rewrites its runs for the others, and when its summary counts as gone. */
+const SHARE_EVERY_MS = 30_000;
+export const SHARED_RUNS_GONE_MS = 15 * 60_000;
+
+/** `runs/<device>.json` in the shared folder: what a machine's agents were doing at `at`. */
+interface SharedRuns {
+  v: 1;
+  device: string;
+  at: string;
+  runs: Run[];
+}
+
+const SHARED_RUNS_FILE = /^([a-z0-9][a-z0-9-]{0,31})\.json$/;
+
+function sharedRunsDir(): string | undefined {
+  const s = sharedDir();
+  return s ? path.join(s, "runs") : undefined;
+}
+
+/**
+ * Write the runs read from this machine's agent logs where the other machines read them, at most
+ * every half minute. The logs themselves stay here; only the summary travels.
+ */
+export function shareRuns(runs: Run[], now = Date.now()): void {
+  if (!shareRunsDue(now)) return;
+  const dir = sharedRunsDir()!;
+  const me = deviceName();
+  const file = path.join(dir, `${me}.json`);
+  // the folders it edited are paths on this machine, and only guide attribution here
+  const slim = runs.map(({ touched: _t, ...r }) => ({ ...r, prompt: r.prompt?.slice(0, 300) }));
+  const body: SharedRuns = { v: 1, device: me, at: new Date(now).toISOString(), runs: slim };
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const tmp = path.join(dir, `.${me}.${process.pid}.tmp`);
+    fs.writeFileSync(tmp, JSON.stringify(body) + "\n");
+    fs.renameSync(tmp, file);
+  } catch {
+    // the folder may be busy syncing; the next reading writes it again
+  }
+}
+
+/** Whether this machine's summary for the others is due (a shared folder, and none written lately). */
+export function shareRunsDue(now = Date.now()): boolean {
+  const dir = sharedRunsDir();
+  if (!dir) return false;
+  try {
+    return now - fs.statSync(path.join(dir, `${deviceName()}.json`)).mtimeMs >= SHARE_EVERY_MS;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Runs other machines shared, as they last wrote them, marked with the machine. A machine that
+ * has not written for a while is left out: its agents may be long gone. Claims made since are
+ * applied here, and the activity chart slides by the summary's age.
+ */
+export function otherRuns(state: State, now = Date.now()): Run[] {
+  const dir = sharedRunsDir();
+  if (!dir) return [];
+  const me = deviceName();
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return [];
+  }
+  const out: Run[] = [];
+  for (const n of names.sort()) {
+    const m = SHARED_RUNS_FILE.exec(n);
+    if (!m || m[1] === me) continue;
+    try {
+      const s = JSON.parse(fs.readFileSync(path.join(dir, n), "utf8")) as SharedRuns;
+      const at = Date.parse(s.at);
+      if (!Number.isFinite(at) || now - at > SHARED_RUNS_GONE_MS || !Array.isArray(s.runs)) continue;
+      const shift = Math.max(0, Math.floor((now - at) / 60_000));
+      for (const r of s.runs) {
+        const run: Run = { ...r, device: m[1], activity: r.activity?.map((x) => x + shift).filter((x) => x < ACTIVITY_MINUTES) };
+        const claim = claimFor(run.id, state);
+        if (claim) applyClaim(run, claim);
+        out.push(run);
+      }
+    } catch {
+      // half synced; read it next time
+    }
+  }
+  return out;
+}
+
 export interface RunQuery {
   sinceHours: number;
   project?: string;
@@ -260,6 +356,9 @@ export function collectRuns(state: State, q: RunQuery, now = Date.now()): Run[] 
   // a log file can be touched (title records, snapshots) long after its last real activity
   const recent = (r: Run) => !r.lastActivity || Date.parse(r.lastActivity) >= sinceMs;
   let runs = attribute(scanAll({ sinceMs, now }, q.runtimes), state).filter(recent);
+  // a narrower reading (one runtime) would hide the rest from the other machines
+  if (!q.runtimes) shareRuns(runs, now);
+  runs.push(...otherRuns(state, now).filter(recent));
   runs.push(...declaredRuns(state, now).filter(recent));
   attachPrs(runs, state);
   if (q.project) runs = runs.filter((r) => r.project === q.project);

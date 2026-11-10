@@ -2,8 +2,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { addProject, answerCard, closeCard, listeners, openCard, prEvent, readInbox, readState, startListening, startRun, endRun, waitInbox, linkPr } from "../src/core/ops.js";
+import { addProject, answerCard, claimSession, closeCard, listeners, openCard, prEvent, readInbox, readState, startListening, startRun, endRun, waitInbox, linkPr } from "../src/core/ops.js";
 import { snapshot } from "../src/core/snapshot.js";
+import { otherRuns, shareRuns, SHARED_RUNS_GONE_MS } from "../src/core/runs.js";
+import type { Run } from "../src/core/types.js";
 import { eventFiles, eventsPath, readCursor, readEvents, writeCursor } from "../src/core/store.js";
 import { findConflicts, mapPath, readDevice, setRoot, setupSync, syncStatus, type DeviceInfo } from "../src/core/sync.js";
 import { readSyncthingGui } from "../src/core/syncthing.js";
@@ -271,6 +273,33 @@ describe("two machines", () => {
     expect(on("pc", () => dropReported([news("merged")], readEvents(), new Date(Date.now() + 1000).toISOString()))).toHaveLength(1);
     // this machine's own earlier news never hides its new news
     expect(on("mac", () => dropReported([news("merged")], readEvents(), lastRead))).toHaveLength(1);
+  });
+
+  it("a run on one machine shows on the other with its machine, until that machine goes quiet", () => {
+    const now = Date.now();
+    const lead: Run = {
+      id: "c004f2a7-1111-2222",
+      runtime: "claude-code",
+      kind: "session",
+      title: "spill director",
+      state: "working",
+      lastActivity: new Date(now - 60_000).toISOString(),
+      activity: [1, 2],
+      touched: ["C:\\Users\\pc\\dev\\spill"],
+    };
+    on("pc", () => shareRuns([lead], now));
+    on("pc", () => claimSession({ session: "c004f2a7", project: "spill", role: "lead", title: "Spill Director" }));
+    both();
+    const seen = on("mac", () => otherRuns(readState(), now + 2 * 60_000));
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ id: lead.id, device: "pc", project: "spill", role: "lead", title: "Spill Director", state: "working" });
+    // the chart slides by the summary's age, and the other machine's folders stay there
+    expect(seen[0]!.activity).toEqual([3, 4]);
+    expect(seen[0]!.touched).toBeUndefined();
+    // a machine never reads its own summary back
+    expect(on("pc", () => otherRuns(readState(), now))).toHaveLength(0);
+    // a machine that stopped writing is left out
+    expect(on("mac", () => otherRuns(readState(), now + SHARED_RUNS_GONE_MS + 1000))).toHaveLength(0);
   });
 
   it("runs declared on either machine get their own ids and can be ended by the short id", () => {

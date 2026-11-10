@@ -296,4 +296,6 @@ export interface Run {
   createdPrs?: string[];
   /** pull requests linked to this run */
   prs?: string[];
+  /** the machine the run is on, when it is another one (shared folders only) */
+  device?: string;
 }

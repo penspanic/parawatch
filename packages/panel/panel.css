@@ -287,6 +287,12 @@
   flex: none;
   font-variant-numeric: tabular-nums;
 }
+.pw-run-device {
+  flex: none;
+}
+.pw-run-device::before {
+  content: "· ";
+}
 .pw-run-action {
   overflow: hidden;
   text-overflow: ellipsis;

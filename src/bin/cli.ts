@@ -35,7 +35,7 @@ import { everywhere, readEvents } from "../core/store.js";
 import { followEvents } from "../core/follow.js";
 import { adapterNames, setRoot, setupSync, syncAdapter, syncStatus, touchDevice } from "../core/sync.js";
 import { syncText } from "../core/format.js";
-import { collectRuns } from "../core/runs.js";
+import { collectRuns, shareRunsDue } from "../core/runs.js";
 import { askRows, cardDetail, cardLine, cardRows, inboxLine, prRows, runsTree, view } from "../core/format.js";
 import { hookContext, notify, removeInstructions, writeInstructions } from "../core/integrate.js";
 import { installSkill, skillSource, skillTargets, uninstallSkill } from "../core/skill.js";
@@ -260,8 +260,12 @@ inboxOptions(
     const session = currentSession();
     const { consumer, filter } = inboxScope(o, session);
     startListening({ consumer, project: filter.project, card: filter.card, session, ...(filter.session ? { scope: "session" as const } : {}) });
-    // while waiting, keep GitHub fresh so news on linked pull requests wakes this wait
-    const tick = () => void refreshGithub();
+    // while waiting, keep GitHub fresh so news on linked pull requests wakes this wait, and tell
+    // the other machines what runs here
+    const tick = () => {
+      void refreshGithub();
+      if (shareRunsDue()) collectRuns(readState(), { sinceHours: 6 });
+    };
     tick();
     const timer = setInterval(tick, 60_000);
     timer.unref();
