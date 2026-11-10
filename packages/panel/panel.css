@@ -539,6 +539,20 @@ a.pw-from:hover {
   margin-left: auto;
   font-variant-numeric: tabular-nums;
 }
+.pw-card-id {
+  padding: 0 4px;
+  border: none;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--text-faint);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+}
+.pw-card-id:hover {
+  color: var(--text-normal);
+  background: var(--pw-hover);
+}
 .pw-card-title {
   font-weight: 650;
   color: var(--text-normal);

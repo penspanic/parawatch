@@ -484,6 +484,26 @@ export class Panel {
       age.dataset.since = start;
       meta.title = opened;
     }
+    this.cardId(c, head);
+  }
+
+  /**
+   * The card's id, as agents name it in chat ("mac-c58"): short for a card from this machine,
+   * whole for one from another. A click copies the whole id.
+   */
+  private cardId(c: Card, head: HTMLElement): void {
+    const me = this.snapshot?.devices?.me;
+    const short = me && c.id.startsWith(`${me}-`) ? c.id.slice(me.length + 1) : c.id;
+    const b = el("button", "pw-card-id", short, head);
+    b.title = `Card ${c.id}. Click to copy the id`;
+    b.setAttribute("aria-label", `Copy card id ${c.id}`);
+    b.onclick = (e) => {
+      e.stopPropagation();
+      void navigator.clipboard.writeText(c.id).then(
+        () => this.host.notice(`Copied ${c.id}`),
+        () => this.host.notice(`Could not copy ${c.id}`),
+      );
+    };
   }
 
   private card(c: Card, now: number): HTMLElement {
