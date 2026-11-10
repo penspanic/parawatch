@@ -362,7 +362,7 @@ export function runsTree(runs: Run[], v: View = PLAIN, now = Date.now(), indent 
       const ended = ENDED.has(r.state);
       const titlePaint: Paint[] = r.role === "lead" ? ["bold"] : ended ? ["dim"] : [];
       const mark = paint(v, STATE_MARK[r.state], ...STATE_PAINT[r.state]);
-      const label = r.title + (r.repeats ? ` ×${r.repeats + 1}` : "") + (r.prs?.length ? ` (${r.prs.length} PR)` : "");
+      const label = r.title + (r.repeats ? ` ×${r.repeats + 1}` : "") + (r.prs?.length ? ` (${r.prs.length} PR)` : "") + (r.device ? ` · on ${r.device}` : "");
       const title = paint(v, pad(fit(label, room), room), ...titlePaint);
       const age = paint(v, ago(r.lastActivity, now).padStart(4), "dim");
       const src = (r.projectSource && SOURCE_NOTE[r.projectSource]) || "";

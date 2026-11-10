@@ -291,10 +291,11 @@ parawatch sync            # this machine, the others, how the sync tool is doing
 - **When two machines answer one card before either has seen the other's answer, the earlier answer stands.** The other one stays on the card, marked as not used, and does not wake the agent. An answer given after seeing the first one counts as usual.
 - **Paths follow the machine.** Attachments, things to open and project folders written on another machine are read as the same place here, under its home folder or the shared folder. Name other folders that sit in different places on each machine (a cloud drive, say): `parawatch sync root gdrive "G:\My Drive"` on one machine and `parawatch sync root gdrive ~/Library/CloudStorage/…/My\ Drive` on the other. Pasted pictures are saved in the shared folder, so every machine can open them.
 - **Waits are seen everywhere.** A card on your laptop says whether an agent on the PC is waiting for it.
+- **Runs are seen everywhere.** Each machine writes a summary of the sessions its agent logs show (state, title, project, last activity, what each does) to `runs/<device>.json` about every half minute while `status`, a `wait` or the app runs. The other machines show those runs marked with the machine. The logs stay where they are. A machine whose summary is older than 15 minutes drops out of the list.
 - **Every machine reads GitHub for itself.** The same news is delivered once.
 - **Cards reach you as far as the sync tool does.** With Syncthing, leave global discovery and relays on (its defaults) to stay in step from another network; with them off, machines only meet on the same network or a VPN. `parawatch sync` shows each connection's address, a relay included.
 
-The shared folder holds `events/`, `devices/` (each machine's paths, version and last sign of life), `listeners/` and `attachments/`. Cursors, the lock, the GitHub reading and settings stay on each machine.
+The shared folder holds `events/`, `devices/` (each machine's paths, version and last sign of life), `runs/`, `listeners/` and `attachments/`. Cursors, the lock, the GitHub reading and settings stay on each machine.
 
 **Sync adapters** are how parawatch asks the sync tool how it is doing, for `parawatch sync`, `doctor` and the app's settings. Pick one with `--adapter` (or `"sync": { "adapter": … }` in `config.json`):
 

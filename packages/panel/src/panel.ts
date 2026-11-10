@@ -870,7 +870,8 @@ export class Panel {
     icon.title = r.role === "lead" ? `lead · ${STATE_LABEL[r.state]}` : STATE_LABEL[r.state];
     const text = el("div", "pw-run-text", undefined, who);
     const title = el("span", "pw-run-title", r.title, text);
-    if (r.runtime === "claude-code" && r.kind === "session") {
+    // a session on another machine cannot be opened from here
+    if (r.runtime === "claude-code" && r.kind === "session" && !r.device) {
       title.classList.add("is-link");
       title.setAttribute("role", "link");
       title.tabIndex = 0;
@@ -892,12 +893,13 @@ export class Panel {
     const sub = el("div", "pw-run-sub", undefined, text);
     if (r.asks) sub.classList.add(r.asks.blocked ? "is-blocked" : "is-asking");
     el("span", "pw-run-age", ago(r.lastActivity, now), sub);
+    if (r.device) el("span", "pw-run-device", `on ${r.device}`, sub);
     if (what || r.state === "stalled") el("span", "pw-run-action", r.state === "stalled" ? `stalled${what ? ` · ${what}` : ""}` : what, sub);
     row.appendChild(this.lane(r, at, now));
     row.title = [
       `${r.title}`,
       `${STATE_LABEL[r.state]}${r.lastActivity ? `, last activity ${new Date(r.lastActivity).toLocaleTimeString()}` : ""}`,
-      `${r.runtime} ${r.kind}${r.model ? ` (${r.model})` : ""} · ${r.id}`,
+      `${r.runtime} ${r.kind}${r.model ? ` (${r.model})` : ""} · ${r.id}${r.device ? ` · on ${r.device}` : ""}`,
       r.cwd ?? "",
       clean(r.action),
     ]
