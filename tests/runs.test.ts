@@ -88,6 +88,25 @@ describe("paths", () => {
   });
 });
 
+describe("claim --done", () => {
+  it("ends an idle or stalled session, not a working one", () => {
+    for (const id of ["idle0001", "stall001", "work0001"]) claimSession({ session: id, project: "game", done: "Merged #12" });
+    const runs = attribute([run("idle0001-x", { state: "idle" }), run("stall001-x", { state: "stalled", action: "thinking" }), run("work0001-x", { state: "working" })], fold(readEvents()));
+    expect(runs.map((r) => [r.state, r.done])).toEqual([
+      ["done", "Merged #12"],
+      ["done", "Merged #12"],
+      ["working", "Merged #12"],
+    ]);
+  });
+
+  it("stops counting once someone writes to the session again", () => {
+    claimSession({ session: "stall002", project: "game", done: "Merged #12" });
+    const [r] = attribute([run("stall002-x", { state: "stalled", lastPromptAt: "2999-01-01T00:00:00Z" })], fold(readEvents()));
+    expect(r).toMatchObject({ state: "stalled" });
+    expect(r!.done).toBeUndefined();
+  });
+});
+
 describe("declared runs", () => {
   it("reports start, note and end", () => {
     const id = startRun({ project: "game", title: "bake intro" });
