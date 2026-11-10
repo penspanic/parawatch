@@ -8,6 +8,7 @@
 - Cards and pull requests of a session that has ended (it said `claim --done`, or it was archived in the Claude desktop app) belong to its project again: an answer reaches the other sessions waiting in that project, as for a card no session owns. Before, it reached only a wait on the whole project (`wait -p`). The card in `status` and the app counts those waits.
 - `claim --done` also ends a session that shows as stalled, not only an idle one.
 - `runs` and `status` show the machine a run is on in a column of its own. It used to follow the title and was cut off with it at most terminal widths.
+- The settings screen has a Back control with a chevron at the leading edge of its header instead of a close button on the right. Esc still goes back.
 
 ## 0.3.2 (2026-11-10)
 

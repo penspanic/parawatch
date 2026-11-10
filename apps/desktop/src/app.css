@@ -109,7 +109,8 @@ body.is-settings #panel {
   position: sticky;
   top: 0;
   z-index: 10;
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
   height: 44px;
   padding: 0 12px;
@@ -118,17 +119,58 @@ body.is-settings #panel {
 }
 .is-darwin .st-head {
   -webkit-app-region: drag;
+  /* room for the window buttons */
   padding-left: 84px;
 }
 .is-darwin .st-head button {
   -webkit-app-region: no-drag;
 }
 .st-title {
+  grid-column: 2;
   font-weight: 650;
   font-size: 13px;
 }
-.st-close {
-  margin-left: auto;
+/* centered on the window, not on what the window buttons leave over */
+@media (min-width: 380px) {
+  .st-title {
+    grid-column: auto;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+}
+.st-back {
+  grid-column: 1;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  margin-left: -6px;
+  padding: 0 8px 0 2px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--interactive-accent);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.st-back-icon {
+  display: inline-flex;
+}
+.st-back-icon svg {
+  width: 18px;
+  height: 18px;
+}
+.st-back:hover {
+  background: var(--background-modifier-hover);
+}
+.st-back:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 1px;
 }
 .st-body {
   padding: 8px max(12px, calc((100% - 560px) / 2)) 32px;
