@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.7 (2026-11-10)
+
+- Dismiss a card that no longer matters: the round x on the card's corner in the app (click twice), or `parawatch dismiss <card> -n "why"`. The card closes without an answer and shows as dismissed under Closed. The agent that asked gets "dismissed by the human" at its next `wait` or `inbox`.
+- Card sections are a colored tile and a count, with what they are in the tooltip. What needs you is in color (a project's cards, asked in chat, reviews); below an hourglass rule, what waits on others is gray (pull requests, answered, closed). Nothing needs you is a green check.
+- The counts at the top are chips in their section's color, and a click opens the section and scrolls to it.
+- In the agents chart each project has a tinted head row and a rule above it, and the head row's timeline sums all the project's runs, so a folded project still shows when it was busy.
+
 ## 0.3.6 (2026-11-10)
 
 - Fix: a Claude Code turn the human stopped showed as working and then stalled, and so did the subagents stopped with it. A stopped session now shows as idle and a stopped subagent as done, both marked "interrupted".
