@@ -73,7 +73,8 @@ describe("paths", () => {
     const link = `${real}-link`;
     fs.symlinkSync(real, link, "junction");
     expect(samePath(link, real)).toBe(true);
-    expect(canonicalPath(path.join(link, "not", "yet"))).toBe(path.join(real, "not", "yet"));
+    expect(canonicalPath(path.join(link, "not", "yet"))).toBe(canonicalPath(path.join(real, "not", "yet")));
+    expect(canonicalPath(path.join(link, "not", "yet")).endsWith(path.join("not", "yet"))).toBe(true);
     expect(insidePath(path.join(link, "src"), real)).toBe(true);
     expect(insidePath(`${real}-other`, real)).toBe(false);
   });
