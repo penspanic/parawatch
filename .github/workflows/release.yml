@@ -114,6 +114,28 @@ jobs:
           key="$RUNNER_TEMP/AuthKey.p8"
           printf '%s' "$APPLE_API_KEY_CONTENT" > "$key"
           echo "APPLE_API_KEY=$key" >> "$GITHUB_ENV"
+      - name: Check the certificate
+        # fail in seconds, not after the build, and say which secret is wrong without printing it
+        if: env.RELEASE
+        run: |
+          p12="$RUNNER_TEMP/check.p12"
+          if ! printf '%s' "$CSC_LINK" | base64 --decode > "$p12" 2>/dev/null || [ ! -s "$p12" ]; then
+            echo "::error::MAC_CSC_LINK is not base64; set it with: base64 -i <file>.p12 | gh secret set MAC_CSC_LINK"
+            exit 1
+          fi
+          echo "MAC_CSC_LINK decodes to $(wc -c < "$p12" | tr -d ' ') bytes, sha256 $(shasum -a 256 "$p12" | cut -c1-16)"
+          if ! openssl pkcs12 -in "$p12" -info -noout -passin pass:not-the-password 2>&1 | grep -q "^MAC"; then
+            rm -f "$p12"
+            echo "::error::MAC_CSC_LINK decodes, but not to a .p12 file"
+            exit 1
+          fi
+          if ! openssl pkcs12 -in "$p12" -noout -passin env:CSC_KEY_PASSWORD >/dev/null 2>&1; then
+            rm -f "$p12"
+            echo "::error::MAC_CSC_KEY_PASSWORD does not open the .p12 in MAC_CSC_LINK"
+            exit 1
+          fi
+          rm -f "$p12"
+          echo "the certificate opens with its password"
       - run: npm run build -w @parawatch/desktop
       - run: npm run icon -w @parawatch/desktop
       - name: Build
