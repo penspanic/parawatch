@@ -24,6 +24,7 @@ import { logger, logPath } from "./logger.js";
 import { siteIcon } from "./siteIcons.js";
 import { KEEP_CLOSED, SINCE_HOURS, THEMES, validPref, type AboutInfo, type Prefs, type Theme, type UpdateState } from "./prefs.js";
 import { alertFor, agentsWorking, issueUrl, needsYou, newlyStuck, summary } from "./rules.js";
+import { cliState, onCliChange, updateCli } from "./cliUpdate.js";
 import { checkNow, installNow, RELEASES_URL, resumeUnfinished, scheduleUpdates, stopUpdates, updateState } from "./updater.js";
 import { clearMarker, installingNotice, interruptedNotice, readMarker, startState, stillInstallingNotice, writeMarker } from "./updateInstall.js";
 
@@ -35,7 +36,7 @@ interface Settings extends Omit<Prefs, "openAtLogin"> {
   bounds?: { x: number; y: number; width: number; height: number };
 }
 
-const DEFAULTS: Settings = { sinceHours: 6, notify: true, theme: "system", keepClosed: 20, checkUpdates: true, serviceIcons: true };
+const DEFAULTS: Settings = { sinceHours: 6, notify: true, theme: "system", keepClosed: 20, checkUpdates: true, serviceIcons: true, updateCli: true };
 const REPO_URL = "https://github.com/penspanic/parawatch";
 
 function settingsPath(): string {
@@ -51,6 +52,7 @@ function loadSettings(): Settings {
     if (typeof s.notify !== "boolean") s.notify = DEFAULTS.notify;
     if (typeof s.checkUpdates !== "boolean") s.checkUpdates = DEFAULTS.checkUpdates;
     if (typeof s.serviceIcons !== "boolean") s.serviceIcons = DEFAULTS.serviceIcons;
+    if (typeof s.updateCli !== "boolean") s.updateCli = DEFAULTS.updateCli;
     return s;
   } catch {
     return { ...DEFAULTS };
@@ -218,6 +220,7 @@ async function aboutInfo(): Promise<AboutInfo> {
     platform: `${process.platform}-${process.arch} ${process.getSystemVersion?.() ?? ""}`.trim(),
     ...(cli ? { cli: { version: cli.version, at: cli.at, path: cli.path } } : {}),
     skew: versionSkew(cli?.version, app.getVersion())?.text,
+    cliUpdate: cliState(app.getVersion()),
     logPath: logPath(),
     dataPath: homeDir(),
     ...(sync ? { sync } : {}),
@@ -232,6 +235,21 @@ function installedAt(): string {
 }
 
 let toldReady: string | undefined;
+
+/**
+ * Bring the command line to this app's version when the setting is on. An app that has just
+ * updated itself starts with an older command line beside it, so this runs a little after start;
+ * a development run never touches the installed command line on its own.
+ */
+function keepCliInStep(why: string): void {
+  if (!settings.updateCli || !app.isPackaged) return;
+  void updateCli(app.getVersion(), why);
+}
+
+/** Tell the settings screen when the command line's update moves on. */
+function sendAbout(): void {
+  if (win && !win.isDestroyed()) void aboutInfo().then((a) => win?.webContents.send("pw:about", a));
+}
 
 /**
  * Show a notification and resolve once it is on screen (or after a moment), so a quit right after
@@ -505,6 +523,7 @@ function prefs(): Prefs {
     keepClosed: settings.keepClosed,
     checkUpdates: settings.checkUpdates,
     serviceIcons: settings.serviceIcons,
+    updateCli: settings.updateCli,
   };
 }
 
@@ -521,6 +540,7 @@ function setPref<K extends keyof Prefs>(key: K, value: unknown): void {
   if (key === "theme") nativeTheme.themeSource = value as Theme;
   if (key === "sinceHours" || key === "keepClosed") refresh();
   if (key === "checkUpdates") scheduleUpdates(settings.checkUpdates, onUpdate);
+  if (key === "updateCli") keepCliInStep("turned on");
   if (win && !win.isDestroyed()) win.webContents.send("pw:prefs", prefs());
 }
 
@@ -701,6 +721,7 @@ function registerIpc(): void {
     return siteIcon(path.join(app.getPath("userData"), "icons"), site);
   });
   ipcMain.handle("pw:about", () => aboutInfo());
+  ipcMain.handle("pw:update-cli", () => updateCli(app.getVersion(), "asked from the settings").then(() => aboutInfo()));
   ipcMain.handle("pw:update-state", () => updateState());
   ipcMain.handle("pw:check-updates", () => checkNow());
   ipcMain.handle("pw:install-update", () => restartToUpdate());
@@ -808,6 +829,8 @@ if (!app.requestSingleInstanceLock()) {
     stopFollowing = followEvents(onEvent);
     watchGithub();
     scheduleUpdates(settings.checkUpdates, onUpdate);
+    onCliChange(sendAbout);
+    setTimeout(() => keepCliInStep("the app is newer"), 20_000);
     Notification.isSupported(); // touch the API early so macOS asks for permission on first run
   });
 }

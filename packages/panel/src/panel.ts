@@ -1,6 +1,7 @@
 import { serviceName, siteForPr, siteForRun } from "../../../src/core/sites.js";
 import { ago, clean, groupRuns, OTHER, type FoldNode, type Group, type RunNode } from "./tree";
 import type { Backend, Card, Listener, PrView, Reply, Run, Snapshot } from "./types";
+import { openViewer } from "./viewer";
 
 /** What the panel needs from its host (the desktop app, or the harness page). */
 export interface PanelHost {
@@ -143,6 +144,33 @@ export function layoutMedia(row: HTMLElement): void {
   }
 }
 
+/** What a pull request waits on, as its row and a lane's chip say it. */
+function prWait(p: PrView): string {
+  const review = p.reviewRequested && !p.mine;
+  const wait = review ? "your review" : p.waitingOn + (p.who?.length && (p.waitingOn === "review" || p.waitingOn === "changes requested") ? ` (${p.who.join(", ")})` : "");
+  if (!p.stalled) return wait;
+  return p.waitingOn === "merge held" ? "merge held, stuck" : `stuck in ${wait}`;
+}
+
+/** a lane chip's word for what a pull request waits on */
+const PR_SHORT: Record<string, string> = {
+  "changes requested": "changes",
+  "CI failed": "CI failed",
+  "merge queue": "queue",
+  "merge held": "held",
+  "no reviewer": "no reviewer",
+};
+
+/** the chip's color: others to act (review), the agent to act (bad), or just time (wait) */
+const PR_TONE: Record<string, string> = {
+  review: "review",
+  "no reviewer": "bad",
+  "changes requested": "bad",
+  "CI failed": "bad",
+  conflict: "bad",
+  "merge held": "held",
+};
+
 export class Panel {
   private snapshot?: Snapshot;
   private error?: string;
@@ -157,6 +185,8 @@ export class Panel {
   private mediaSize = new ResizeObserver((entries) => {
     for (const e of entries) layoutMedia(e.target as HTMLElement);
   });
+  /** loadable URLs of the pictures and videos shown on cards, for the viewer */
+  private mediaUrls = new Map<string, string>();
   /** site icons by site; "" when there is none, so it is not asked for again */
   private siteIcons = new Map<string, string>();
   private collapsed = loadCollapsed();
@@ -209,9 +239,41 @@ export class Panel {
       g.querySelector<HTMLElement>(":scope > .pw-fold-head")?.click();
     }
     if (box.classList.contains("is-folded")) box.querySelector<HTMLElement>(":scope > .pw-card-head > .pw-card-fold")?.click();
-    box.scrollIntoView({ block: "center", behavior: "smooth" });
-    box.classList.add("is-flash");
-    window.setTimeout(() => box.classList.remove("is-flash"), 1600);
+    this.spotlight(box, "center");
+  }
+
+  /**
+   * Scroll `target` into view and, once it has stopped moving, pulse a ring around it, so the eye
+   * finds what the click was about. Starting the pulse at the click would spend it while the page
+   * is still moving.
+   */
+  private spotlight(target: HTMLElement, block: ScrollLogicalPosition, cls = "is-spotlight"): void {
+    const win = this.root.ownerDocument.defaultView ?? window;
+    const r = target.getBoundingClientRect();
+    const inView = r.top >= 0 && r.bottom <= win.innerHeight;
+    target.classList.remove(cls);
+    const start = () => {
+      void target.offsetWidth; // restart the animation when it is still running from a last click
+      target.classList.add(cls);
+      win.setTimeout(() => target.classList.remove(cls), 2400);
+    };
+    if (inView) return start();
+    target.scrollIntoView({ block, behavior: "smooth" });
+    // start once the target has stopped moving: scrollend is not sent everywhere, and a smooth
+    // scroll's length depends on the distance and on how busy the window is
+    let last = Number.NaN;
+    let still = 0;
+    const began = Date.now();
+    const timer = win.setInterval(() => {
+      const box = target.getBoundingClientRect();
+      still = Math.abs(box.top - last) < 0.5 ? still + 1 : 0;
+      last = box.top;
+      const shown = box.bottom > 0 && box.top < win.innerHeight;
+      if ((still >= 2 && shown) || Date.now() - began > 2500) {
+        win.clearInterval(timer);
+        start();
+      }
+    }, 60);
   }
 
   // ---------------------------------------------------------------- small parts
@@ -279,17 +341,7 @@ export class Panel {
     chip.classList.add("is-jump");
     chip.setAttribute("role", "button");
     chip.tabIndex = 0;
-    const go = () => {
-      const sec = this.root.querySelector<HTMLElement>(selector);
-      if (!sec) return;
-      for (let p: HTMLElement | null = sec; p && p !== this.root; p = p.parentElement) {
-        if (p.classList.contains("is-collapsed")) p.querySelector<HTMLElement>(":scope > .pw-fold-head, :scope > .pw-agents-head")?.click();
-      }
-      sec.scrollIntoView({ block: "start", behavior: "smooth" });
-      sec.classList.remove("is-flash");
-      void sec.offsetWidth;
-      sec.classList.add("is-flash");
-    };
+    const go = () => this.reveal(selector, "start");
     chip.onclick = go;
     chip.onkeydown = (e) => {
       if (e.key === "Enter" || e.key === " ") {
@@ -297,6 +349,17 @@ export class Panel {
         go();
       }
     };
+  }
+
+  /** Open whatever folds hide the element, scroll to it and flash it. */
+  private reveal(selector: string, block: ScrollLogicalPosition): void {
+    const sec = this.root.querySelector<HTMLElement>(selector);
+    if (!sec) return;
+    for (let p: HTMLElement | null = sec; p && p !== this.root; p = p.parentElement) {
+      if (p.classList.contains("is-collapsed")) p.querySelector<HTMLElement>(":scope > .pw-fold-head, :scope > .pw-agents-head")?.click();
+    }
+    // a section flashes its head; a single row (a pull request) gets the ring
+    this.spotlight(sec, block, sec.classList.contains("pw-pr") ? "is-spotlight" : "is-flash");
   }
 
   private renderHead(): void {
@@ -609,12 +672,16 @@ export class Panel {
   }
 
   /**
-   * Dismiss: close the card without answering it. The first click arms the button, a second one
-   * within a few seconds dismisses, so a stray click does not wake the agent.
+   * Dismiss: close the card without answering it. It sits in the head next to the fold button and
+   * shows while the card is hovered. The first click arms it (it turns red and says Dismiss), a
+   * second one within a few seconds dismisses, so a stray click does not wake the agent.
    */
   private cardDismiss(c: Card, box: HTMLElement): void {
-    const b = el("button", "pw-card-dismiss clickable-icon", undefined, box);
+    const head = box.querySelector<HTMLElement>(":scope > .pw-card-head");
+    if (!head) return;
+    const b = el("button", "pw-card-dismiss clickable-icon", undefined, head);
     this.host.icon(b, "x");
+    el("span", "pw-card-dismiss-label", "Dismiss", b);
     const idle = "Dismiss: close without answering. The agent that asked is told";
     b.title = idle;
     b.setAttribute("aria-label", idle);
@@ -774,7 +841,9 @@ export class Panel {
     const mark = this.icon(row, away ? "monitor" : "bot");
     const run = !away && c.session ? this.snapshot?.runs?.find((r) => r.id === c.session) : undefined;
     if (run) this.siteSlot(mark, siteForRun(run));
-    el("span", "pw-from-name", [who, away ? `on ${away}` : ""].filter(Boolean).join(" "), row);
+    const name = [who, away ? `on ${away}` : ""].filter(Boolean).join(" ");
+    // the name gives way first when the head is narrow; the whole of it is in the tooltip
+    el("span", "pw-from-name", name, row).title = name;
     if (away) row.title = `Asked on ${away}`;
     if (!c.session || away) return;
     const link = row as HTMLAnchorElement;
@@ -1022,12 +1091,41 @@ export class Panel {
           m.setAttribute("controlslist", "nodownload noremoteplayback");
         } else (m as HTMLImageElement).alt = basename(f);
         void this.backend.mediaUrl(f).then((url) => {
-          if (url) m.src = url;
-          else item.replaceChildren(this.fileLink(f));
+          if (url) {
+            m.src = url;
+            this.mediaUrls.set(f, url);
+          } else item.replaceChildren(this.fileLink(f));
         });
-        if (!video) m.onclick = () => this.backend.open(f);
+        // a picture opens in the viewer over the window; a video plays where it is and has a button for it
+        if (video) {
+          const b = el("button", "pw-media-expand", undefined, item);
+          this.host.icon(b, "maximize-2");
+          b.title = "View larger";
+          b.setAttribute("aria-label", `View ${basename(f)} larger`);
+          b.onclick = (e) => {
+            e.stopPropagation();
+            (m as HTMLVideoElement).pause();
+            this.view(files, f);
+          };
+        } else m.onclick = () => this.view(files, f);
       } else item.appendChild(this.fileLink(f));
     }
+  }
+
+  /** Opens the viewer on `file`, with the other pictures and videos of the same card beside it. */
+  private view(files: string[], file: string): void {
+    const items = files
+      .filter((f) => (IMAGE.test(f) || VIDEO.test(f)) && this.mediaUrls.has(f))
+      .map((f) => ({ file: f, src: this.mediaUrls.get(f)!, video: VIDEO.test(f) }));
+    const start = items.findIndex((x) => x.file === file);
+    if (start < 0) {
+      this.backend.open(file);
+      return;
+    }
+    openViewer(this.root.ownerDocument, items, start, {
+      icon: (e, name) => this.host.icon(e, name),
+      openExternal: (f) => this.backend.open(f),
+    });
   }
 
   private fileLink(f: string, icon?: string, hint?: string): HTMLElement {
@@ -1138,6 +1236,7 @@ export class Panel {
   /** A pull request: what it waits on and since when, and the session that owns it. */
   private prRow(p: PrView, now: number): HTMLElement {
     const row = el("div", `pw-pr${p.stalled ? " is-stuck" : ""}`);
+    row.dataset.pr = p.key;
     const top = el("div", "pw-pr-top", undefined, row);
     this.siteSlot(this.icon(top, "git-pull-request", "pw-pr-icon"), siteForPr(p));
     const label = el("a", "pw-pr-label", `${p.repo.split("/")[1]}#${p.number}`, top);
@@ -1147,9 +1246,8 @@ export class Panel {
       e.preventDefault();
       this.backend.open(p.url);
     };
-    const review = p.reviewRequested && !p.mine;
-    const wait = review ? "your review" : p.waitingOn + (p.waitingOn === "review" && p.who?.length ? ` (${p.who.join(", ")})` : "");
-    el("span", "pw-pr-wait", p.stalled ? `stuck in ${wait}` : wait, top);
+    this.withMenu(label, p.url);
+    el("span", "pw-pr-wait", prWait(p), top);
     el("span", "pw-meta", ago(p.since, now), top).title = `Waiting on this since ${new Date(p.since).toLocaleString()}`;
     el("div", "pw-pr-title", p.title, row);
     if (p.session || p.project) {
@@ -1188,11 +1286,22 @@ export class Panel {
     return me && id.startsWith(`${me}-`) ? id.slice(me.length + 1) : id;
   }
 
-  /** The cards a run waits on, at the "now" end of its lane; a click goes to the card. */
-  private laneCards(lane: HTMLElement, cards: Card[]): void {
+  /** Open pull requests this run owns, the ones waiting longest first. */
+  private prsOf(r: Run): PrView[] {
+    const same = (a: string, b: string) => a.startsWith(b) || b.startsWith(a);
+    return (this.snapshot?.prs ?? []).filter((p) => p.session && same(p.session, r.id) && !(p.reviewRequested && !p.mine));
+  }
+
+  /**
+   * What a run waits on, at the "now" end of its lane: its open cards first, then its pull requests,
+   * three at most. A click goes to the card, or to the pull request in its section.
+   */
+  private laneCards(lane: HTMLElement, cards: Card[], prs: PrView[]): void {
     lane.removeAttribute("aria-hidden");
     const wrap = el("div", "pw-lane-cards", undefined, lane);
-    for (const c of cards.slice(0, 2)) {
+    const shownCards = cards.slice(0, prs.length ? 2 : 3);
+    const shownPrs = prs.slice(0, 3 - shownCards.length);
+    for (const c of shownCards) {
       const b = el("button", `pw-lane-card pw-kind-${c.kind}`, undefined, wrap);
       this.icon(b, KIND_ICON[c.kind]);
       el("span", undefined, this.shortId(c.id), b);
@@ -1202,7 +1311,20 @@ export class Panel {
         this.focusCard(c.id);
       };
     }
-    if (cards.length > 2) el("span", "pw-lane-more", `+${cards.length - 2}`, wrap).title = cards.slice(2).map((c) => `${c.id}: ${c.title}`).join("\n");
+    for (const p of shownPrs) {
+      const b = el("button", `pw-lane-card pw-lane-pr pw-pr-${PR_TONE[p.waitingOn] ?? "wait"}${p.stalled ? " is-stuck" : ""}`, undefined, wrap);
+      this.icon(b, "git-pull-request");
+      el("span", undefined, `#${p.number} ${PR_SHORT[p.waitingOn] ?? p.waitingOn}`, b);
+      b.title = `${p.repo}#${p.number}: ${prWait(p)}\n${p.title}\nClick to go to the pull request; right click to open it`;
+      b.onclick = (e) => {
+        e.stopPropagation();
+        this.reveal(`[data-pr="${CSS.escape(p.key)}"]`, "center");
+      };
+      // right click: Open Link, Copy Link
+      this.withMenu(b, p.url);
+    }
+    const rest = [...cards.slice(shownCards.length).map((c) => `${c.id}: ${c.title}`), ...prs.slice(shownPrs.length).map((p) => `${p.repo}#${p.number}: ${prWait(p)}`)];
+    if (rest.length) el("span", "pw-lane-more", `+${rest.length}`, wrap).title = rest.join("\n");
   }
 
   private runRow({ run: r, depth }: RunNode, now: number, at: number): HTMLElement {
@@ -1230,7 +1352,10 @@ export class Panel {
       };
     }
     const cards = this.openCardsOf(r);
+    const prs = this.prsOf(r);
     const waits = cards.length && r.state !== "working" && !r.done;
+    // a session with nothing left but its pull requests says which one and on what
+    const waitsPr = !waits && !r.asks && !r.done && !r.error && prs.length > 0 && r.state !== "working" ? prs[0] : undefined;
     const what = r.error
       ? `unreadable: ${r.error}`
       : waits
@@ -1239,17 +1364,20 @@ export class Panel {
         ? `done · ${clean(r.done)}`
         : r.asks
           ? `${r.asks.blocked ? "blocked" : "asks"}: ${clean(r.asks.text)}`
-          : clean((r.state === "idle" && r.recap) || r.action);
+          : waitsPr
+            ? `PR #${waitsPr.number}: ${prWait(waitsPr)}${prs.length > 1 ? ` (+${prs.length - 1})` : ""}`
+            : clean((r.state === "idle" && r.recap) || r.action);
     if (r.repeats) el("span", "pw-run-repeats", `×${r.repeats + 1}`, text).title = `${r.repeats + 1} runs of this scheduled task; the newest is shown`;
     const sub = el("div", "pw-run-sub", undefined, text);
     if (waits) sub.classList.add("is-waiting-card");
+    else if (waitsPr) sub.classList.add(waitsPr.stalled ? "is-waiting-pr-stuck" : "is-waiting-pr");
     else if (r.asks) sub.classList.add(r.asks.blocked ? "is-blocked" : "is-asking");
     el("span", "pw-run-age", ago(r.lastActivity, now), sub);
     if (r.device) el("span", "pw-run-device", `on ${r.device}`, sub);
     if (what || r.state === "stalled") el("span", "pw-run-action", r.state === "stalled" ? `stalled${what ? ` · ${what}` : ""}` : what, sub);
     const lane = this.lane(r, at, now);
     row.appendChild(lane);
-    if (cards.length) this.laneCards(lane, cards);
+    if (cards.length || prs.length) this.laneCards(lane, cards, prs);
     const hide = el("button", "pw-run-hide clickable-icon", undefined, row);
     this.host.icon(hide, "eye-off");
     hide.title = "Hide until it does something new";

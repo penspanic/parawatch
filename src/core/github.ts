@@ -33,6 +33,7 @@ export const DEFAULT_STALL_HOURS: Record<string, number> = {
   "merge queue": 6,
   "auto-merge": 6,
   merge: 24,
+  "merge held": 8,
 };
 
 /** `config.json` in the parawatch home, all of it optional. */
@@ -107,6 +108,8 @@ export interface PrStatus {
   state: "open" | "merged" | "closed";
   draft: boolean;
   mergeable?: string;
+  /** GitHub's mergeStateStatus; BLOCKED with approvals and green CI means a rule or system other than reviews and CI holds it */
+  mergeState?: string;
   reviewDecision?: string;
   /** reviewers asked and not answered yet */
   pending: string[];
@@ -181,7 +184,7 @@ const FIELDS = (withQueue: boolean) => `
   latestReviews(first: 30) { nodes { author { login } state submittedAt } }
   comments { totalCount }
   commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
-  ${withQueue ? "mergeQueueEntry { state position }\n  autoMergeRequest { enabledAt }" : ""}`;
+  ${withQueue ? "mergeQueueEntry { state position }\n  autoMergeRequest { enabledAt }\n  mergeStateStatus" : ""}`;
 
 function gqlString(s: string): string {
   return JSON.stringify(s);
@@ -239,6 +242,7 @@ function toStatus(host: string, node: Obj, viewer: string, asked: boolean): PrSt
     state: state === "MERGED" ? "merged" : state === "CLOSED" ? "closed" : "open",
     draft: node.isDraft === true,
     mergeable: s(node.mergeable),
+    mergeState: s(node.mergeStateStatus),
     reviewDecision: s(node.reviewDecision) ?? undefined,
     pending,
     reviews,
@@ -260,8 +264,8 @@ export async function fetchHost(host: string, extra: PrRef[], gh: GhRunner = run
   try {
     out = await ask(true);
   } catch (err) {
-    // older GitHub Enterprise servers have no merge queue fields
-    if (!/mergeQueueEntry|autoMergeRequest/.test(String((err as Error).message))) throw err;
+    // older GitHub Enterprise servers have no merge queue fields, nor mergeStateStatus
+    if (!/mergeQueueEntry|autoMergeRequest|mergeStateStatus/.test(String((err as Error).message))) throw err;
     out = await ask(false);
   }
   const data = o(out.data);
@@ -298,6 +302,9 @@ export function waitingOn(p: PrStatus): { what: string; who?: string[] } {
   }
   if (p.queue) return { what: "merge queue" };
   if (p.ci === "PENDING" || p.ci === "EXPECTED") return { what: "CI" };
+  // approved (or no review needed) and CI green, yet GitHub says it cannot be merged: a rule other
+  // than reviews and CI, or a merge system outside GitHub, holds it. GitHub does not say who.
+  if (p.mergeState === "BLOCKED" && p.reviewDecision !== "REVIEW_REQUIRED" && !p.pending.length) return { what: "merge held" };
   if (p.reviewDecision === "APPROVED") return p.autoMerge ? { what: "auto-merge" } : { what: "merge", who: author };
   if (p.pending.length) return { what: "review", who: p.pending };
   if (p.reviewDecision === "REVIEW_REQUIRED") return { what: "no reviewer", who: author };

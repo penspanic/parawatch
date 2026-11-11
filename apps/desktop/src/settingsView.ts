@@ -31,6 +31,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 export interface AboutActions {
   checkUpdates(): void;
   installUpdate(): void;
+  updateCli(): void;
   openLink(which: "repo" | "releases" | "issue" | "logs" | "data"): void;
 }
 
@@ -113,10 +114,7 @@ export class SettingsView {
     });
     if (u?.status !== "off") this.row(about, "download", "Update automatically", "Downloads in the background, asks to restart", (c) => this.toggle(c, p.checkUpdates, (v) => this.change("checkUpdates", v)));
     if (a) {
-      const cli = a.cli ? `parawatch ${a.cli.version}` : "Not used with this Mac's data yet";
-      this.row(about, "terminal", "Command line", a.skew ?? cli, (c) => {
-        if (a.skew) c.parentElement?.classList.add("is-warn");
-      });
+      this.cliRows(about, a, p);
       if (a.sync)
         this.row(about, "network", `Shared as ${a.sync.device}`, a.sync.text, (c) => {
           if (a.sync?.warn) c.parentElement?.classList.add("is-warn");
@@ -132,6 +130,49 @@ export class SettingsView {
       const b = el("button", "st-link", label, links);
       b.onclick = () => this.actions.openLink(which);
     }
+  }
+
+  /** The command line beside the app: its version, and an update through the npm that installed it. */
+  private cliRows(group: HTMLElement, a: AboutInfo, p: Prefs): void {
+    const s = a.cliUpdate;
+    const v = s?.version ?? a.cli?.version;
+    const label = v ? `Command line ${v}` : "Command line";
+    let sub: string;
+    let warn = false;
+    let action: (() => void) | undefined;
+    let busy = false;
+    switch (s?.status) {
+      case "updating":
+        sub = `Updating to ${s.target}…`;
+        busy = true;
+        break;
+      case "error":
+        sub = `Could not update to ${s.target}: ${s.error ?? "npm failed"}`;
+        warn = true;
+        action = () => this.actions.updateCli();
+        break;
+      case "behind":
+        warn = true;
+        if (s.npm) {
+          sub = `Older than the app (${a.version})`;
+          action = () => this.actions.updateCli();
+        } else sub = `Older than the app (${a.version}). Installed outside npm at ${s.path ?? "an unknown place"}; update it there`;
+        break;
+      case "current":
+        sub = a.skew ?? "Same version as the app";
+        warn = !!a.skew;
+        break;
+      default:
+        sub = a.cli ? (a.skew ?? `parawatch ${a.cli.version}`) : "Not used with this Mac's data yet. npm i -g parawatch";
+    }
+    this.row(group, "terminal", label, sub, (c) => {
+      if (warn) c.parentElement?.classList.add("is-warn");
+      if (action || busy) this.button(c, busy ? "Updating…" : "Update", action ?? (() => {}), !busy, busy);
+    });
+    if (s?.npm)
+      this.row(group, "download", "Update the command line too", "Follows the app's updates, through npm", (c) =>
+        this.toggle(c, p.updateCli, (on) => this.change("updateCli", on)),
+      );
   }
 
   private button(cell: HTMLElement, label: string, onClick: () => void, primary = false, disabled = false): void {

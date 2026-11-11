@@ -219,6 +219,7 @@ at(52, () => (bench = startRun({ project: "game", title: "Overnight physics benc
 at(24, () => noteRun(bench, "scene 5 of 8"));
 at(200, () => linkPr({ pr: prRef("github.com", "demo/marble-box", 139), session: GAME_LEAD, project: "game", task: "139" }));
 at(60, () => linkPr({ pr: prRef("github.com", "demo/ear-trainer", 21), session: WORKER, project: "app", task: "PR 21" }));
+at(59, () => linkPr({ pr: prRef("github.com", "demo/ear-trainer", 22), session: APP_LEAD, project: "app", task: "PR 22" }));
 
 // rewrite the times so the board looks lived in
 const lines = fs.readFileSync(eventsPath(), "utf8").trim().split("\n");
@@ -335,7 +336,8 @@ const pr = (repo: string, number: number, title: string, o: Record<string, unkno
 });
 const prs = [
   pr("demo/marble-box", 139, "Shake round 2 and the top-box ending", { reviewDecision: "APPROVED", ci: "SUCCESS", queue: { state: "QUEUED", position: 4 } }),
-  pr("demo/ear-trainer", 21, "Interval lessons and the count-in", { reviewDecision: "APPROVED", ci: "SUCCESS" }),
+  // approved and green, yet a merge bot outside GitHub holds it
+  pr("demo/ear-trainer", 21, "Interval lessons and the count-in", { reviewDecision: "APPROVED", ci: "SUCCESS", mergeState: "BLOCKED" }),
   pr("demo/ear-trainer", 22, "Settings screen", { reviewDecision: "REVIEW_REQUIRED", ci: "SUCCESS", pending: ["mina"] }),
   pr("demo/site", 7, "New footer", { author: "mina", mine: false, reviewRequested: true, reviewDecision: "REVIEW_REQUIRED", ci: "SUCCESS", pending: ["you"] }),
 ];
@@ -347,7 +349,7 @@ write(
     prs,
     since: {
       "github.com/demo/marble-box#139": { waitingOn: "merge queue", since: ago(60 * 9) },
-      "github.com/demo/ear-trainer#21": { waitingOn: "merge", since: ago(20) },
+      "github.com/demo/ear-trainer#21": { waitingOn: "merge held", since: ago(60 * 10) },
       "github.com/demo/ear-trainer#22": { waitingOn: "review", since: ago(60 * 5) },
       "github.com/demo/site#7": { waitingOn: "review", since: ago(60 * 3) },
     },

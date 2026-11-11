@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- A card's pictures open in a viewer over the app window instead of another app: the page dims, the picture fits the window, and it zooms with the wheel, a trackpad pinch, a double click or + and - (0 fits), and pans by dragging. The arrows (or ← →) go to the card's other pictures and videos; Esc or a click beside the picture closes it. A video plays in its card as before and has a button at its top right to view it larger. "Open in its own app" stays in the viewer's bar.
+- The dismiss button sits in the card's head, beside the fold button, instead of on its corner. It shows while the card is hovered; the first click turns it into a red "Dismiss" in place of the age and id, and a second click within three seconds dismisses.
+- The app's settings show the command line's version under the app's, and update it when it is older, with the npm that installed it. With Update the command line too on (the default), an app that has just updated itself brings the command line to its version a little after it starts, so one restart updates both.
+- An approved pull request with green CI that GitHub still reports as blocked shows as `merge held` instead of `merge`, and counts as stuck after 8 hours. Something other than reviews and CI holds it: a branch rule, or a merge system outside GitHub with its own approvers. GitHub does not say who.
+- A session's pull requests show on its lane in the agents chart, after its cards: `#22 review`, `#23 CI failed`, `#21 held`, in red once stuck. A click goes to the pull request in its section; a right click opens a menu with Open Link and Copy Link, as does the pull request's name in its section. An idle session with nothing else pending says which pull request it waits on and on what, instead of its last summary.
+- A click that scrolls to a card or a pull request (a lane chip, a card id in a run's line) marks where it went: once the scroll stops, a ring pulses twice around the card or row and fades.
+- In `status`, a run whose title is cut keeps its `(N PR)` count and repeat count at the end.
+- A card's head stays on one line: when it is narrow, who asked is cut short (the whole name is in the tooltip).
+
 ## 0.3.7 (2026-11-10)
 
 - Dismiss a card that no longer matters: the round x on the card's corner in the app (click twice), or `parawatch dismiss <card> -n "why"`. The card closes without an answer and shows as dismissed under Closed. The agent that asked gets "dismissed by the human" at its next `wait` or `inbox`.
