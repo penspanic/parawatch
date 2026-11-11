@@ -797,6 +797,9 @@ if (!app.requestSingleInstanceLock()) {
     settings = loadSettings();
     logger.info(`Parawatch ${app.getVersion()} starting (electron ${process.versions.electron}, ${process.platform}-${process.arch} ${process.getSystemVersion?.() ?? ""}, packaged ${app.isPackaged})`);
     nativeTheme.themeSource = settings.theme;
+    // Windows shows a notification only for an app id that its Start menu shortcut carries; the
+    // installer gives the shortcut builder.json's appId
+    if (process.platform === "win32") app.setAppUserModelId("io.github.penspanic.parawatch");
     app.setAboutPanelOptions({
       applicationName: "Parawatch",
       applicationVersion: app.getVersion(),

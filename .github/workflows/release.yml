@@ -174,7 +174,8 @@ jobs:
       - run: npm run build -w @parawatch/desktop
       - name: Build
         working-directory: apps/desktop
-        run: npx electron-builder --config builder.json --win nsis --x64 --publish never
+        # the install folder is named after the package; without this it is "@parawatchdesktop"
+        run: npx electron-builder --config builder.json --win nsis --x64 --publish never -c.extraMetadata.name=parawatch
       - name: Check the app
         working-directory: apps/desktop
         run: |
