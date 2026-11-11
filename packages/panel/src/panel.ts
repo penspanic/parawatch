@@ -239,9 +239,41 @@ export class Panel {
       g.querySelector<HTMLElement>(":scope > .pw-fold-head")?.click();
     }
     if (box.classList.contains("is-folded")) box.querySelector<HTMLElement>(":scope > .pw-card-head > .pw-card-fold")?.click();
-    box.scrollIntoView({ block: "center", behavior: "smooth" });
-    box.classList.add("is-flash");
-    window.setTimeout(() => box.classList.remove("is-flash"), 1600);
+    this.spotlight(box, "center");
+  }
+
+  /**
+   * Scroll `target` into view and, once it has stopped moving, pulse a ring around it, so the eye
+   * finds what the click was about. Starting the pulse at the click would spend it while the page
+   * is still moving.
+   */
+  private spotlight(target: HTMLElement, block: ScrollLogicalPosition, cls = "is-spotlight"): void {
+    const win = this.root.ownerDocument.defaultView ?? window;
+    const r = target.getBoundingClientRect();
+    const inView = r.top >= 0 && r.bottom <= win.innerHeight;
+    target.classList.remove(cls);
+    const start = () => {
+      void target.offsetWidth; // restart the animation when it is still running from a last click
+      target.classList.add(cls);
+      win.setTimeout(() => target.classList.remove(cls), 2400);
+    };
+    if (inView) return start();
+    target.scrollIntoView({ block, behavior: "smooth" });
+    // start once the target has stopped moving: scrollend is not sent everywhere, and a smooth
+    // scroll's length depends on the distance and on how busy the window is
+    let last = Number.NaN;
+    let still = 0;
+    const began = Date.now();
+    const timer = win.setInterval(() => {
+      const box = target.getBoundingClientRect();
+      still = Math.abs(box.top - last) < 0.5 ? still + 1 : 0;
+      last = box.top;
+      const shown = box.bottom > 0 && box.top < win.innerHeight;
+      if ((still >= 2 && shown) || Date.now() - began > 2500) {
+        win.clearInterval(timer);
+        start();
+      }
+    }, 60);
   }
 
   // ---------------------------------------------------------------- small parts
@@ -326,10 +358,8 @@ export class Panel {
     for (let p: HTMLElement | null = sec; p && p !== this.root; p = p.parentElement) {
       if (p.classList.contains("is-collapsed")) p.querySelector<HTMLElement>(":scope > .pw-fold-head, :scope > .pw-agents-head")?.click();
     }
-    sec.scrollIntoView({ block, behavior: "smooth" });
-    sec.classList.remove("is-flash");
-    void sec.offsetWidth;
-    sec.classList.add("is-flash");
+    // a section flashes its head; a single row (a pull request) gets the ring
+    this.spotlight(sec, block, sec.classList.contains("pw-pr") ? "is-spotlight" : "is-flash");
   }
 
   private renderHead(): void {
@@ -1216,6 +1246,7 @@ export class Panel {
       e.preventDefault();
       this.backend.open(p.url);
     };
+    this.withMenu(label, p.url);
     el("span", "pw-pr-wait", prWait(p), top);
     el("span", "pw-meta", ago(p.since, now), top).title = `Waiting on this since ${new Date(p.since).toLocaleString()}`;
     el("div", "pw-pr-title", p.title, row);
@@ -1284,11 +1315,13 @@ export class Panel {
       const b = el("button", `pw-lane-card pw-lane-pr pw-pr-${PR_TONE[p.waitingOn] ?? "wait"}${p.stalled ? " is-stuck" : ""}`, undefined, wrap);
       this.icon(b, "git-pull-request");
       el("span", undefined, `#${p.number} ${PR_SHORT[p.waitingOn] ?? p.waitingOn}`, b);
-      b.title = `${p.repo}#${p.number}: ${prWait(p)}\n${p.title}\nClick to go to the pull request`;
+      b.title = `${p.repo}#${p.number}: ${prWait(p)}\n${p.title}\nClick to go to the pull request; right click to open it`;
       b.onclick = (e) => {
         e.stopPropagation();
         this.reveal(`[data-pr="${CSS.escape(p.key)}"]`, "center");
       };
+      // right click: Open Link, Copy Link
+      this.withMenu(b, p.url);
     }
     const rest = [...cards.slice(shownCards.length).map((c) => `${c.id}: ${c.title}`), ...prs.slice(shownPrs.length).map((p) => `${p.repo}#${p.number}: ${prWait(p)}`)];
     if (rest.length) el("span", "pw-lane-more", `+${rest.length}`, wrap).title = rest.join("\n");

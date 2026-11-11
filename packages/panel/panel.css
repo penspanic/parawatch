@@ -643,6 +643,7 @@
   margin: 0 0 6px;
 }
 .pw-card {
+  --pw-spot-bg: var(--pw-surface);
   position: relative;
   background: var(--pw-surface);
   border: 1px solid var(--pw-line);
@@ -654,10 +655,40 @@
 .pw-card.is-busy {
   opacity: 0.6;
 }
-.pw-card.is-flash {
-  outline: 2px solid var(--pw-accent);
-  outline-offset: 2px;
-  transition: outline-color 1.2s ease;
+/* where a click went: a ring that pulses twice and fades, with a tint, once the scroll lands */
+@keyframes pw-spotlight {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--pw-accent) 0%, transparent);
+    background-color: color-mix(in srgb, var(--pw-accent) 14%, var(--pw-spot-bg));
+  }
+  12% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--pw-accent) 60%, transparent);
+  }
+  30% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--pw-accent) 35%, transparent);
+  }
+  48% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--pw-accent) 60%, transparent);
+    background-color: color-mix(in srgb, var(--pw-accent) 10%, var(--pw-spot-bg));
+  }
+  100% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--pw-accent) 0%, transparent);
+    background-color: var(--pw-spot-bg);
+  }
+}
+.pw-card.is-spotlight,
+.pw-pr.is-spotlight {
+  position: relative;
+  z-index: 1;
+  animation: pw-spotlight 2.2s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pw-card.is-spotlight,
+  .pw-pr.is-spotlight {
+    animation: none;
+    outline: 2px solid var(--pw-accent);
+    outline-offset: 2px;
+  }
 }
 .pw-card.is-drop {
   outline: 2px dashed var(--pw-accent);
@@ -1501,6 +1532,8 @@ button.pw-round.pw-send:disabled {
 
 .pw-ask,
 .pw-pr {
+  --pw-spot-bg: transparent;
+  border-radius: var(--radius-s, 6px);
   padding: 8px 14px;
   border-radius: var(--pw-radius);
 }
@@ -1645,9 +1678,6 @@ a.pw-pr-owner:hover {
 }
 .pw-run-sub.is-waiting-pr-stuck .pw-run-action {
   color: var(--pw-bad);
-}
-.pw-pr.is-flash {
-  animation: pw-flash 900ms ease-out;
 }
 .pw-lane-more {
   font-size: 11px;
