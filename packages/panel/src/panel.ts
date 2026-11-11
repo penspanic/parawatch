@@ -1,6 +1,7 @@
 import { serviceName, siteForPr, siteForRun } from "../../../src/core/sites.js";
 import { ago, clean, groupRuns, OTHER, type FoldNode, type Group, type RunNode } from "./tree";
 import type { Backend, Card, Listener, PrView, Reply, Run, Snapshot } from "./types";
+import { openViewer } from "./viewer";
 
 /** What the panel needs from its host (the desktop app, or the harness page). */
 export interface PanelHost {
@@ -157,6 +158,8 @@ export class Panel {
   private mediaSize = new ResizeObserver((entries) => {
     for (const e of entries) layoutMedia(e.target as HTMLElement);
   });
+  /** loadable URLs of the pictures and videos shown on cards, for the viewer */
+  private mediaUrls = new Map<string, string>();
   /** site icons by site; "" when there is none, so it is not asked for again */
   private siteIcons = new Map<string, string>();
   private collapsed = loadCollapsed();
@@ -609,12 +612,16 @@ export class Panel {
   }
 
   /**
-   * Dismiss: close the card without answering it. The first click arms the button, a second one
-   * within a few seconds dismisses, so a stray click does not wake the agent.
+   * Dismiss: close the card without answering it. It sits in the head next to the fold button and
+   * shows while the card is hovered. The first click arms it (it turns red and says Dismiss), a
+   * second one within a few seconds dismisses, so a stray click does not wake the agent.
    */
   private cardDismiss(c: Card, box: HTMLElement): void {
-    const b = el("button", "pw-card-dismiss clickable-icon", undefined, box);
+    const head = box.querySelector<HTMLElement>(":scope > .pw-card-head");
+    if (!head) return;
+    const b = el("button", "pw-card-dismiss clickable-icon", undefined, head);
     this.host.icon(b, "x");
+    el("span", "pw-card-dismiss-label", "Dismiss", b);
     const idle = "Dismiss: close without answering. The agent that asked is told";
     b.title = idle;
     b.setAttribute("aria-label", idle);
@@ -774,7 +781,9 @@ export class Panel {
     const mark = this.icon(row, away ? "monitor" : "bot");
     const run = !away && c.session ? this.snapshot?.runs?.find((r) => r.id === c.session) : undefined;
     if (run) this.siteSlot(mark, siteForRun(run));
-    el("span", "pw-from-name", [who, away ? `on ${away}` : ""].filter(Boolean).join(" "), row);
+    const name = [who, away ? `on ${away}` : ""].filter(Boolean).join(" ");
+    // the name gives way first when the head is narrow; the whole of it is in the tooltip
+    el("span", "pw-from-name", name, row).title = name;
     if (away) row.title = `Asked on ${away}`;
     if (!c.session || away) return;
     const link = row as HTMLAnchorElement;
@@ -1022,12 +1031,41 @@ export class Panel {
           m.setAttribute("controlslist", "nodownload noremoteplayback");
         } else (m as HTMLImageElement).alt = basename(f);
         void this.backend.mediaUrl(f).then((url) => {
-          if (url) m.src = url;
-          else item.replaceChildren(this.fileLink(f));
+          if (url) {
+            m.src = url;
+            this.mediaUrls.set(f, url);
+          } else item.replaceChildren(this.fileLink(f));
         });
-        if (!video) m.onclick = () => this.backend.open(f);
+        // a picture opens in the viewer over the window; a video plays where it is and has a button for it
+        if (video) {
+          const b = el("button", "pw-media-expand", undefined, item);
+          this.host.icon(b, "maximize-2");
+          b.title = "View larger";
+          b.setAttribute("aria-label", `View ${basename(f)} larger`);
+          b.onclick = (e) => {
+            e.stopPropagation();
+            (m as HTMLVideoElement).pause();
+            this.view(files, f);
+          };
+        } else m.onclick = () => this.view(files, f);
       } else item.appendChild(this.fileLink(f));
     }
+  }
+
+  /** Opens the viewer on `file`, with the other pictures and videos of the same card beside it. */
+  private view(files: string[], file: string): void {
+    const items = files
+      .filter((f) => (IMAGE.test(f) || VIDEO.test(f)) && this.mediaUrls.has(f))
+      .map((f) => ({ file: f, src: this.mediaUrls.get(f)!, video: VIDEO.test(f) }));
+    const start = items.findIndex((x) => x.file === file);
+    if (start < 0) {
+      this.backend.open(file);
+      return;
+    }
+    openViewer(this.root.ownerDocument, items, start, {
+      icon: (e, name) => this.host.icon(e, name),
+      openExternal: (f) => this.backend.open(f),
+    });
   }
 
   private fileLink(f: string, icon?: string, hint?: string): HTMLElement {

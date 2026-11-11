@@ -36,6 +36,8 @@ const cards: Card[] = [
     kind: "try",
     project: "game",
     title: "Try build 139: does the glass read as glass?",
+    from: "Spill Director",
+    dev: "winpc",
     open: ["/Applications/Game.app", "https://example.com/builds/139"],
     look: "the tank walls when it is full, at the top right",
     attach: ["/captures/glass.png"],
@@ -170,6 +172,7 @@ async function load(): Promise<Snapshot> {
         ],
     github: useReal ? real!.github : undefined,
     listeners: useReal ? real!.listeners : undefined,
+    devices: useReal ? real!.devices : { me: "mac", others: ["winpc"] },
   };
 }
 

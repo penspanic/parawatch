@@ -664,41 +664,56 @@
   outline-offset: 2px;
 }
 
-/* dismiss: a round x on the card's corner, shown while the card is hovered, as notifications do */
+/* dismiss: an x in the card head beside the fold button, shown while the card is hovered;
+   armed, it turns into a red "Dismiss" until the second click */
 .pw-card-dismiss {
-  position: absolute;
-  top: -8px;
-  left: -8px;
-  z-index: 1;
-  display: inline-grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: 1px solid var(--pw-line) !important;
-  border-radius: 999px;
-  background: var(--pw-surface) !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px;
+  border-radius: var(--radius-s, 4px);
+  color: var(--text-faint);
   opacity: 0;
-  transition: opacity 120ms ease;
+  transition:
+    opacity 120ms ease,
+    color 120ms ease,
+    background-color 120ms ease;
 }
-.pw-card:hover .pw-card-dismiss,
+.pw-card:hover > .pw-card-head > .pw-card-dismiss,
 .pw-card-dismiss:focus-visible,
 .pw-card-dismiss.is-armed {
   opacity: 1;
 }
 .pw-card-dismiss:hover {
   color: var(--text-normal);
-}
-.pw-card-dismiss.is-armed {
-  color: var(--text-on-accent, #fff);
-  background: var(--pw-bad) !important;
-  border-color: var(--pw-bad) !important;
+  background: var(--pw-hover);
 }
 .pw-card-dismiss svg {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
+}
+.pw-card-dismiss-label {
+  display: none;
+  font-size: var(--font-ui-smaller, 12px);
+  font-weight: var(--font-semibold, 600);
+  line-height: 1;
+}
+.pw-card-dismiss.is-armed,
+.pw-card-dismiss.is-armed:hover {
+  padding: 3px 8px 3px 5px;
+  color: var(--pw-bad);
+  background: color-mix(in srgb, var(--pw-bad) 13%, transparent);
+}
+.pw-card-dismiss.is-armed .pw-card-dismiss-label {
+  display: inline;
+}
+/* armed, the red Dismiss takes the place of the age and id for those few seconds */
+.pw-card-head:has(> .pw-card-dismiss.is-armed) > .pw-card-age,
+.pw-card-head:has(> .pw-card-dismiss.is-armed) > .pw-card-id {
+  display: none;
+}
+.pw-card-head:has(> .pw-card-dismiss.is-armed) > .pw-card-dismiss {
+  margin-left: auto;
 }
 .pw-close-note.is-dismissed {
   color: var(--text-faint);
@@ -731,7 +746,6 @@
 .pw-card-head {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 6px 10px;
   font-size: var(--font-ui-smaller, 12px);
   color: var(--text-muted);
@@ -782,6 +796,28 @@ a.pw-from {
 }
 a.pw-from:hover {
   color: var(--text-accent);
+}
+/* one line: the task and who asked give way, the age, id and buttons keep their size */
+.pw-card-head > * {
+  flex-shrink: 0;
+}
+.pw-card-head > .pw-card-project {
+  max-width: 40%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.pw-card-head > .pw-from {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.pw-card-head > .pw-from > .pw-from-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .pw-card-age {
   margin-left: auto;
@@ -885,6 +921,197 @@ button.pw-ref:hover {
 }
 .pw-media-img {
   cursor: zoom-in;
+}
+.pw-media-expand {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  cursor: pointer;
+}
+.pw-media-item:hover .pw-media-expand,
+.pw-media-expand:focus-visible {
+  opacity: 1;
+}
+.pw-media-expand:hover {
+  background: rgba(0, 0, 0, 0.75);
+}
+.pw-media-expand svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* the viewer: over the whole window, the page dimmed behind it; dark in both themes */
+.pw-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(8, 8, 10, 0.86);
+  backdrop-filter: blur(6px);
+  color: #f2f2f3;
+  outline: none;
+  animation: pw-viewer-in 140ms ease-out;
+}
+.pw-viewer.is-closing {
+  animation: pw-viewer-out 120ms ease-in forwards;
+}
+@keyframes pw-viewer-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes pw-viewer-out {
+  to {
+    opacity: 0;
+  }
+}
+.pw-viewer-stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+}
+.pw-viewer-img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: none;
+  transform-origin: 0 0;
+  border-radius: 4px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+  cursor: zoom-in;
+  user-select: none;
+  opacity: 0;
+}
+.pw-viewer-img.is-ready {
+  opacity: 1;
+  animation: pw-viewer-pop 160ms ease-out;
+}
+@keyframes pw-viewer-pop {
+  from {
+    opacity: 0;
+    scale: 0.97;
+  }
+}
+.pw-viewer.is-zoomed .pw-viewer-img {
+  cursor: grab;
+}
+.pw-viewer.is-panning .pw-viewer-img {
+  cursor: grabbing;
+}
+.pw-viewer-video {
+  max-width: calc(100% - 48px);
+  max-height: calc(100% - 120px);
+  border-radius: 6px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+  background: #000;
+  cursor: default;
+}
+.pw-viewer-bar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 10px;
+  background: rgba(32, 32, 36, 0.82);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+}
+.pw-viewer.is-video .pw-viewer-zoom {
+  display: none;
+}
+.pw-viewer-btn,
+.pw-viewer-level {
+  display: grid;
+  place-items: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.pw-viewer-btn:hover,
+.pw-viewer-level:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.pw-viewer-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  background: transparent;
+}
+.pw-viewer-btn svg {
+  width: 16px;
+  height: 16px;
+}
+.pw-viewer-level {
+  min-width: 52px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.pw-viewer-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: rgba(255, 255, 255, 0.18);
+}
+.pw-viewer-prev,
+.pw-viewer-next {
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: rgba(32, 32, 36, 0.72);
+}
+.pw-viewer-prev {
+  left: 12px;
+}
+.pw-viewer-next {
+  right: 12px;
+}
+.pw-viewer-prev[hidden],
+.pw-viewer-next[hidden] {
+  display: none;
+}
+.pw-viewer-caption {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  translate: -50% 0;
+  max-width: calc(100% - 32px);
+  padding: 5px 12px;
+  border-radius: 8px;
+  background: rgba(32, 32, 36, 0.72);
+  font-size: 12px;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pw-viewer,
+  .pw-viewer-img.is-ready {
+    animation: none;
+  }
 }
 
 .pw-comments {
