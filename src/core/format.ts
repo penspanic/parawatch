@@ -264,6 +264,7 @@ export function prRows(prs: PrView[], v: View = PLAIN, now = Date.now(), indent 
 export function waitText(p: PrView): string {
   if (p.reviewRequested && !p.mine) return `${p.stalled ? "long " : ""}waiting for your review`;
   const who = p.who?.length && p.waitingOn === "review" ? ` (${p.who.join(", ")})` : "";
+  if (p.stalled && p.waitingOn === "merge held") return "merge held, stuck";
   return `${p.stalled ? "stuck in " : ""}${p.waitingOn}${who}`;
 }
 
@@ -373,7 +374,10 @@ export function runsTree(runs: Run[], v: View = PLAIN, now = Date.now(), indent 
       const ended = ENDED.has(r.state);
       const titlePaint: Paint[] = r.role === "lead" ? ["bold"] : ended ? ["dim"] : [];
       const mark = paint(v, STATE_MARK[r.state], ...STATE_PAINT[r.state]);
-      const label = r.title + (r.repeats ? ` ×${r.repeats + 1}` : "") + (r.prs?.length ? ` (${r.prs.length} PR)` : "");
+      // the repeat count and the PR count stay whole; a long title gives way before them
+      const tail = (r.repeats ? ` ×${r.repeats + 1}` : "") + (r.prs?.length ? ` (${r.prs.length} PR)` : "");
+      const keep = textWidth(tail);
+      const label = keep && room - keep >= 6 ? fit(r.title, room - keep) + tail : r.title + tail;
       const title = paint(v, pad(fit(label, room), room), ...titlePaint);
       const age = paint(v, ago(r.lastActivity, now).padStart(4), "dim");
       const dev = devW ? "  " + paint(v, pad(fit(r.device ?? "", devW), devW), "cyan") : "";

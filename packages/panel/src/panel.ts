@@ -144,6 +144,33 @@ export function layoutMedia(row: HTMLElement): void {
   }
 }
 
+/** What a pull request waits on, as its row and a lane's chip say it. */
+function prWait(p: PrView): string {
+  const review = p.reviewRequested && !p.mine;
+  const wait = review ? "your review" : p.waitingOn + (p.who?.length && (p.waitingOn === "review" || p.waitingOn === "changes requested") ? ` (${p.who.join(", ")})` : "");
+  if (!p.stalled) return wait;
+  return p.waitingOn === "merge held" ? "merge held, stuck" : `stuck in ${wait}`;
+}
+
+/** a lane chip's word for what a pull request waits on */
+const PR_SHORT: Record<string, string> = {
+  "changes requested": "changes",
+  "CI failed": "CI failed",
+  "merge queue": "queue",
+  "merge held": "held",
+  "no reviewer": "no reviewer",
+};
+
+/** the chip's color: others to act (review), the agent to act (bad), or just time (wait) */
+const PR_TONE: Record<string, string> = {
+  review: "review",
+  "no reviewer": "bad",
+  "changes requested": "bad",
+  "CI failed": "bad",
+  conflict: "bad",
+  "merge held": "held",
+};
+
 export class Panel {
   private snapshot?: Snapshot;
   private error?: string;
@@ -282,17 +309,7 @@ export class Panel {
     chip.classList.add("is-jump");
     chip.setAttribute("role", "button");
     chip.tabIndex = 0;
-    const go = () => {
-      const sec = this.root.querySelector<HTMLElement>(selector);
-      if (!sec) return;
-      for (let p: HTMLElement | null = sec; p && p !== this.root; p = p.parentElement) {
-        if (p.classList.contains("is-collapsed")) p.querySelector<HTMLElement>(":scope > .pw-fold-head, :scope > .pw-agents-head")?.click();
-      }
-      sec.scrollIntoView({ block: "start", behavior: "smooth" });
-      sec.classList.remove("is-flash");
-      void sec.offsetWidth;
-      sec.classList.add("is-flash");
-    };
+    const go = () => this.reveal(selector, "start");
     chip.onclick = go;
     chip.onkeydown = (e) => {
       if (e.key === "Enter" || e.key === " ") {
@@ -300,6 +317,19 @@ export class Panel {
         go();
       }
     };
+  }
+
+  /** Open whatever folds hide the element, scroll to it and flash it. */
+  private reveal(selector: string, block: ScrollLogicalPosition): void {
+    const sec = this.root.querySelector<HTMLElement>(selector);
+    if (!sec) return;
+    for (let p: HTMLElement | null = sec; p && p !== this.root; p = p.parentElement) {
+      if (p.classList.contains("is-collapsed")) p.querySelector<HTMLElement>(":scope > .pw-fold-head, :scope > .pw-agents-head")?.click();
+    }
+    sec.scrollIntoView({ block, behavior: "smooth" });
+    sec.classList.remove("is-flash");
+    void sec.offsetWidth;
+    sec.classList.add("is-flash");
   }
 
   private renderHead(): void {
@@ -1176,6 +1206,7 @@ export class Panel {
   /** A pull request: what it waits on and since when, and the session that owns it. */
   private prRow(p: PrView, now: number): HTMLElement {
     const row = el("div", `pw-pr${p.stalled ? " is-stuck" : ""}`);
+    row.dataset.pr = p.key;
     const top = el("div", "pw-pr-top", undefined, row);
     this.siteSlot(this.icon(top, "git-pull-request", "pw-pr-icon"), siteForPr(p));
     const label = el("a", "pw-pr-label", `${p.repo.split("/")[1]}#${p.number}`, top);
@@ -1185,9 +1216,7 @@ export class Panel {
       e.preventDefault();
       this.backend.open(p.url);
     };
-    const review = p.reviewRequested && !p.mine;
-    const wait = review ? "your review" : p.waitingOn + (p.waitingOn === "review" && p.who?.length ? ` (${p.who.join(", ")})` : "");
-    el("span", "pw-pr-wait", p.stalled ? `stuck in ${wait}` : wait, top);
+    el("span", "pw-pr-wait", prWait(p), top);
     el("span", "pw-meta", ago(p.since, now), top).title = `Waiting on this since ${new Date(p.since).toLocaleString()}`;
     el("div", "pw-pr-title", p.title, row);
     if (p.session || p.project) {
@@ -1226,11 +1255,22 @@ export class Panel {
     return me && id.startsWith(`${me}-`) ? id.slice(me.length + 1) : id;
   }
 
-  /** The cards a run waits on, at the "now" end of its lane; a click goes to the card. */
-  private laneCards(lane: HTMLElement, cards: Card[]): void {
+  /** Open pull requests this run owns, the ones waiting longest first. */
+  private prsOf(r: Run): PrView[] {
+    const same = (a: string, b: string) => a.startsWith(b) || b.startsWith(a);
+    return (this.snapshot?.prs ?? []).filter((p) => p.session && same(p.session, r.id) && !(p.reviewRequested && !p.mine));
+  }
+
+  /**
+   * What a run waits on, at the "now" end of its lane: its open cards first, then its pull requests,
+   * three at most. A click goes to the card, or to the pull request in its section.
+   */
+  private laneCards(lane: HTMLElement, cards: Card[], prs: PrView[]): void {
     lane.removeAttribute("aria-hidden");
     const wrap = el("div", "pw-lane-cards", undefined, lane);
-    for (const c of cards.slice(0, 2)) {
+    const shownCards = cards.slice(0, prs.length ? 2 : 3);
+    const shownPrs = prs.slice(0, 3 - shownCards.length);
+    for (const c of shownCards) {
       const b = el("button", `pw-lane-card pw-kind-${c.kind}`, undefined, wrap);
       this.icon(b, KIND_ICON[c.kind]);
       el("span", undefined, this.shortId(c.id), b);
@@ -1240,7 +1280,18 @@ export class Panel {
         this.focusCard(c.id);
       };
     }
-    if (cards.length > 2) el("span", "pw-lane-more", `+${cards.length - 2}`, wrap).title = cards.slice(2).map((c) => `${c.id}: ${c.title}`).join("\n");
+    for (const p of shownPrs) {
+      const b = el("button", `pw-lane-card pw-lane-pr pw-pr-${PR_TONE[p.waitingOn] ?? "wait"}${p.stalled ? " is-stuck" : ""}`, undefined, wrap);
+      this.icon(b, "git-pull-request");
+      el("span", undefined, `#${p.number} ${PR_SHORT[p.waitingOn] ?? p.waitingOn}`, b);
+      b.title = `${p.repo}#${p.number}: ${prWait(p)}\n${p.title}\nClick to go to the pull request`;
+      b.onclick = (e) => {
+        e.stopPropagation();
+        this.reveal(`[data-pr="${CSS.escape(p.key)}"]`, "center");
+      };
+    }
+    const rest = [...cards.slice(shownCards.length).map((c) => `${c.id}: ${c.title}`), ...prs.slice(shownPrs.length).map((p) => `${p.repo}#${p.number}: ${prWait(p)}`)];
+    if (rest.length) el("span", "pw-lane-more", `+${rest.length}`, wrap).title = rest.join("\n");
   }
 
   private runRow({ run: r, depth }: RunNode, now: number, at: number): HTMLElement {
@@ -1268,7 +1319,10 @@ export class Panel {
       };
     }
     const cards = this.openCardsOf(r);
+    const prs = this.prsOf(r);
     const waits = cards.length && r.state !== "working" && !r.done;
+    // a session with nothing left but its pull requests says which one and on what
+    const waitsPr = !waits && !r.asks && !r.done && !r.error && prs.length > 0 && r.state !== "working" ? prs[0] : undefined;
     const what = r.error
       ? `unreadable: ${r.error}`
       : waits
@@ -1277,17 +1331,20 @@ export class Panel {
         ? `done · ${clean(r.done)}`
         : r.asks
           ? `${r.asks.blocked ? "blocked" : "asks"}: ${clean(r.asks.text)}`
-          : clean((r.state === "idle" && r.recap) || r.action);
+          : waitsPr
+            ? `PR #${waitsPr.number}: ${prWait(waitsPr)}${prs.length > 1 ? ` (+${prs.length - 1})` : ""}`
+            : clean((r.state === "idle" && r.recap) || r.action);
     if (r.repeats) el("span", "pw-run-repeats", `×${r.repeats + 1}`, text).title = `${r.repeats + 1} runs of this scheduled task; the newest is shown`;
     const sub = el("div", "pw-run-sub", undefined, text);
     if (waits) sub.classList.add("is-waiting-card");
+    else if (waitsPr) sub.classList.add(waitsPr.stalled ? "is-waiting-pr-stuck" : "is-waiting-pr");
     else if (r.asks) sub.classList.add(r.asks.blocked ? "is-blocked" : "is-asking");
     el("span", "pw-run-age", ago(r.lastActivity, now), sub);
     if (r.device) el("span", "pw-run-device", `on ${r.device}`, sub);
     if (what || r.state === "stalled") el("span", "pw-run-action", r.state === "stalled" ? `stalled${what ? ` · ${what}` : ""}` : what, sub);
     const lane = this.lane(r, at, now);
     row.appendChild(lane);
-    if (cards.length) this.laneCards(lane, cards);
+    if (cards.length || prs.length) this.laneCards(lane, cards, prs);
     const hide = el("button", "pw-run-hide clickable-icon", undefined, row);
     this.host.icon(hide, "eye-off");
     hide.title = "Hide until it does something new";

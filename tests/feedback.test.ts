@@ -219,6 +219,19 @@ describe("pull requests", () => {
     expect(waitingOn(pr({ mergeable: "CONFLICTING" }))).toMatchObject({ what: "conflict" });
   });
 
+  it("says when something other than reviews and CI holds an approved PR", () => {
+    const ready = { ci: "SUCCESS", reviewDecision: "APPROVED", pending: [] };
+    expect(waitingOn(pr({ ...ready, mergeState: "CLEAN" }))).toEqual({ what: "merge", who: ["me"] });
+    expect(waitingOn(pr({ ...ready, mergeState: "BLOCKED" }))).toEqual({ what: "merge held" });
+    // no review needed at all, and still blocked
+    expect(waitingOn(pr({ ...ready, reviewDecision: undefined, mergeState: "BLOCKED" }))).toEqual({ what: "merge held" });
+    // blocked because reviews are missing is plain review, not held
+    expect(waitingOn(pr({ ci: "SUCCESS", mergeState: "BLOCKED" }))).toEqual({ what: "review", who: ["alice"] });
+    expect(waitingOn(pr({ ...ready, reviewDecision: "REVIEW_REQUIRED", mergeState: "BLOCKED" }))).toEqual({ what: "no reviewer", who: ["me"] });
+    // CI still running comes first
+    expect(waitingOn(pr({ ...ready, ci: "PENDING", mergeState: "BLOCKED" }))).toEqual({ what: "CI" });
+  });
+
   it("turns two readings into changes", () => {
     const a = pr({ queue: { state: "QUEUED" } });
     const b = pr({ ci: "FAILURE", reviews: [{ by: "alice", state: "CHANGES_REQUESTED", at: ts(5) }], comments: 2 });

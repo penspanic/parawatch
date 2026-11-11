@@ -49,6 +49,13 @@ describe("runs tree", () => {
     expect(runsTree(runs, v(100, { all: true }), now)).toContain("137 tank");
   });
 
+  it("keeps a run's PR count when its title is cut", () => {
+    const long = run("lead", { title: "A lead session with a very long title that cannot fit in the name column at all", prs: ["github.com/a/b#1", "github.com/a/b#2"] });
+    const line = runsTree([long], v(80), now).split("\n").find((l) => l.includes("lead") || l.includes("A lead"))!;
+    expect(line).toContain("(2 PR)");
+    expect(line).toContain("…");
+  });
+
   it("lines up the age column", () => {
     const lines = runsTree(runs, v(100), now).split("\n").filter((l) => /\d+[smhd]\b/.test(l));
     const ends = lines.map((l) => {

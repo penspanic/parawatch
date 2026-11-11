@@ -1626,6 +1626,29 @@ a.pw-pr-owner:hover {
 .pw-lane-card.pw-kind-todo {
   --pw-k: var(--pw-todo);
 }
+.pw-lane-pr {
+  --pw-k: var(--text-muted);
+  font-family: inherit;
+}
+.pw-lane-pr.pw-pr-review {
+  --pw-k: var(--color-cyan, #0e9384);
+}
+.pw-lane-pr.pw-pr-held {
+  --pw-k: var(--color-yellow, #a16207);
+}
+.pw-lane-pr.pw-pr-bad,
+.pw-lane-pr.is-stuck {
+  --pw-k: var(--pw-bad);
+}
+.pw-run-sub.is-waiting-pr .pw-run-action {
+  color: var(--text-muted);
+}
+.pw-run-sub.is-waiting-pr-stuck .pw-run-action {
+  color: var(--pw-bad);
+}
+.pw-pr.is-flash {
+  animation: pw-flash 900ms ease-out;
+}
 .pw-lane-more {
   font-size: 11px;
   color: var(--text-muted);
