@@ -233,10 +233,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.REF }}
+      # only the builds: the icon artifact is for the Windows job
       - uses: actions/download-artifact@v4
         with:
+          name: mac
           path: out
-          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows
+          path: out
       - name: Put the files on the draft release
         run: |
           version="${TAG#v}"
