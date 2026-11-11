@@ -129,11 +129,16 @@ jobs:
             echo "::error::MAC_CSC_LINK decodes, but not to a .p12 file"
             exit 1
           fi
-          if ! openssl pkcs12 -in "$p12" -noout -passin env:CSC_KEY_PASSWORD >/dev/null 2>&1; then
+          # import it the way electron-builder will: Keychain exports use RC2, which OpenSSL 3 refuses
+          kc="$RUNNER_TEMP/check.keychain-db"
+          security create-keychain -p check "$kc"
+          if ! security import "$p12" -k "$kc" -P "$CSC_KEY_PASSWORD" >/dev/null 2>&1; then
+            security delete-keychain "$kc"
             rm -f "$p12"
             echo "::error::MAC_CSC_KEY_PASSWORD does not open the .p12 in MAC_CSC_LINK"
             exit 1
           fi
+          security delete-keychain "$kc"
           rm -f "$p12"
           echo "the certificate opens with its password"
       - run: npm run build -w @parawatch/desktop
