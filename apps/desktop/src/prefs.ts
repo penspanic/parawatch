@@ -17,6 +17,23 @@ export interface Prefs {
   checkUpdates: boolean;
   /** show each service's own site icon, fetched from its site; off means no fetches at all */
   serviceIcons: boolean;
+  /** bring the command line to the app's version with the npm that installed it */
+  updateCli: boolean;
+}
+
+/** Where the command line stands against the app, for the settings screen. */
+export interface CliState {
+  /**
+   * missing: not used with this data yet; current: same as the app or newer; behind: older than the
+   * app; updating: npm is installing `target`; error: the last update failed; idle: between states
+   */
+  status: "idle" | "missing" | "current" | "behind" | "updating" | "error";
+  version?: string;
+  path?: string;
+  /** the npm that installed it, when it is an npm global install the app can update */
+  npm?: string;
+  target?: string;
+  error?: string;
 }
 
 /** Where the app's own update stands, for the settings screen and the menus. */
@@ -47,6 +64,8 @@ export interface AboutInfo {
   cli?: { version: string; at: string; path?: string };
   /** set when the app and the command line are different versions */
   skew?: string;
+  /** whether the app can bring the command line up to date, and how that is going */
+  cliUpdate?: CliState;
   logPath: string;
   dataPath: string;
   /** sharing with other machines, when this one shares its log */
@@ -62,6 +81,7 @@ export function validPref<K extends keyof Prefs>(key: K, value: unknown): value 
     case "openAtLogin":
     case "checkUpdates":
     case "serviceIcons":
+    case "updateCli":
       return typeof value === "boolean";
     case "sinceHours":
       return SINCE_HOURS.includes(value as number);

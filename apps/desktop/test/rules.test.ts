@@ -1,6 +1,7 @@
 import zlib from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { artPng, countLabel, draw, drawTray, TRAY_IDLE, trayWidth } from "../src/art.js";
+import { npmBin, npmPrefix } from "../src/npmPath.js";
 import { agentsWorking, alertFor, issueUrl, needsYou, summary, toDo, updateLabel } from "../src/rules.js";
 import type { Card, PwEvent, Snapshot } from "../../../src/core/types.js";
 
@@ -143,5 +144,22 @@ describe("versions and updates", () => {
     expect(body).toContain("Parawatch app 0.2.1 (Electron 45.2.3)");
     expect(body).toContain("parawatch CLI 0.2.0");
     expect(body).not.toContain("/Users/someone");
+  });
+});
+
+describe("npmPrefix", () => {
+  it("finds the prefix of an npm global install", () => {
+    expect(npmPrefix("/opt/homebrew/lib/node_modules/parawatch/dist/bin/cli.js", "darwin")).toBe("/opt/homebrew");
+    expect(npmPrefix("/Users/me/.nvm/versions/node/v22.1.0/lib/node_modules/parawatch/dist/bin/cli.js", "darwin")).toBe("/Users/me/.nvm/versions/node/v22.1.0");
+    expect(npmPrefix("C:\\Users\\me\\AppData\\Roaming\\npm\\node_modules\\parawatch\\dist\\bin\\cli.js", "win32")).toBe("C:\\Users\\me\\AppData\\Roaming\\npm");
+  });
+  it("leaves other installs alone", () => {
+    expect(npmPrefix("/Users/me/dev/parawatch/dist/bin/cli.js", "darwin")).toBeUndefined();
+    expect(npmPrefix("/Users/me/project/node_modules/parawatch/dist/bin/cli.js", "darwin")).toBeUndefined();
+    expect(npmPrefix(undefined, "darwin")).toBeUndefined();
+  });
+  it("names the npm beside the prefix", () => {
+    expect(npmBin("/opt/homebrew", "darwin")).toBe("/opt/homebrew/bin/npm");
+    expect(npmBin("C:\\npm", "win32")).toBe("C:\\npm\\npm.cmd");
   });
 });

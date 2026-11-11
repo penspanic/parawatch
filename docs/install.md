@@ -28,6 +28,8 @@ npm install -g parawatch@latest     # the CLI; the linked skill follows it
 
 The CLI asks the npm registry for the latest version at most once a day, only when you run `status` or `doctor` at a terminal. `"updates": { "check": false }` in `config.json` or `PARAWATCH_UPDATE_CHECK=0` turns that off; it is off in CI. The app looks at GitHub Releases every few hours unless you turn Update automatically off.
 
+The app also keeps the CLI at its own version. Settings shows the CLI's version under the app's; when the CLI is older, Update installs the app's version with the npm that installed the CLI (`<prefix>/bin/npm install -g --prefix <prefix> parawatch@<version>`). With Update the command line too on (the default), a newly updated app does this by itself a little after it starts, so one restart updates both. A CLI installed some other way, such as a linked checkout, is left alone and the row says where it is.
+
 To remove parawatch:
 
 ```

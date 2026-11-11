@@ -4,6 +4,7 @@
 
 - A card's pictures open in a viewer over the app window instead of another app: the page dims, the picture fits the window, and it zooms with the wheel, a trackpad pinch, a double click or + and - (0 fits), and pans by dragging. The arrows (or ← →) go to the card's other pictures and videos; Esc or a click beside the picture closes it. A video plays in its card as before and has a button at its top right to view it larger. "Open in its own app" stays in the viewer's bar.
 - The dismiss button sits in the card's head, beside the fold button, instead of on its corner. It shows while the card is hovered; the first click turns it into a red "Dismiss" in place of the age and id, and a second click within three seconds dismisses.
+- The app's settings show the command line's version under the app's, and update it when it is older, with the npm that installed it. With Update the command line too on (the default), an app that has just updated itself brings the command line to its version a little after it starts, so one restart updates both.
 - A card's head stays on one line: when it is narrow, who asked is cut short (the whole name is in the tooltip).
 
 ## 0.3.7 (2026-11-10)

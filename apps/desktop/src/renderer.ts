@@ -92,6 +92,7 @@ const settings = new SettingsView(
   {
     checkUpdates: () => void api.checkUpdates().then((u) => settings.setUpdate(u)),
     installUpdate: () => void api.installUpdate(),
+    updateCli: () => void api.updateCli().then((a) => settings.setAbout(a)),
     openLink: (which) => void api.openLink(which),
   },
 );
@@ -115,6 +116,8 @@ function showSettings(on: boolean): void {
     beforeSettings = null;
   }
 }
+
+api.onAbout((a) => settings.setAbout(a));
 
 let showIcons: boolean | undefined;
 api.onPrefs((p) => {
