@@ -16,7 +16,7 @@ With that many sessions it gets hard to tell which one was which, whether each i
 | **What needs you** | Questions as cards, including ones left in a chat. Your answer goes back to the agent that asked. |
 | **What waits on others** | Your pull requests: a review, CI or the merge queue, and for how long. |
 
-It is a CLI and a macOS app. It does not start agents: it reads the logs of the ones you already run. There is no server.
+It is a CLI and a desktop app for macOS and Windows. It does not start agents: it reads the logs of the ones you already run. There is no server.
 
 ## Install
 
@@ -26,13 +26,13 @@ parawatch skill install      # Claude Code and Codex agents learn the protocol
 parawatch status             # what needs you, then what is running
 ```
 
-The macOS app is on the [latest release](https://github.com/penspanic/parawatch/releases/latest): `arm64` for Apple silicon, `x64` for Intel, signed and notarized. It updates itself.
+The desktop app is on the [latest release](https://github.com/penspanic/parawatch/releases/latest). macOS: `arm64` for Apple silicon, `x64` for Intel, signed and notarized. Windows: `Parawatch-Setup-<version>.exe` for x64, not signed, so SmartScreen warns the first time (More info > Run anyway). Both update themselves.
 
 | | macOS | Linux | Windows |
 |--|--|--|--|
 | CLI | used daily | tests pass in CI | used daily |
-| Desktop app | used daily | no build yet | no build yet |
-| Agent logs read | Claude Code, Codex | same | Claude Code; Codex untested |
+| Desktop app | used daily | no build yet | from 0.3.9 |
+| Agent logs read | Claude Code, Codex | same | Claude Code, Codex |
 
 
 ## More than one machine

@@ -16,7 +16,12 @@ parawatch skill install
 
 It links [`skills/parawatch`](../skills/parawatch/SKILL.md) into `~/.claude/skills` and `~/.codex/skills`. The installed skill is a link to the copy in the package, so updating parawatch updates the skill.
 
-**The desktop app**, to see and answer cards without a terminal. On macOS, download the DMG from the [latest release](https://github.com/penspanic/parawatch/releases/latest): `arm64` for Apple silicon, `x64` for Intel. It is signed and notarized, so it opens without warnings. From 0.2.1 on it updates itself: it downloads a new version in the background and asks you to restart (Parawatch > Check for Updates, or Settings > Update automatically). Elsewhere, [build it from source](../apps/desktop/README.md#run-from-source).
+**The desktop app**, to see and answer cards without a terminal. Download it from the [latest release](https://github.com/penspanic/parawatch/releases/latest).
+
+- **macOS**: the DMG, `arm64` for Apple silicon, `x64` for Intel. It is signed and notarized, so it opens without warnings.
+- **Windows** (from 0.3.9): `Parawatch-Setup-<version>.exe`, for x64. It installs for your user only, into `%LOCALAPPDATA%\Programs\parawatch`, with a Start menu entry, and waits in the notification area (under ^ until you pin it). It is not signed, so SmartScreen warns the first time it runs: More info > Run anyway.
+
+Both update themselves: they download a new version in the background and ask you to restart (Check for Updates in the menu bar or tray menu, or Settings > Update automatically). On Linux, [build it from source](../apps/desktop/README.md#run-from-source).
 
 **Checking the setup.** `parawatch doctor` shows the versions of the CLI and the app and whether they differ, the store, the skill links, the instruction files in this folder, the hook, and GitHub, with what to run for anything that needs work. Paste it into bug reports. `status` also says, at its end, when a newer CLI is out or when the app and the CLI are different versions.
 
@@ -38,4 +43,4 @@ parawatch init --remove -f AGENTS.md   # the block in each instruction file you 
 npm uninstall -g parawatch
 ```
 
-Take the `parawatch hook` lines out of your Claude Code settings if you added them, drag Parawatch.app to the Trash, and delete `~/.local/state/parawatch` (your cards and history) and `~/Library/Logs/Parawatch` if you want those gone too.
+Take the `parawatch hook` lines out of your Claude Code settings if you added them, remove the app (on macOS drag Parawatch.app to the Trash; on Windows uninstall Parawatch in Settings > Apps), and delete `~/.local/state/parawatch` (your cards and history) and the app's logs (`~/Library/Logs/Parawatch`, or `%APPDATA%\Parawatch` on Windows) if you want those gone too.

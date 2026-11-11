@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.3.9 (2026-11-11)
 
 - The desktop app is built on GitHub's machines from a version tag, for macOS and now Windows: an x64 installer (`Parawatch-Setup-<version>.exe`) that updates itself like the macOS app. It is not signed yet, so Windows warns the first time it is opened. A pull request that touches the app builds both, to see the build still works.
+- On Windows the app installs for the current user into `%LOCALAPPDATA%\Programs\parawatch`, with a Start menu entry whose app id lets its notifications through.
 
 ## 0.3.8 (2026-11-11)
 

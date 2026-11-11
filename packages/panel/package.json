@@ -1,6 +1,6 @@
 {
   "name": "@parawatch/panel",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "private": true,
   "description": "The parawatch panel as plain DOM, used by the desktop app.",
   "license": "MIT",

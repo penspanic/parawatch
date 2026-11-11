@@ -1,7 +1,7 @@
 {
   "name": "@parawatch/desktop",
   "productName": "Parawatch",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "private": true,
   "description": "Parawatch as a desktop app: what needs you, what your agents are doing, with notifications and a badge.",
   "license": "MIT",
@@ -19,7 +19,7 @@
   },
   "devDependencies": {
     "@electron/asar": "^3.4.1",
-    "@parawatch/panel": "0.3.8",
+    "@parawatch/panel": "0.3.9",
     "electron": "45.2.3",
     "electron-builder": "^26.18.0",
     "electron-updater": "^6.8.11",

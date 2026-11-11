@@ -1,6 +1,6 @@
 # Parawatch desktop
 
-The [parawatch](../../README.md) panel in its own window. It is used daily on macOS. The code has Windows and Linux paths, but nobody has built or run it there yet.
+The [parawatch](../../README.md) panel in its own window. It is used daily on macOS, and released for Windows (x64) from 0.3.9. The code has Linux paths, but nobody has built or run it there yet.
 
 - **Needs you**: every open card, one collapsible section per project, its kind shown as an icon. Pick an option, write a note, press the check (Done or Looks good) or send; paste or drop a screenshot to attach it. Your answer wakes the agent waiting on that card.
 - **To do**: cards that only you can do but nothing waits on. They fold at the end of their project, do not count toward the badge and never notify.
