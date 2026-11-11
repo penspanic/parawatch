@@ -1,8 +1,8 @@
 /**
  * The app updates itself from GitHub Releases: it looks for a new version a little after start and
  * every few hours, downloads it in the background, and asks for a restart. It never restarts on its
- * own, though a downloaded update is put in place when the app quits. Only signed macOS builds
- * update this way; development runs and other platforms point at the releases page instead.
+ * own, though a downloaded update is put in place when the app quits. Packaged macOS builds and the
+ * Windows installer update this way; development runs and Linux point at the releases page instead.
  */
 import { app } from "electron";
 import { autoUpdater, type UpdateInfo } from "electron-updater";
@@ -34,7 +34,7 @@ export function updateState(): UpdateState {
 /** Why this copy cannot update itself, or undefined when it can. */
 function offReason(): string | undefined {
   if (!app.isPackaged) return "a development build does not update itself";
-  if (process.platform !== "darwin") return "this platform has no update feed yet; new versions are on GitHub Releases";
+  if (process.platform !== "darwin" && process.platform !== "win32") return "this platform has no update feed yet; new versions are on GitHub Releases";
   return undefined;
 }
 

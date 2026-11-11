@@ -52,5 +52,8 @@
       "repo": "parawatch",
       "releaseType": "release"
     }
-  ]
+  ],
+  "nsis": {
+    "artifactName": "${productName}-Setup-${version}.${ext}"
+  }
 }

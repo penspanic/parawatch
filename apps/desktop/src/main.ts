@@ -766,13 +766,12 @@ if (!app.requestSingleInstanceLock()) {
   app.on("before-quit", () => {
     quitting = true;
   });
-  // Restart to Update quits through Squirrel, which sends this instead of before-quit. Without it
-  // the window's close handler only hides the window, the app never quits and the update waits.
-  if (process.platform === "darwin") {
-    squirrel.on("before-quit-for-update", () => {
-      quitting = true;
-    });
-  }
+  // Restart to Update quits through Squirrel on macOS, which sends this instead of before-quit
+  // (electron-updater sends it on Windows too). Without it the window's close handler only hides
+  // the window, the app never quits and the update waits.
+  squirrel.on("before-quit-for-update", () => {
+    quitting = true;
+  });
   app.on("window-all-closed", () => {
     // stay in the menu bar
   });
