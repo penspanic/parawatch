@@ -1,9 +1,10 @@
 // Builds harness/out/: a plain page that renders the panel with sample cards, for working on it
 // outside the desktop app.
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import esbuild from "esbuild";
 
-process.chdir(new URL("..", import.meta.url).pathname);
+process.chdir(fileURLToPath(new URL("..", import.meta.url)));
 await esbuild.build({
   entryPoints: ["harness/main.ts"],
   bundle: true,
