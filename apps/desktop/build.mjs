@@ -1,8 +1,10 @@
 // Builds the app into dist/: main and preload as CommonJS for Electron, the page as one script.
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import esbuild from "esbuild";
 
-process.chdir(new URL(".", import.meta.url).pathname);
+// fileURLToPath, not .pathname: on Windows the pathname is /D:/..., which is not a folder
+process.chdir(fileURLToPath(new URL(".", import.meta.url)));
 const watch = process.argv.includes("--watch");
 const common = { bundle: true, target: "es2022", logLevel: "info", sourcemap: watch ? "inline" : false };
 

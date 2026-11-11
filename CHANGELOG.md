@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The desktop app is built on GitHub's machines from a version tag, for macOS and now Windows: an x64 installer (`Parawatch-Setup-<version>.exe`) that updates itself like the macOS app. It is not signed yet, so Windows warns the first time it is opened. A pull request that touches the app builds both, to see the build still works.
+
 ## 0.3.8 (2026-11-11)
 
 - A card's pictures open in a viewer over the app window instead of another app: the page dims, the picture fits the window, and it zooms with the wheel, a trackpad pinch, a double click or + and - (0 fits), and pans by dragging. The arrows (or ← →) go to the card's other pictures and videos; Esc or a click beside the picture closes it. A video plays in its card as before and has a button at its top right to view it larger. "Open in its own app" stays in the viewer's bar.

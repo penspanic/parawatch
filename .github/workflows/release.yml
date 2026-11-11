@@ -1,0 +1,227 @@
+name: Release
+
+# Pushing a version tag (v0.3.9) builds the desktop app for macOS and Windows on GitHub's machines
+# and leaves the files on a draft GitHub release, with that version's CHANGELOG section as notes.
+# Publishing the draft also publishes the CLI to npm (publish.yml).
+#
+# macOS: Apple silicon and Intel, signed with the Developer ID in MAC_CSC_LINK and notarized with
+# the App Store Connect API key in APPLE_API_KEY. Windows: an x64 NSIS installer, not signed yet.
+# Each build leaves its update feed (latest-mac.yml, latest.yml), which installed copies read.
+#
+# A pull request that touches the app or this file builds both without signing and keeps the
+# files on the run, to see that the build still works. Run it by hand to rebuild a tag's files.
+#
+# One-time setup (repository secrets and a variable):
+#   MAC_CSC_LINK           the Developer ID Application certificate and key as a .p12, base64
+#   MAC_CSC_KEY_PASSWORD   the .p12's password
+#   APPLE_API_KEY          the App Store Connect API key (.p8 file contents)
+#   APPLE_API_KEY_ID       its key id
+#   APPLE_API_ISSUER       its issuer id
+#   MAC_IDENTITY (variable) the certificate's name, "Your Name (TEAMID)"
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "apps/desktop/**"
+      - "packages/panel/**"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build, such as v0.3.9 (its draft release gets the files)"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.pull_request.number || inputs.tag || github.ref_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # a pull request only checks the build; a tag or a manual run makes the release
+  RELEASE: ${{ github.event_name != 'pull_request' && '1' || '' }}
+  TAG: ${{ inputs.tag || github.ref_name }}
+  REF: ${{ inputs.tag || github.sha }}
+
+jobs:
+  icon:
+    # Icon Composer renders the Liquid Glass icon only on a Mac with Xcode; the Windows package uses
+    # the same picture
+    runs-on: macos-26
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.REF }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Check the tag names the package version
+        if: env.RELEASE
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::tag $TAG does not match package.json version $version"
+            exit 1
+          fi
+      - run: npm ci
+      - run: npm run icon -w @parawatch/desktop | tee icon.log
+      - name: Check the icon came from Icon Composer
+        run: grep -q "Icon Composer" icon.log || echo "::warning::build/icon.png is the flat icon drawn in code; Icon Composer was not found"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: icon
+          path: apps/desktop/build/icon.png
+          retention-days: 1
+
+  mac:
+    runs-on: macos-26
+    env:
+      CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+      APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      MAC_IDENTITY: ${{ vars.MAC_IDENTITY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.REF }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Signing and notarization
+        run: |
+          if [ -z "$RELEASE" ]; then
+            # a pull request build is not signed, and must not try with whatever is in the keychain
+            echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
+            echo "CSC_LINK=" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY_CONTENT APPLE_API_KEY_ID APPLE_API_ISSUER MAC_IDENTITY; do
+            if [ -z "${!v}" ]; then
+              echo "::error::$v is not set; see the setup at the top of release.yml"
+              exit 1
+            fi
+          done
+          key="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s' "$APPLE_API_KEY_CONTENT" > "$key"
+          echo "APPLE_API_KEY=$key" >> "$GITHUB_ENV"
+      - run: npm run build -w @parawatch/desktop
+      - run: npm run icon -w @parawatch/desktop
+      - name: Build
+        working-directory: apps/desktop
+        run: |
+          if [ -n "$RELEASE" ]; then
+            # electron-builder notarizes the app before it packs the DMG, so the app inside is stapled
+            npx electron-builder --config builder.json --mac dmg zip --arm64 --x64 --publish never \
+              -c.mac.identity="$MAC_IDENTITY" -c.mac.notarize=true
+          else
+            npx electron-builder --config builder.json --mac dmg zip --arm64 --x64 --publish never
+          fi
+      - name: Check the apps
+        working-directory: apps/desktop
+        run: |
+          for app in release/mac*/Parawatch.app; do
+            node scripts/check-package.cjs "$app"
+            if [ -n "$RELEASE" ]; then
+              xcrun stapler validate "$app"
+              spctl --assess --type execute "$app"
+            fi
+          done
+          # the update feed must name both builds, or one kind of Mac never hears of the release
+          feed=release/latest-mac.yml
+          if [ ! -f "$feed" ] || ! grep -q "arm64" "$feed" || [ "$(grep -c 'url: .*\.zip' "$feed")" -lt 2 ]; then
+            echo "::error::$feed is missing or does not list both zips"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.zip.blockmap
+            apps/desktop/release/latest-mac.yml
+          retention-days: 7
+
+  windows:
+    needs: icon
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.REF }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: icon
+          path: apps/desktop/build
+      - run: npm run build -w @parawatch/desktop
+      - name: Build
+        working-directory: apps/desktop
+        # the install folder is named after the package; without this it is "@parawatchdesktop"
+        run: npx electron-builder --config builder.json --win nsis --x64 --publish never -c.extraMetadata.name=parawatch
+      - name: Check the app
+        working-directory: apps/desktop
+        run: |
+          node scripts/check-package.cjs release/win-unpacked
+          feed=release/latest.yml
+          if [ ! -f "$feed" ] || ! grep -q "url: .*\.exe" "$feed"; then
+            echo "::error::$feed is missing or does not name the installer"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.exe.blockmap
+            apps/desktop/release/latest.yml
+          retention-days: 7
+
+  release:
+    needs: [mac, windows]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.REF }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Put the files on the draft release
+        run: |
+          version="${TAG#v}"
+          ls -l out
+          notes=$(awk -v v="## $version" 'index($0, v) == 1 { on = 1; next } /^## / { on = 0 } on' CHANGELOG.md)
+          if gh release view "$TAG" --json isDraft --jq .isDraft >/dev/null 2>&1; then
+            if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" != "true" ]; then
+              echo "::error::release $TAG is already published; its files stay as they are"
+              exit 1
+            fi
+            gh release upload "$TAG" out/* --clobber
+          else
+            gh release create "$TAG" out/* --draft --verify-tag --title "Parawatch $version" --notes "$notes"
+          fi
+          echo "Draft release $TAG has: $(ls out | tr '\n' ' ')"
