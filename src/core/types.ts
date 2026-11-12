@@ -146,6 +146,8 @@ export interface PrLink {
   session?: string;
   project?: string;
   task?: string;
+  /** linked because the session's log shows it opened the PR, not by `parawatch pr link` */
+  auto?: boolean;
   at: string;
 }
 
@@ -223,6 +225,11 @@ export interface GithubInfo {
   enabled: boolean;
   fetchedAt?: string;
   error?: string;
+  /** the last attempt failed entirely, after the last good reading: pull request news has stopped */
+  failing?: boolean;
+  /** which process failed, e.g. "the desktop app" */
+  failedBy?: string;
+  failedAt?: string;
 }
 
 /** A running `parawatch wait`: an answer that matches it is delivered at once. */
@@ -305,7 +312,9 @@ export interface Run {
   /** folders of the files this run edited, most recent last (from its log) */
   touched?: string[];
   /** the last turn ended asking the human something, without a card */
-  asks?: { text: string; via: "wrap_up" | "text"; blocked?: boolean; at?: string };
+  asks?: { text: string; via: "wrap_up" | "text" | "permission"; blocked?: boolean; at?: string };
+  /** the log ends on a tool call that has not returned (a long command, or a permission prompt) */
+  pendingTool?: boolean;
   /** the one-line summary the runtime wrote for the last turn, if it writes one */
   recap?: string;
   /** the session said it is finished (`claim --done`) and has not been asked anything since */

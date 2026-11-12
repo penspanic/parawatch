@@ -20,6 +20,7 @@ interface Block {
   name?: string;
   id?: string;
   tool_use_id?: string;
+  is_error?: boolean;
   input?: Record<string, unknown>;
 }
 
@@ -62,6 +63,12 @@ function promptText(rec: Record<string, unknown>): string | undefined {
   return text;
 }
 
+/** A message the log marks as typed or sent by the human, whatever its text looks like. */
+function fromHuman(rec: Record<string, unknown>): boolean {
+  if (rec.type !== "user" || rec.isMeta === true || !isObj(rec.origin) || rec.origin.kind !== "human") return false;
+  return !blocks(rec).some((b) => b.type === "tool_result");
+}
+
 export interface Reading {
   state: RunState;
   action?: string;
@@ -74,6 +81,8 @@ export interface Reading {
   recap?: string;
   /** Output files of background jobs still running when the turn ended (waiting runs only). */
   pendingOutputs?: string[];
+  /** the log ends on a tool call with no result yet */
+  pendingTool?: boolean;
 }
 
 interface Job {
@@ -140,9 +149,10 @@ function pendingJobs(recs: unknown[]): Job[] {
 
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 const DIR_IN_COMMAND = /(?:^|[;&|]\s*|\s)(?:cd|git\s+-C)\s+("[^"]+"|'[^']+'|[^\s;&|]+)/g;
-const PR_URL = /https?:\/\/[^\s"'<>()]+\/pull\/\d+/g;
 /** The desktop app's end-of-turn tool: a recap, maybe a question for the human. */
 const WRAP_UP = /(^|__)wrap_up$/;
+/** The tool a subagent calls to hand its report back to its caller; its result is the subagent's end. */
+const HANDBACK = /(^|__)SubagentHandback$/;
 
 function resultText(b: Block): string {
   const c = (b as { content?: unknown }).content;
@@ -180,14 +190,42 @@ export function scanWork(recs: unknown[]): { touched: string[]; createdPrs: stri
         } else if (b.name === "Bash") {
           const cmd = str(inp.command) ?? "";
           for (const m of cmd.matchAll(DIR_IN_COMMAND)) add(unquote(m[1]!));
-          if (/\bgh\s+pr\s+create\b/.test(cmd) && b.id) prCalls.add(b.id);
+          if (runsGhPrCreate(cmd) && b.id) prCalls.add(b.id);
         }
       } else if (b.type === "tool_result" && b.tool_use_id && prCalls.has(b.tool_use_id)) {
-        for (const m of resultText(b).matchAll(PR_URL)) if (!prs.includes(m[0])) prs.push(m[0]);
+        const url = createdPrUrl(resultText(b));
+        if (url && !prs.includes(url)) prs.push(url);
       }
     }
   }
   return { touched: touched.slice(-50), createdPrs: prs };
+}
+
+/** Shell words that may come before the command itself. */
+const PREFIX_WORD = /^(?:[A-Za-z_][A-Za-z0-9_]*=\S*|env|command|time|noglob|exec|then|do|else|!)$/;
+
+/**
+ * Whether a shell command runs `gh pr create`, as opposed to mentioning the words: a search for
+ * them, a quoted message, a heredoc. Each command of a list or pipeline is looked at on its own.
+ */
+export function runsGhPrCreate(cmd: string): boolean {
+  if (!/\bpr\s+create\b/.test(cmd)) return false;
+  const bare = cmd
+    .replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(?=\n|$)/g, "") // heredoc bodies
+    .replace(/'[^']*'/g, "''")
+    .replace(/"(?:[^"\\]|\\.)*"/g, '""');
+  for (const seg of bare.split(/&&|\|\||[;|\n&]|\$\(|`|[()]/)) {
+    const words = seg.trim().split(/\s+/).filter(Boolean);
+    while (words.length && PREFIX_WORD.test(words[0]!)) words.shift();
+    if (/(^|[\\/])gh(\.exe)?$/.test(words[0] ?? "") && words[1] === "pr" && words[2] === "create") return true;
+  }
+  return false;
+}
+
+/** The URL `gh pr create` prints when it opens a PR: a line of its own, the last one. */
+export function createdPrUrl(output: string): string | undefined {
+  const lines = output.split(/\r?\n/).map((l) => l.trim()).filter((l) => /^https?:\/\/\S+\/pull\/\d+$/.test(l));
+  return lines[lines.length - 1];
 }
 
 /** The last line of an agent's closing message, when it is a question. */
@@ -213,6 +251,9 @@ export function readClaudeTail(recs: unknown[], kind: "session" | "subagent"): R
     if (promptText(r)) {
       out.lastPromptAt = ts ?? out.lastPromptAt;
       wrapUp = undefined; // a new turn began
+    } else if (fromHuman(r)) {
+      // the human wrote (a pasted block, a command's output): whatever the last wrap-up asked is answered
+      wrapUp = undefined;
     }
     if (r.type === "assistant") {
       const w = blocks(r).find((b) => b.type === "tool_use" && WRAP_UP.test(String(b.name)));
@@ -226,6 +267,7 @@ export function readClaudeTail(recs: unknown[], kind: "session" | "subagent"): R
     const tool = [...bs].reverse().find((b) => b.type === "tool_use");
     if (tool) {
       out.state = "working";
+      out.pendingTool = true;
       out.action = toolSummary(tool);
       const t = tool.input?.timeout;
       if (typeof t === "number") out.pendingTimeoutMs = t;
@@ -263,8 +305,25 @@ export function readClaudeTail(recs: unknown[], kind: "session" | "subagent"): R
     out.state = "working";
     const result = bs.find((b) => b.type === "tool_result");
     out.action = result ? "thinking" : "reading a new message";
+    if (kind === "subagent" && result && result.is_error !== true && HANDBACK.test(toolName(recs, result.tool_use_id))) {
+      // the report went back to the caller: nothing more comes from this subagent
+      out.state = "done";
+      out.action = "handed its report back";
+    }
   }
   return out;
+}
+
+/** The name of the tool call a result answers, looked up in the same records. */
+function toolName(recs: unknown[], id: string | undefined): string {
+  if (!id) return "";
+  for (let i = recs.length - 1; i >= 0; i--) {
+    const r = recs[i];
+    if (!isObj(r) || r.type !== "assistant") continue;
+    const b = blocks(r).find((x) => x.type === "tool_use" && x.id === id);
+    if (b) return String(b.name ?? "");
+  }
+  return "";
 }
 
 function firstPrompt(file: string): { prompt?: string; cwd?: string; startedAt?: string } {
@@ -387,8 +446,11 @@ function readSession(file: string, now: number): Run {
       action: tail.action,
       prompt: head.prompt ? oneLine(head.prompt, 400) : undefined,
       activity: logActivity(file, now),
+      pendingTool: tail.pendingTool,
     };
     applyStall(run, tail.pendingTimeoutMs, now, newestMtime(tail.pendingOutputs));
+    // in the log a permission prompt and a long command look the same; the hook can tell them apart
+    if (run.state === "stalled" && tail.pendingTool) run.action = `${run.action ?? "a tool call"} · or a permission prompt is open`;
     return run;
   } catch (err) {
     return { ...base, error: `could not read: ${(err as Error).message}` };
@@ -419,9 +481,23 @@ function readSubagent(file: string, now: number): Run {
       prompt: head.prompt ? oneLine(head.prompt, 400) : undefined,
       activity: logActivity(file, now),
     };
+    if (meta.finished === true && run.state !== "done" && run.state !== "failed" && metaIsCurrent(file)) {
+      // Claude Code marks a subagent finished in its meta file; the log tail can still look mid-turn
+      run.state = "done";
+      if (run.action === "thinking" || run.action === "reading a new message") run.action = "finished";
+    }
     applyStall(run, tail.pendingTimeoutMs, now, newestMtime(tail.pendingOutputs));
     return run;
   } catch (err) {
     return { ...base, error: `could not read: ${(err as Error).message}` };
+  }
+}
+
+/** A meta file written after the log's last line; an older one may be from before a resumed turn. */
+function metaIsCurrent(file: string): boolean {
+  try {
+    return fs.statSync(file.replace(/\.jsonl$/, ".meta.json")).mtimeMs >= fs.statSync(file).mtimeMs - 5_000;
+  } catch {
+    return false;
   }
 }

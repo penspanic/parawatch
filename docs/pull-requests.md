@@ -18,9 +18,12 @@ GitHub is read when its last reading is older than the interval: by `status`, by
     "enabled": true,
     "intervalMinutes": 5,
     "maxAgeDays": 60,
-    "stallHours": { "review": 24, "CI": 2, "merge queue": 6, "merge held": 8, "conflict": 4 }
+    "stallHours": { "review": 24, "CI": 2, "merge queue": 6, "merge held": 8, "conflict": 4 },
+    "cli": "/opt/homebrew/bin/gh"
   }
 }
 ```
 
 `PARAWATCH_GITHUB=0` turns it off for one command.
+
+Each process finds `gh` on its own `PATH`, or else in the usual install folders (Homebrew, `/usr/local/bin`, `GitHub CLI` under Program Files on Windows). An app opened from Finder does not get the shell's `PATH`; set `cli` when `gh` lives somewhere else. A reading that fails leaves the last good one in place, so another process whose `gh` works reads at once, and pull request news keeps coming. While no reader gets through, the app shows "GitHub is not being read" at the top, `status` says so at the end, and `doctor` names the process that failed and why.

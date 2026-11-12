@@ -6,7 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { CLI_UPDATE, readClient, runningDesktop, versionSkew } from "./clients.js";
-import { ghHosts, githubConfig, readCache, runGh, type GhRunner } from "./github.js";
+import { ghCommand, ghHosts, githubConfig, githubFailing, readCache, runGh, type GhRunner } from "./github.js";
 import { instructionState } from "./integrate.js";
 import { listeners } from "./ops.js";
 import { fold } from "./state.js";
@@ -143,12 +143,18 @@ export async function doctor(input: DoctorInput): Promise<Check[]> {
     }
     if (!ghVersion) add("github", "off", "gh not found, so pull requests are not followed (nothing else needs it)", "install gh and run gh auth login");
     else {
+      if (!input.gh && ghCommand() !== "gh") ghVersion += ` (${ghCommand()})`;
       const hosts = await ghHosts(gh);
       if (!hosts.length) add("github", "warn", `${ghVersion}, but not signed in`, "gh auth login");
       else {
         const c = readCache();
-        const when = c.fetchedAt ? `last read ${c.fetchedAt.replace("T", " ").slice(0, 16)}` : "not read yet";
-        add("github", c.error ? "warn" : "ok", `${hosts.join(", ")} · ${c.prs.length} PRs · ${when}${c.error ? ` · ${c.error}` : ""}`, c.error ? "parawatch pr sync" : undefined);
+        const at = (t: string) => t.replace("T", " ").slice(0, 16);
+        const when = c.fetchedAt ? `last read ${at(c.fetchedAt)}` : "not read yet";
+        if (githubFailing(c)) {
+          // this process's gh works, so the failing reader is another one (often the app, opened without Homebrew's PATH)
+          const who = c.failedBy ?? "another reader";
+          add("github", "warn", `${hosts.join(", ")} · ${when} · ${who} failed at ${at(c.failedAt!)}: ${c.error}`, who === "the desktop app" ? 'set "github": { "cli": "<path to gh>" } in config.json if the app cannot find gh, then restart it; parawatch pr sync reads now' : "parawatch pr sync");
+        } else add("github", c.error ? "warn" : "ok", `${hosts.join(", ")} · ${c.prs.length} PRs · ${when}${c.error ? ` · ${c.error}` : ""}`, c.error ? "parawatch pr sync" : undefined);
       }
     }
   }

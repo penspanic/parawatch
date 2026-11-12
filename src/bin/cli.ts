@@ -32,6 +32,7 @@ import {
   type CardInput,
 } from "../core/ops.js";
 import { githubConfig, readCache, resolvePrRef, syncGithub, prViews } from "../core/github.js";
+import { recordPrompt, type PromptHookInput } from "../core/prompts.js";
 import { digest, digestText, localDate } from "../core/digest.js";
 import { everywhere, readEvents } from "../core/store.js";
 import { followEvents } from "../core/follow.js";
@@ -473,13 +474,16 @@ program
     const open = cards.filter((c) => c.status === "open" && c.kind !== "todo");
     const todo = cards.filter((c) => c.status === "open" && c.kind === "todo");
     const answered = cards.filter((c) => c.status === "answered");
-    const askers = runs.filter((r) => r.asks);
+    // a session held by a permission prompt needs the human as much as a card does
+    const prompts = runs.filter((r) => r.asks?.via === "permission");
+    const askers = runs.filter((r) => r.asks && r.asks.via !== "permission");
     const reviews = prs.filter((p) => p.reviewRequested && !p.mine);
     const waiting = prs.filter((p) => !(p.reviewRequested && !p.mine));
     const ls = snap.listeners ?? [];
     const out: string[] = [];
-    out.push(head("NEEDS YOU", open.length || "nothing"));
+    out.push(head("NEEDS YOU", open.length + prompts.length || "nothing"));
     out.push(...cardRows(open, v, now, "  "));
+    out.push(...askRows(prompts, v, now, "  "));
     if (askers.length) {
       out.push("", head("ASKED IN CHAT, NO CARD", askers.length, "  (read from the log)"));
       out.push(...askRows(askers, v, now, "  "));
@@ -509,7 +513,8 @@ program
     if (runs.length) out.push(runsTree(runs, v));
     const dim = (t: string) => (v.color ? `\x1b[2m${t}\x1b[0m` : t);
     const notes: string[] = [];
-    if (snap.github?.error && snap.github.enabled) notes.push(`GitHub: ${snap.github.error}`);
+    if (snap.github?.failing && snap.github.enabled) notes.push(`GitHub: not read since ${(snap.github.fetchedAt ?? "").replace("T", " ").slice(0, 16) || "ever"}; ${snap.github.failedBy ?? "a reader"} failed: ${snap.github.error}. Pull request news is not coming in; see parawatch doctor`);
+    else if (snap.github?.error && snap.github.enabled) notes.push(`GitHub: ${snap.github.error}`);
     const skew = versionSkew(VERSION, runningDesktop()?.version);
     if (skew) notes.push(skew.text);
     const update = updateLine(await asking);
@@ -636,12 +641,14 @@ program
   .option("-p, --project <name>", "project, when it cannot be told from the session")
   .action((runtime: string, o) => {
     if (runtime !== "claude-code") throw new UserError(`no hook for "${runtime}"`);
-    let input: { session_id?: string; cwd?: string; hook_event_name?: string } = {};
+    let input: PromptHookInput & { cwd?: string } = {};
     try {
       input = JSON.parse(fs.readFileSync(0, "utf8") || "{}");
     } catch {
       input = {};
     }
+    // a permission prompt is only recorded; the hook never answers it
+    if (recordPrompt(input) || input.hook_event_name === "Notification" || input.hook_event_name === "PermissionRequest") return;
     const text = hookContext(input, o.project);
     if (!text) return;
     if (input.hook_event_name) print({ hookSpecificOutput: { hookEventName: input.hook_event_name, additionalContext: text } });

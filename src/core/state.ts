@@ -63,7 +63,10 @@ export function fold(events: PwEvent[], map?: PathMap): State {
       }
       case "card.comment": {
         const c = s.cards.get(ev.card);
-        if (c) c.comments.push({ seq: ev.seq, at: ev.ts, by: ev.by, text: ev.text });
+        if (!c) break;
+        c.comments.push({ seq: ev.seq, at: ev.ts, by: ev.by, text: ev.text });
+        // The human wrote without choosing and the agent replied: the choice is still the human's to make
+        if (ev.by !== "human" && c.status === "answered" && c.options?.length && !c.answers.some((a) => a.choice !== undefined && !a.late)) c.status = "open";
         break;
       }
       case "card.edit": {

@@ -80,7 +80,7 @@ export function resolvePrRef(input: string, cwd = process.cwd()): PrRef {
   if (!n) throw new UserError(`"${input}" is not a pull request: give a URL, owner/repo#N, or #N inside the repository`);
   let url: string;
   try {
-    url = execFileSync("gh", ["pr", "view", n[1]!, "--json", "url", "-q", ".url"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 20_000 }).trim();
+    url = execFileSync(ghCommand(), ["pr", "view", n[1]!, "--json", "url", "-q", ".url"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 20_000 }).trim();
   } catch (err) {
     throw new UserError(`could not look up #${n[1]} with gh here: ${String((err as { stderr?: string }).stderr ?? err).trim().split("\n")[0]}`);
   }
@@ -124,8 +124,12 @@ export interface PrStatus {
 }
 
 export interface GithubCache {
+  /** the last reading that worked; a failed one leaves it, so a reader whose gh works tries at once */
   fetchedAt?: string;
   error?: string;
+  /** when the last attempt failed entirely, and which process it was */
+  failedAt?: string;
+  failedBy?: string;
   /** hosts `gh` is signed in to; empty when `gh` is missing or signed out */
   hosts?: string[];
   prs: PrStatus[];
@@ -156,24 +160,83 @@ function writeCache(c: GithubCache): void {
 /** Runs `gh`; tests swap this for a fake. */
 export type GhRunner = (args: string[]) => Promise<string>;
 
+/** Where `gh` is usually installed, for a process whose PATH lacks it (an app opened from Finder). */
+export function ghCandidates(platform = process.platform, env = process.env): string[] {
+  if (platform === "win32") {
+    const dirs = [env.ProgramFiles, env["ProgramFiles(x86)"], env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, "Programs")].filter((d): d is string => !!d);
+    const out = dirs.map((d) => path.join(d, "GitHub CLI", "gh.exe"));
+    if (env.USERPROFILE) out.push(path.join(env.USERPROFILE, "scoop", "shims", "gh.exe"));
+    return out;
+  }
+  return ["/opt/homebrew/bin/gh", "/usr/local/bin/gh", "/opt/local/bin/gh", "/home/linuxbrew/.linuxbrew/bin/gh", "/usr/bin/gh", "/snap/bin/gh"];
+}
+
+function onPath(name: string, env = process.env): boolean {
+  const exts = process.platform === "win32" ? (env.PATHEXT ?? ".EXE;.CMD").split(";") : [""];
+  for (const dir of (env.PATH ?? "").split(path.delimiter)) {
+    if (!dir) continue;
+    for (const ext of exts) if (fs.existsSync(path.join(dir, name + ext.toLowerCase())) || fs.existsSync(path.join(dir, name + ext))) return true;
+  }
+  return false;
+}
+
+let ghFound: string | undefined;
+
+/**
+ * The `gh` to run: `github.cli` in config.json, else `gh` on this process's PATH, else the first
+ * usual install location that exists. Found once per process.
+ */
+export function ghCommand(): string {
+  const configured = githubCli();
+  if (configured) return configured;
+  if (ghFound) return ghFound;
+  ghFound = onPath("gh") ? "gh" : (ghCandidates().find((f) => fs.existsSync(f)) ?? "gh");
+  return ghFound;
+}
+
+function githubCli(): string | undefined {
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(homeDir(), "config.json"), "utf8")) as { github?: { cli?: unknown } };
+    return typeof raw.github?.cli === "string" && raw.github.cli ? raw.github.cli : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A `gh` that could not be started, as opposed to one that ran and failed. */
+export class GhMissing extends Error {}
+
 export const runGh: GhRunner = (args) =>
   new Promise((resolve, reject) => {
-    execFile("gh", args, { encoding: "utf8", timeout: 30_000, maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) => {
-      if (err) reject(new Error(String(stderr || err.message).trim().split("\n")[0]));
+    const cmd = ghCommand();
+    execFile(cmd, args, { encoding: "utf8", timeout: 30_000, maxBuffer: 16 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
+      if (err && (err as NodeJS.ErrnoException).code === "ENOENT") reject(new GhMissing(`gh not found on this process's PATH or in the usual places (set github.cli in config.json)`));
+      else if (err) reject(new Error(String(stderr || err.message).trim().split("\n")[0]));
       else resolve(stdout);
     });
   });
 
-/** Hosts `gh` is signed in to. */
-export async function ghHosts(gh: GhRunner = runGh): Promise<string[]> {
+/** Hosts `gh` is signed in to, or why there are none. */
+export async function ghAuth(gh: GhRunner = runGh): Promise<{ hosts: string[]; error?: string }> {
   try {
     const out = JSON.parse(await gh(["auth", "status", "--json", "hosts"])) as { hosts?: Record<string, { state?: string }[]> };
-    return Object.entries(out.hosts ?? {})
+    const hosts = Object.entries(out.hosts ?? {})
       .filter(([, accounts]) => accounts.some((a) => a.state === "success"))
       .map(([h]) => h);
-  } catch {
-    return [];
+    return hosts.length ? { hosts } : { hosts, error: "gh is not signed in" };
+  } catch (err) {
+    return { hosts: [], error: err instanceof GhMissing ? err.message : `gh is not installed or not signed in (${(err as Error).message})` };
   }
+}
+
+/** Hosts `gh` is signed in to. */
+export async function ghHosts(gh: GhRunner = runGh): Promise<string[]> {
+  return (await ghAuth(gh)).hosts;
+}
+
+/** Which kind of process this is, for saying who could not read GitHub. */
+function whoReads(): string {
+  return process.versions.electron ? "the desktop app" : "the command line";
 }
 
 const FIELDS = (withQueue: boolean) => `
@@ -372,6 +435,20 @@ export function dropReported(fresh: EventBody[], log: PwEvent[], since: string |
 
 // ------------------------------------------------------------------ sync
 
+/** When this process last failed to read GitHub at all. */
+let failedHere = 0;
+
+/** For tests: forget this process's last failure and the gh it found. */
+export function resetGithubProcess(): void {
+  failedHere = 0;
+  ghFound = undefined;
+}
+
+/** A failed attempt newer than the last good reading: news is not coming in. */
+export function githubFailing(c: GithubCache): boolean {
+  return !!c.failedAt && (!c.fetchedAt || c.failedAt > c.fetchedAt);
+}
+
 function fetchingPath(): string {
   return path.join(homeDir(), "github.fetching");
 }
@@ -412,16 +489,26 @@ export async function syncGithub(opts: SyncOptions): Promise<GithubCache> {
   if (!cfg.enabled) return prev;
   const age = prev.fetchedAt ? Date.now() - Date.parse(prev.fetchedAt) : Infinity;
   if (!opts.force && age < cfg.intervalMinutes * 60_000) return prev;
+  // this process failed lately: wait the interval before trying again, others may still read
+  if (!opts.force && Date.now() - failedHere < cfg.intervalMinutes * 60_000) return prev;
   if (!takeFetch()) return prev;
   const gh = opts.gh ?? runGh;
   const started = new Date().toISOString();
   try {
-    const hosts = await ghHosts(gh);
+    const auth = await ghAuth(gh);
+    const hosts = auth.hosts;
     if (!hosts.length) {
-      const c: GithubCache = { ...prev, fetchedAt: started, hosts: [], error: "gh is not installed or not signed in" };
-      writeCache(c);
-      return c;
+      failedHere = Date.now();
+      return withLock(() => {
+        const latest = readCache();
+        if (latest.fetchedAt && latest.fetchedAt > started) return latest; // someone else read it meanwhile
+        // keep the last good reading and its time: a process whose gh works reads at once
+        const c: GithubCache = { ...latest, hosts: latest.hosts ?? [], error: auth.error, failedAt: started, failedBy: whoReads() };
+        writeCache(c);
+        return c;
+      });
     }
+    failedHere = 0;
     // PRs linked to sessions, and ones seen before, are read by number so merges and closes show
     const extra = new Map<string, PrRef>();
     for (const l of opts.state.prLinks.values()) extra.set(l.pr.key, l.pr);
