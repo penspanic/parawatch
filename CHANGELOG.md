@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.10 (2026-11-12)
 
 - Fix: an app opened from Finder could not find `gh` (Homebrew's folder is not on its `PATH`), and its failed readings counted as fresh, so no process read GitHub and pull request news stopped for every agent. Each process now looks for `gh` in the usual install folders too (or `github.cli` in config.json), a failed reading leaves the last good one in place so a process whose `gh` works reads at once, and while nobody gets through the app shows "GitHub is not being read", `status` says so, and `doctor` names the process that failed and why.
 - Fix: a subagent that handed its report back, or that Claude Code marks finished in its meta file, showed as stalled while thinking. It is done.
