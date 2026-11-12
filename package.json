@@ -1,6 +1,6 @@
 {
   "name": "parawatch",
-  "version": "0.3.10",
+  "version": "0.3.11",
   "description": "A control tower for people running many AI coding agents in parallel: see what is running, what needs you, and wake the right agent when you answer.",
   "keywords": [
     "ai-agents",

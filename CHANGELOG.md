@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.11 (2026-11-13)
 
 - Fix ([#28](https://github.com/penspanic/parawatch/issues/28)): on Windows, `wait` could exit with `EPERM` while Syncthing or a cloud drive replaced another machine's event log, and an agent that did not notice stopped being woken. A log that cannot be opened for a moment is tried again a few times and then read as it was last time; `wait` keeps polling through such errors, and through errors from watching the folder.
 - Fix: a subagent that ran `parawatch claim` renamed the session that started it, because a subagent runs with its session's id. The claim now goes to the subagent whose log is running the command, so the lead keeps its own title and task.
