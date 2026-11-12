@@ -15,6 +15,19 @@ const swatch = (label: string, hue: number) =>
 
 const cards: Card[] = [
   {
+    id: "c9",
+    kind: "decide",
+    project: "app",
+    title: "Mark PR 23 as a breaking change?",
+    options: ["Do it", "Don't"],
+    from: "App Director",
+    session: "lead-app",
+    openedAt: at(40),
+    status: "open",
+    answers: [{ seq: 90, at: at(30), by: "human", comment: "What breaks for people on 1.3?" }],
+    comments: [{ seq: 91, at: at(28), by: "agent", text: "The old --flag stops working; 1.3 configs that use it fail to load. Please choose." }],
+  },
+  {
     id: "c4",
     kind: "decide",
     project: "game",
@@ -108,7 +121,8 @@ const fakeRuns: Snapshot["runs"] = [
   { id: "r1", runtime: "declared", kind: "declared", title: "PR101 CI, UI tests", project: "app", state: "working", lastActivity: at(6), activity: mins([6, 24]) },
   { id: "s-settings", runtime: "claude-code", kind: "session", title: "Settings screen", project: "app", state: "idle", lastActivity: at(90), activity: mins([90, 110]) },
   { id: "s-release", runtime: "claude-code", kind: "session", title: "Release notes 1.4", project: "app", state: "idle", lastActivity: at(50), activity: mins([50, 58]) },
-  { id: "old", runtime: "claude-code", kind: "session", title: "A session in some notes folder", state: "stalled", lastActivity: at(45), action: "Bash: long benchmark", activity: mins([45, 57]) },
+  { id: "old", runtime: "claude-code", kind: "session", title: "A session in some notes folder", state: "stalled", lastActivity: at(45), action: "Bash: long benchmark · or a permission prompt is open", activity: mins([45, 57]) },
+  { id: "s-ticket", runtime: "claude-code", kind: "session", title: "Ticket 2207", project: "app", state: "idle", lastActivity: at(14), action: "Bash: Move the ticket to review", pendingTool: true, asks: { text: "approve a tool call: Bash: Move the ticket to review", via: "permission", blocked: true, at: at(13) }, activity: mins([14, 20]) },
 ];
 
 const media: Record<string, string> = {
@@ -226,7 +240,12 @@ async function load(): Promise<Snapshot> {
             mine: false,
           },
         ],
-    github: useReal ? real!.github : undefined,
+    // ?github=failing shows the banner for a reader that cannot run gh
+    github: useReal
+      ? real!.github
+      : new URLSearchParams(location.search).get("github") === "failing"
+        ? { enabled: true, failing: true, fetchedAt: at(70), failedAt: at(1), failedBy: "the desktop app", error: "gh not found on this process's PATH or in the usual places (set github.cli in config.json)" }
+        : undefined,
     listeners: useReal ? real!.listeners : undefined,
     devices: useReal ? real!.devices : { me: "mac", others: ["winpc"] },
   };

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Fix: an app opened from Finder could not find `gh` (Homebrew's folder is not on its `PATH`), and its failed readings counted as fresh, so no process read GitHub and pull request news stopped for every agent. Each process now looks for `gh` in the usual install folders too (or `github.cli` in config.json), a failed reading leaves the last good one in place so a process whose `gh` works reads at once, and while nobody gets through the app shows "GitHub is not being read", `status` says so, and `doctor` names the process that failed and why.
+- Fix: a subagent that handed its report back, or that Claude Code marks finished in its meta file, showed as stalled while thinking. It is done.
+- Fix: on a card with options, an answer with words but no choice moved the card to answered, and it stayed there after the agent replied and asked for the choice. Once the agent comments, the card is back in what needs you, with the exchange shown on the card, until you choose.
+- Fix: a question asked at the end of a turn stayed under asked in chat after the human replied, when the reply was a pasted block or other text the log marks as the human's but not as a typed prompt.
+- Fix: a session that searched for the words `gh pr create` (in `grep`, a quoted message, a heredoc) was taken to have opened a pull request, and got any pull request URL in the output, taking it from the session that did open it. Only a command that runs `gh pr create` counts, only the URL it prints on its own line is taken, and such a wrong link gives way to the session that opened the pull request. A link made with `parawatch pr link` stays.
+- A session held by a permission prompt shows under needs you as "approve a tool call: <tool>" when the Claude Code hook also handles `PermissionRequest` and `Notification` (see docs/agents.md). Without them, a session stalled on a tool call says a permission prompt may be open.
+
 ## 0.3.9 (2026-11-11)
 
 - The desktop app is built on GitHub's machines from a version tag, for macOS and now Windows: an x64 installer (`Parawatch-Setup-<version>.exe`) that updates itself like the macOS app. It is not signed yet, so Windows warns the first time it is opened. A pull request that touches the app builds both, to see the build still works.

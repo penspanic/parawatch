@@ -376,7 +376,10 @@ export class Panel {
     const todoChip = this.badge(row, "list-checks", todo, `${todo} to do: only you can do these, nothing waits on them`, todo ? "pw-chip-todo" : "is-zero");
     if (todo) this.jumpTo(todoChip, '[data-sec^="todo:"]');
     const asks = s?.runs.filter((r) => r.asks).length ?? 0;
-    if (asks) this.jumpTo(this.badge(row, "message-circle-question", asks, `${asks} session${asks === 1 ? "" : "s"} asked you in chat, without a card`, "pw-asks"), '[data-sec="asks"]');
+    const held = s?.runs.filter((r) => r.asks?.via === "permission").length ?? 0;
+    const chat = asks - held;
+    const askTip = [chat ? `${chat} session${chat === 1 ? "" : "s"} asked you in chat, without a card` : "", held ? `${held} wait${held === 1 ? "s" : ""} for you to approve a tool call` : ""].filter(Boolean).join("; ");
+    if (asks) this.jumpTo(this.badge(row, "message-circle-question", asks, askTip, "pw-asks"), '[data-sec="asks"]');
     const reviews = s?.prs?.filter((p) => p.reviewRequested && !p.mine).length ?? 0;
     if (reviews) this.jumpTo(this.badge(row, "eye", reviews, `${reviews} pull request${reviews === 1 ? "" : "s"} asking for your review`, "pw-chip-review"), '[data-sec="reviews"]');
     const stuck = s?.prs?.filter((p) => p.stalled && !(p.reviewRequested && !p.mine)).length ?? 0;
@@ -389,6 +392,15 @@ export class Panel {
     this.host.icon(btn, "refresh-cw");
     btn.onclick = () => this.host.refresh();
     this.host.decorateHead?.(row);
+    const g = s?.github;
+    if (g?.enabled && g.failing) {
+      // pull request news stops for every agent until some reader gets through again
+      const e = el("div", "pw-error", undefined, h);
+      el("div", "pw-error-title", "GitHub is not being read", e);
+      const since = g.fetchedAt ? `since ${new Date(g.fetchedAt).toLocaleString()}` : "yet";
+      el("div", "pw-error-text", `No pull request news ${since}. ${g.failedBy ? `${g.failedBy[0]!.toUpperCase()}${g.failedBy.slice(1)}` : "A reader"} failed: ${g.error ?? "unknown error"}.`, e);
+      el("div", "pw-error-hint", "Run parawatch doctor in a terminal. If gh is installed somewhere unusual, set github.cli in config.json.", e);
+    }
     if (this.error) {
       const e = el("div", "pw-error", undefined, h);
       el("div", "pw-error-title", "parawatch did not answer", e);
@@ -471,7 +483,9 @@ export class Panel {
         tile: "message-circle-question",
         tone: "asks",
         count: asking.length,
-        label: `Asked in chat: ${asking.length} session${asking.length === 1 ? "" : "s"} ended a turn with a question, without a card`,
+        label: asking.some((r) => r.asks!.via === "permission")
+          ? `Asked in chat or held by a permission prompt: ${asking.length} session${asking.length === 1 ? "" : "s"} wait${asking.length === 1 ? "s" : ""} for you outside a card`
+          : `Asked in chat: ${asking.length} session${asking.length === 1 ? "" : "s"} ended a turn with a question, without a card`,
       });
       for (const r of asking) body.appendChild(this.askRow(r, now));
     }
@@ -764,9 +778,12 @@ export class Panel {
     for (const f of (c.attach ?? []).filter((x) => !media.includes(x))) refs.appendChild(this.fileLink(f));
     if (!refs.childElementCount) refs.remove();
     if (media.length) this.media(media, el("div", "pw-media", undefined, box));
-    if (c.comments.length) {
+    // what the human wrote without choosing reads as part of the conversation on a card still open
+    const said = c.status === "open" ? c.answers.filter((a) => a.by === "human" && a.choice === undefined && a.comment).map((a) => ({ seq: a.seq, by: "human", text: a.comment! })) : [];
+    const thread = [...c.comments, ...said].sort((a, b) => a.seq - b.seq);
+    if (thread.length) {
       const log = el("div", "pw-comments", undefined, box);
-      for (const m of c.comments) {
+      for (const m of thread) {
         const human = m.by === "human";
         const line = el("div", `pw-comment pw-by-${human ? "human" : "agent"}`, undefined, log);
         this.icon(line, human ? "user" : "bot").title = human ? "You" : "Agent";
@@ -1229,7 +1246,12 @@ export class Panel {
     if (r.project) el("span", "pw-meta", r.project + (r.task ? ` / ${r.task}` : ""), top);
     el("span", "pw-meta pw-ask-age", ago(r.asks!.at ?? r.lastActivity, now), top);
     el("div", "pw-ask-text", clean(r.asks!.text), row);
-    row.title = r.asks!.via === "wrap_up" ? "The session's end-of-turn summary asks you this" : "The session's last message ends with this question";
+    row.title =
+      r.asks!.via === "permission"
+        ? "The session is held by a permission prompt: approve or deny the tool call in the session"
+        : r.asks!.via === "wrap_up"
+          ? "The session's end-of-turn summary asks you this"
+          : "The session's last message ends with this question";
     return row;
   }
 

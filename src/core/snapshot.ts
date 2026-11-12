@@ -1,4 +1,4 @@
-import { prViews, keyOf, parsePrRef, readCache, githubConfig } from "./github.js";
+import { prViews, keyOf, parsePrRef, readCache, githubConfig, githubFailing } from "./github.js";
 import { endedSessions, linkPr, listeners, readState } from "./ops.js";
 import { collectRuns } from "./runs.js";
 import type { State } from "./state.js";
@@ -34,22 +34,32 @@ export function snapshot(opts: { sinceHours?: number; project?: string; closed?:
     cards,
     runs,
     prs,
-    github: { enabled, fetchedAt: cache.fetchedAt, error: cache.error },
+    github: { enabled, fetchedAt: cache.fetchedAt, error: cache.error, failing: githubFailing(cache) || undefined, failedBy: cache.failedBy, failedAt: cache.failedAt },
     listeners: listeners(),
     devices: sharedDir() ? { me: deviceName(), others: eventFiles().map((f) => f.device).filter((d) => d !== deviceName()) } : undefined,
   };
 }
 
-/** A pull request a session's log shows it opened belongs to that session, unless linked already. */
+/**
+ * A pull request a session's log shows it opened belongs to that session, unless linked already.
+ * An earlier automatic link to another session gives way when that session's log no longer shows
+ * it opening the PR (it was read wrongly); a link made with `parawatch pr link` never does.
+ */
 function linkCreatedPrs(runs: Run[], state: State): boolean {
   let added = false;
   for (const r of runs) {
     for (const url of r.createdPrs ?? []) {
       const key = keyOf(url);
       const pr = parsePrRef(url);
-      if (!key || !pr || state.prLinks.has(key)) continue;
-      linkPr({ pr, session: r.id, project: r.project, task: r.task });
-      state.prLinks.set(key, { pr, session: r.id, project: r.project, at: new Date().toISOString() });
+      if (!key || !pr) continue;
+      const had = state.prLinks.get(key);
+      if (had) {
+        if (!had.auto || !had.session || r.id.startsWith(had.session)) continue;
+        const owner = runs.find((x) => x.id.startsWith(had.session!));
+        if (!owner || (owner.createdPrs ?? []).some((u) => keyOf(u) === key)) continue;
+      }
+      linkPr({ pr, session: r.id, project: r.project, task: r.task, auto: true });
+      state.prLinks.set(key, { pr, session: r.id, project: r.project, auto: true, at: new Date().toISOString() });
       added = true;
     }
   }
@@ -59,7 +69,8 @@ function linkCreatedPrs(runs: Run[], state: State): boolean {
 /** A question asked in chat is no longer pending once the session put it on a card. */
 function quietAnsweredAsks(runs: Run[], cards: Card[]): void {
   for (const r of runs) {
-    if (!r.asks) continue;
+    // a permission prompt holds the session whatever cards it has open
+    if (!r.asks || r.asks.via === "permission") continue;
     const turn = r.lastPromptAt ?? "";
     if (cards.some((c) => c.status !== "closed" && c.session && r.id.startsWith(c.session) && c.openedAt >= turn)) r.asks = undefined;
   }

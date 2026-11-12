@@ -49,12 +49,16 @@ As a backstop, the hook adds the session's unhandled answers and pull request ne
 {
   "hooks": {
     "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "parawatch hook claude-code" }] }],
-    "SessionStart": [{ "hooks": [{ "type": "command", "command": "parawatch hook claude-code" }] }]
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "parawatch hook claude-code" }] }],
+    "PermissionRequest": [{ "hooks": [{ "type": "command", "command": "parawatch hook claude-code" }] }],
+    "Notification": [{ "hooks": [{ "type": "command", "command": "parawatch hook claude-code" }] }]
   }
 }
 ```
 
 The hook only peeks. The agent's own `wait` or `inbox` moves its cursor.
+
+`PermissionRequest` and `Notification` tell parawatch when a session is held by a permission prompt. In the log a prompt looks the same as a long command (a tool call with no result yet), so without them such a session shows as stalled after 20 minutes, with "or a permission prompt is open". With them it shows under NEEDS YOU at once, as "approve a tool call: <tool>", until the tool call returns. The hook never answers the prompt.
 
 ## Other runtimes
 

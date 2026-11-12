@@ -353,13 +353,13 @@ export function claimSession(input: ClaimInput): Claim {
 
 // ---------------------------------------------------------------- pull requests
 
-export function linkPr(link: { pr: PrRef; session?: string; project?: string; task?: string }): void {
+export function linkPr(link: { pr: PrRef; session?: string; project?: string; task?: string; auto?: boolean }): void {
   const claims = readState().claims;
   const claim = link.session ? claims.find((c) => link.session!.startsWith(c.session)) : undefined;
   const project = link.project?.trim() || claim?.project;
   appendEvent(() => ({
     type: "pr.link",
-    link: { pr: link.pr, session: link.session, project, task: link.task?.trim() || claim?.task },
+    link: { pr: link.pr, session: link.session, project, task: link.task?.trim() || claim?.task, auto: link.auto || undefined },
   }));
 }
 
