@@ -501,3 +501,45 @@ function metaIsCurrent(file: string): boolean {
     return false;
   }
 }
+
+/**
+ * Which run of a Claude Code session is running a command right now: the session itself, or one of
+ * its subagents. A subagent's commands get the session's own `CLAUDE_CODE_SESSION_ID`, so only the
+ * logs tell them apart: the run whose log ends on a pending Bash call matching `command`, the
+ * newest one if several do. Returns the subagent's id, or undefined for the session itself (or
+ * when the logs do not say).
+ */
+export function callingSubagent(session: string, command: RegExp, now = Date.now()): string | undefined {
+  const root = claudeProjectsDir();
+  let dirs: string[];
+  try {
+    dirs = fs.readdirSync(root);
+  } catch {
+    return undefined;
+  }
+  const pendingAt = (file: string): string | undefined => {
+    try {
+      if (now - fs.statSync(file).mtimeMs > 120_000) return undefined;
+      const recs = readTailLines(file, 64 * 1024).filter(isObj);
+      const last = recs[recs.length - 1];
+      if (!last || last.type !== "assistant") return undefined;
+      const call = blocks(last).find((b) => b.type === "tool_use" && b.name === "Bash" && command.test(str(b.input?.command) ?? ""));
+      return call ? (str(last.timestamp) ?? new Date(fs.statSync(file).mtimeMs).toISOString()) : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  for (const d of dirs) {
+    const own = path.join(root, d, `${session}.jsonl`);
+    if (!fs.existsSync(own)) continue;
+    let best: { id?: string; at: string } | undefined;
+    const mine = pendingAt(own);
+    if (mine) best = { at: mine };
+    for (const f of listJsonl(path.join(root, d, session, "subagents"))) {
+      const at = pendingAt(f);
+      if (at && (!best || at > best.at)) best = { id: path.basename(f, ".jsonl").replace(/^agent-/, ""), at };
+    }
+    return best?.id;
+  }
+  return undefined;
+}

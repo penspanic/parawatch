@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { prViews, keyOf, parsePrRef, readCache, githubConfig, githubFailing } from "./github.js";
 import { endedSessions, linkPr, listeners, readState } from "./ops.js";
 import { collectRuns } from "./runs.js";
@@ -19,9 +21,12 @@ export function snapshot(opts: { sinceHours?: number; project?: string; closed?:
   if (linkCreatedPrs(runs, state)) state = readState();
   const all = [...state.cards.values()].filter((c) => !opts.project || c.project === opts.project);
   const ended = endedSessions(state);
-  const cards = [...all.filter((c) => c.status !== "closed"), ...recentlyClosed(all, opts.closed ?? 0)].map((c) =>
-    c.status !== "closed" && c.session && ended(c.session) ? { ...c, ownerEnded: true } : c,
-  );
+  const cards = [...all.filter((c) => c.status !== "closed"), ...recentlyClosed(all, opts.closed ?? 0)]
+    .map((c) => (c.status !== "closed" && c.session && ended(c.session) ? { ...c, ownerEnded: true } : c))
+    .map((c) => {
+      const missing = notHere([...(c.attach ?? []), ...(c.open ?? [])]);
+      return missing.length ? { ...c, missing } : c;
+    });
   quietAnsweredAsks(runs, all);
   const cache = readCache();
   const enabled = githubConfig().enabled && (cache.hosts === undefined ? false : cache.hosts.length > 0);
@@ -64,6 +69,11 @@ function linkCreatedPrs(runs: Run[], state: State): boolean {
     }
   }
   return added;
+}
+
+/** Files named by absolute path (on either system) that this machine does not have. */
+function notHere(targets: string[]): string[] {
+  return targets.filter((t) => (path.isAbsolute(t) || /^[A-Za-z]:[\\/]/.test(t)) && !/^[a-z][a-z0-9+.-]*:\/\//i.test(t) && !fs.existsSync(t));
 }
 
 /** A question asked in chat is no longer pending once the session put it on a card. */

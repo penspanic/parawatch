@@ -33,6 +33,7 @@ import {
 } from "../core/ops.js";
 import { githubConfig, readCache, resolvePrRef, syncGithub, prViews } from "../core/github.js";
 import { recordPrompt, type PromptHookInput } from "../core/prompts.js";
+import { callingSubagent } from "../adapters/claudeCode.js";
 import { digest, digestText, localDate } from "../core/digest.js";
 import { everywhere, readEvents } from "../core/store.js";
 import { followEvents } from "../core/follow.js";
@@ -377,8 +378,10 @@ program
   .option("--kind <kind>", "'scheduled' for a session a schedule starts again and again")
   .option("--done <summary>", "the work is finished; one line on how it ended")
   .action((session: string | undefined, o) => {
-    const id = session ?? currentSession();
+    let id = session ?? currentSession();
     if (!id) throw new UserError("no session id given and none found in the environment (CLAUDE_CODE_SESSION_ID, CODEX_THREAD_ID)");
+    // a subagent runs with its session's id; its claim is its own, not a new name for the session
+    if (!session && process.env.CLAUDE_CODE_SESSION_ID === id) id = callingSubagent(id, /\bparawatch\b.*\bclaim\b/) ?? id;
     if (o.kind !== undefined && o.kind !== "scheduled") throw new UserError("--kind can only be 'scheduled'");
     const c = claimSession({ session: id, project: o.project, task: o.task, role: o.role, title: o.title, kind: o.kind, done: o.done });
     process.stdout.write(`${id.slice(0, 8)} → ${c.project}${c.task ? ` / ${c.task}` : ""}${c.role ? ` (${c.role})` : ""}${c.done ? " · done" : ""}\n`);

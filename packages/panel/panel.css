@@ -915,6 +915,10 @@ button.pw-ref {
 button.pw-ref:hover {
   background: var(--pw-hover);
 }
+button.pw-ref.is-missing {
+  border-style: dashed;
+  color: var(--text-muted);
+}
 .pw-ref .pw-btn-icon {
   color: var(--text-muted);
 }
