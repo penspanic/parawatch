@@ -30,6 +30,7 @@ const PATHS: Record<string, string> = {
   "circle-slash": '<circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/>',
   "circle-check": '<circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.8 2.8L16 9.5"/>',
   folder: '<path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-8l-2-3H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1z"/>',
+  "cloud-off": '<path d="m2 2 20 20"/><path d="M5.8 5.8A7 7 0 0 0 9 19h8a4.5 4.5 0 0 0 1.9-.4"/><path d="M21.5 15.8A4.5 4.5 0 0 0 17.5 10h-1.8A7 7 0 0 0 10 5.2"/>',
   hourglass: '<path d="M6 3h12"/><path d="M6 21h12"/><path d="M7 3v3a5 5 0 0 0 10 0V3"/><path d="M7 21v-3a5 5 0 0 1 10 0v3"/>',
   network: '<rect x="9" y="2" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/>',
   timer: '<path d="M10 2h4"/><path d="M12 14l3-3"/><circle cx="12" cy="14" r="8"/>',

@@ -24,6 +24,8 @@ const cards: Card[] = [
     session: "lead-app",
     openedAt: at(40),
     status: "open",
+    attach: ["/captures/flag-diff.png"],
+    missing: ["/captures/flag-diff.png"],
     answers: [{ seq: 90, at: at(30), by: "human", comment: "What breaks for people on 1.3?" }],
     comments: [{ seq: 91, at: at(28), by: "agent", text: "The old --flag stops working; 1.3 configs that use it fail to load. Please choose." }],
   },

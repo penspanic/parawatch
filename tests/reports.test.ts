@@ -1,14 +1,14 @@
 // What users saw go wrong in `status` on 0.3.8, each checked against the fix.
 import fs from "node:fs";
 import path from "node:path";
-import { beforeEach, describe, expect, it } from "vitest";
-import { claudeCode, createdPrUrl, readClaudeTail, runsGhPrCreate } from "../src/adapters/claudeCode.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { callingSubagent, claudeCode, createdPrUrl, readClaudeTail, runsGhPrCreate } from "../src/adapters/claudeCode.js";
 import { ghCandidates, ghCommand, githubFailing, readCache, resetGithubProcess, syncGithub, type GhRunner } from "../src/core/github.js";
 import { answerCard, commentCard, linkPr, openCard, readState } from "../src/core/ops.js";
 import { applyPrompts, readPrompt, recordPrompt } from "../src/core/prompts.js";
 import { snapshot } from "../src/core/snapshot.js";
 import { fold } from "../src/core/state.js";
-import { homeDir, readEvents } from "../src/core/store.js";
+import { eventFiles, homeDir, readEvents } from "../src/core/store.js";
 import type { Run } from "../src/core/types.js";
 import { parsePrRef } from "../src/core/github.js";
 import { freshHome } from "./helpers.js";
@@ -219,5 +219,84 @@ describe("a session held by a permission prompt", () => {
     writeLog(path.join(dir, "held-1.jsonl"), [user(0, "go"), assistant(1, [{ type: "tool_use", id: "b1", name: "Bash", input: { command: "make", description: "Build" } }])]);
     const r = claudeCode.scan({ now: Date.parse(ts(1)) + 60 * 60_000, sinceMs: 0 } as Parameters<typeof claudeCode.scan>[0]).find((x) => x.id === "held-1")!;
     expect(r).toMatchObject({ state: "stalled", action: "Bash: Build · or a permission prompt is open", pendingTool: true });
+  });
+});
+
+describe("issue 28: a peer's log a sync tool is replacing", () => {
+  afterEach(() => vi.restoreAllMocks());
+  const busy = (times: number, file: string) => {
+    const real = fs.readFileSync;
+    let left = times;
+    return vi.spyOn(fs, "readFileSync").mockImplementation(((p: fs.PathOrFileDescriptor, o?: unknown) => {
+      if (String(p) === file && left-- > 0) throw Object.assign(new Error(`EPERM: operation not permitted, open '${file}'`), { code: "EPERM" });
+      return (real as (...a: unknown[]) => unknown)(p, o);
+    }) as typeof fs.readFileSync);
+  };
+
+  it("is read again after a short pause", () => {
+    openCard({ kind: "decide", project: "api", title: "One?" });
+    const file = eventFiles()[0]!.file;
+    busy(2, file);
+    expect(readEvents().length).toBe(1);
+  });
+
+  it("still busy, the last reading stands in, and nothing throws", () => {
+    openCard({ kind: "decide", project: "api", title: "One?" });
+    const file = eventFiles()[0]!.file;
+    expect(readEvents().length).toBe(1);
+    busy(100, file);
+    expect(readEvents().length).toBe(1);
+  });
+
+  it("other errors still surface", () => {
+    openCard({ kind: "decide", project: "api", title: "One?" });
+    const file = eventFiles()[0]!.file;
+    const real = fs.readFileSync;
+    vi.spyOn(fs, "readFileSync").mockImplementation(((p: fs.PathOrFileDescriptor, o?: unknown) => {
+      if (String(p) === file) throw Object.assign(new Error("EIO"), { code: "EIO" });
+      return (real as (...a: unknown[]) => unknown)(p, o);
+    }) as typeof fs.readFileSync);
+    expect(() => readEvents()).toThrow(/EIO/);
+  });
+});
+
+describe("a claim from a subagent", () => {
+  const pending = (m: number, cmd: string) => assistant(m, [{ type: "tool_use", id: `b${m}`, name: "Bash", input: { command: cmd } }]);
+  const now = () => Date.parse(ts(10));
+  const setup = () => {
+    const dir = path.join(homeDir(), "claude", "-work-app");
+    const own = path.join(dir, "lead-1111.jsonl");
+    const sub = path.join(dir, "lead-1111", "subagents", "agent-w42.jsonl");
+    const touch = (f: string) => fs.utimesSync(f, new Date(now()), new Date(now()));
+    return { own, sub, touch };
+  };
+
+  it("is the subagent's when the subagent's log is the one running parawatch claim", () => {
+    const { own, sub, touch } = setup();
+    writeLog(own, [user(0, "lead"), pending(1, "sleep 100 # waiting on workers")]);
+    writeLog(sub, [user(2, "work"), pending(9, 'parawatch claim -p api -t T-1 --title "Worker"')]);
+    touch(own);
+    touch(sub);
+    expect(callingSubagent("lead-1111", /\bparawatch\b.*\bclaim\b/, now())).toBe("w42");
+  });
+
+  it("is the session's own when the session runs it", () => {
+    const { own, sub, touch } = setup();
+    writeLog(own, [user(0, "lead"), pending(9, "parawatch claim -p api --role lead")]);
+    writeLog(sub, [user(2, "work"), pending(3, "parawatch claim -p api -t T-1"), user(4, [{ type: "tool_result", tool_use_id: "b3", content: "ok" }])]);
+    touch(own);
+    touch(sub);
+    expect(callingSubagent("lead-1111", /\bparawatch\b.*\bclaim\b/, now())).toBeUndefined();
+  });
+});
+
+describe("a file the card names that is not on this machine", () => {
+  it("is listed as missing in the snapshot; files that are here are not", () => {
+    const here = path.join(homeDir(), "shot.png");
+    fs.writeFileSync(here, "png");
+    const c = openCard({ kind: "try", project: "api", title: "Look", attach: [here, "/no/such/folder/late.png", "https://example.com/x"], open: ["C:\\Games\\Build.exe"] });
+    const s = snapshot().cards.find((x) => x.id === c.id)!;
+    expect(s.missing).toEqual(["/no/such/folder/late.png", "C:\\Games\\Build.exe"]);
+    expect(readState().cards.get(c.id)!.missing).toBeUndefined();
   });
 });

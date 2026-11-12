@@ -175,15 +175,30 @@ export function withLock<T>(fn: () => T): T {
 
 // ------------------------------------------------------------------ reading
 
+/** What each log held at its last good reading, for a moment when it cannot be opened. */
+const lastRead = new Map<string, PwEvent[]>();
+
+/** Errors a sync tool causes for a moment while it replaces a file (Windows mostly). */
+const BUSY = new Set(["EPERM", "EBUSY", "EACCES"]);
+
 function readFileEvents(f: EventFile): PwEvent[] {
-  let text: string;
-  try {
-    text = fs.readFileSync(f.file, "utf8");
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw err;
+  let text: string | undefined;
+  for (let attempt = 0; text === undefined; attempt++) {
+    try {
+      text = fs.readFileSync(f.file, "utf8");
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code ?? "";
+      if (code === "ENOENT") return [];
+      if (!BUSY.has(code)) throw err;
+      // Syncthing and cloud drives write a new copy and rename it over the old one; on Windows the
+      // file cannot be opened during the swap. Try again shortly, then go on with the last reading.
+      if (attempt < 5) sleepSync(50);
+      else return lastRead.get(f.file) ?? [];
+    }
   }
-  return parseEventLines(text, f.device);
+  const events = parseEventLines(text, f.device);
+  lastRead.set(f.file, events);
+  return events;
 }
 
 /**

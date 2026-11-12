@@ -765,8 +765,13 @@ export class Panel {
       el("span", "pw-look-text", c.look, look);
     }
     const refs = el("div", "pw-refs", undefined, box);
+    const away = new Set(c.missing ?? []);
     if (c.previewFile) refs.appendChild(this.fileLink(c.previewFile, "file", "Open the file the preview came from"));
     for (const target of c.open ?? []) {
+      if (away.has(target)) {
+        refs.appendChild(this.missingLink(target));
+        continue;
+      }
       const b = el("button", "pw-ref", undefined, refs);
       this.icon(b, "external-link", "pw-btn-icon");
       el("span", undefined, basename(target), b);
@@ -775,9 +780,11 @@ export class Panel {
       this.withMenu(b, target);
     }
     const media = (c.attach ?? []).filter((f) => IMAGE.test(f) || VIDEO.test(f));
-    for (const f of (c.attach ?? []).filter((x) => !media.includes(x))) refs.appendChild(this.fileLink(f));
+    for (const f of (c.attach ?? []).filter((x) => !media.includes(x))) refs.appendChild(away.has(f) ? this.missingLink(f) : this.fileLink(f));
+    for (const f of media.filter((x) => away.has(x))) refs.appendChild(this.missingLink(f));
     if (!refs.childElementCount) refs.remove();
-    if (media.length) this.media(media, el("div", "pw-media", undefined, box));
+    const here = media.filter((x) => !away.has(x));
+    if (here.length) this.media(here, el("div", "pw-media", undefined, box));
     // what the human wrote without choosing reads as part of the conversation on a card still open
     const said = c.status === "open" ? c.answers.filter((a) => a.by === "human" && a.choice === undefined && a.comment).map((a) => ({ seq: a.seq, by: "human", text: a.comment! })) : [];
     const thread = [...c.comments, ...said].sort((a, b) => a.seq - b.seq);
@@ -1143,6 +1150,17 @@ export class Panel {
       icon: (e, name) => this.host.icon(e, name),
       openExternal: (f) => this.backend.open(f),
     });
+  }
+
+  /** A file the card names that this machine does not have yet: says so instead of failing to open. */
+  private missingLink(f: string): HTMLElement {
+    const b = el("button", "pw-ref pw-file is-missing");
+    this.icon(b, "cloud-off", "pw-btn-icon");
+    el("span", undefined, `${basename(f)} · not on this machine yet`, b);
+    b.title = `${f}\nNot on this machine yet. A sync tool or cloud drive may still be bringing it, or it is only on the machine that asked.`;
+    b.onclick = () => this.host.notice(`${basename(f)} is not on this machine yet. If it is still syncing, it opens once it arrives.`);
+    this.withMenu(b, f);
+    return b;
   }
 
   private fileLink(f: string, icon?: string, hint?: string): HTMLElement {

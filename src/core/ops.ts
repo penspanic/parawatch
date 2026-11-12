@@ -680,12 +680,23 @@ export async function waitInbox(
     const dir = eventsDir();
     fs.mkdirSync(dir, { recursive: true });
     watcher = fs.watch(dir, () => wake?.());
+    // on Windows a watched folder a sync tool writes into can report EPERM; polling goes on
+    watcher.on("error", () => {
+      watcher?.close();
+      watcher = undefined;
+    });
   } catch {
     watcher = undefined; // polling alone still works
   }
   try {
     for (;;) {
-      const items = readInbox(consumer, filter, true);
+      let items: InboxItem[] = [];
+      try {
+        items = readInbox(consumer, filter, true);
+      } catch (err) {
+        // a file busy for a moment is read again on the next poll; a wait must not end without an answer
+        if (!["EPERM", "EBUSY", "EACCES"].includes((err as NodeJS.ErrnoException).code ?? "")) throw err;
+      }
       if (items.length) return items;
       const left = deadline - Date.now();
       if (left <= 0) return [];

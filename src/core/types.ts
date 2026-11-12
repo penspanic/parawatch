@@ -80,6 +80,11 @@ export interface Card {
    * answer goes to whoever waits on the project. Never stored.
    */
   ownerEnded?: boolean;
+  /**
+   * In a snapshot: attached or to-open files that are not on this machine (yet: a sync tool or a
+   * cloud drive may still be bringing them). Never stored.
+   */
+  missing?: string[];
 }
 
 /** Fields `parawatch edit` may change on a card. */
