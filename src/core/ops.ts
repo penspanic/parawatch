@@ -783,7 +783,7 @@ export function inboxScope(opts: { as?: string; project?: string; card?: string 
     // A lead waiting on its project from a session: what other live sessions own is theirs. It
     // takes over the project cursor once, so it does not hear again what that wait delivered.
     const mine = readCursor(consumer);
-    const merged = furthest(mine, readCursor(opts.project));
+    const merged = furthest(Object.keys(mine).length ? mine : bornAt(session), readCursor(opts.project));
     if (JSON.stringify(merged) !== JSON.stringify(mine)) writeCursor(consumer, merged);
     return { consumer, filter: { session, project: opts.project } };
   }
@@ -791,10 +791,35 @@ export function inboxScope(opts: { as?: string; project?: string; card?: string 
   // A session that used to wait on its project starts where that wait stopped, so moving to its
   // own cursor does not bring back news it has already handled.
   if (claim && !Object.keys(readCursor(consumer)).length) {
-    const from = readCursor(claim.project);
+    const from = furthest(bornAt(session), readCursor(claim.project));
     if (Object.keys(from).length) writeCursor(consumer, from);
   }
   return { consumer, filter: { session, project: claim?.project } };
+}
+
+/**
+ * Where a session's first wait starts: just before the session first shows in the log (a claim,
+ * a card it opened, a pull request linked to it, something handed to it). Nothing before that was
+ * its to act on, and a lead starting at the top of the log would hear every old pull request and
+ * answer of the project again. A session the log has not seen starts at the top; it has nothing
+ * of its own and no project yet.
+ */
+export function bornAt(session: string, events = readEvents()): Position {
+  const i = events.findIndex((ev) => {
+    switch (ev.type) {
+      case "run.claim":
+        return sameSession(ev.claim.session, session);
+      case "card.open":
+        return sameSession(ev.card.session, session);
+      case "pr.link":
+        return sameSession(ev.link.session, session);
+      case "card.hand":
+        return sameSession(ev.session, session);
+      default:
+        return false;
+    }
+  });
+  return i < 0 ? {} : advance({}, events.slice(0, i));
 }
 
 export function readInbox(consumer: string, filter: InboxFilter, move: boolean): InboxItem[] {

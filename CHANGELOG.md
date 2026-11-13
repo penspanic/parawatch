@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fix: a session's first wait read the log from the top. A new lead was then woken by every old change on the project's pull requests, also ones merged weeks before (CI results, conflicts). A first wait now starts just before the session first shows in the log: its claim, a card it opened, a pull request linked or handed to it.
+
 ## 0.3.12 (2026-11-13)
 
 - Fix: a lead waiting with `wait -p <project>` was woken by every answer and every pull request change in the project, also on cards and pull requests another live session owned and was waiting on itself, and spent a turn each time to say it was not its own. Inside a session, `-p` now only names the project: what another live session owns goes to that session. Outside a session, `-p` still reads everything. A lead that moves to the new rule starts where its project wait stopped.
