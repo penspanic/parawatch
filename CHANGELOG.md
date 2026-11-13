@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.14 (2026-11-13)
 
 - Fix: the app could update twice in a row. Once an update was downloaded, it stopped looking, so a release that came out later was only found after the restart. It now keeps looking while an update is ready, and looks once more right before Restart to Update; when something newer is out, it downloads that and then restarts into it.
 - Fix: when two sessions claimed `--role lead` in the same project within the same millisecond, the earlier one stayed lead. The later claim now wins.
