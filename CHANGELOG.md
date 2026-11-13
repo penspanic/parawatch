@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.13 (2026-11-13)
 
 - Fix: a session's first wait read the log from the top. A new lead was then woken by every old change on the project's pull requests, also ones merged weeks before (CI results, conflicts). A first wait now starts just before the session first shows in the log: its claim, a card it opened, a pull request linked or handed to it.
 
