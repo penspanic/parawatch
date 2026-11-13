@@ -81,6 +81,18 @@ export interface Card {
    */
   ownerEnded?: boolean;
   /**
+   * In a snapshot, for a card whose session has ended or that no session opened: the project's
+   * lead, which gets the answer. Never stored.
+   */
+  lead?: string;
+  /**
+   * In a snapshot: no session gets an answer to this card (no owner, and the project has no live
+   * lead), so it waits in parawatch until the human picks a lead or hands it on. Never stored.
+   */
+  unrouted?: boolean;
+  /** when the human handed the card to another session (filled from the event time) */
+  handedAt?: string;
+  /**
    * In a snapshot: attached or to-open files that are not on this machine (yet: a sync tool or a
    * cloud drive may still be bringing them). Never stored.
    */
@@ -153,6 +165,8 @@ export interface PrLink {
   task?: string;
   /** linked because the session's log shows it opened the PR, not by `parawatch pr link` */
   auto?: boolean;
+  /** the human handed it to this session; the session is told once */
+  handed?: boolean;
   at: string;
 }
 
@@ -191,6 +205,8 @@ export type EventBody =
   | { type: "card.comment"; card: string; by: string; text: string }
   /** `dismissed`: the human closed it without an answer, and the agent that asked is told */
   | { type: "card.close"; card: string; note?: string; dismissed?: boolean }
+  /** the human gave the card to another session, which is told once */
+  | { type: "card.hand"; card: string; session: string; by: string }
   | { type: "card.edit"; card: string; set: CardEdit & Pick<Card, "action" | "preview" | "previewFile" | "attach"> }
   | { type: "run.start"; run: { id: string; project: string; task?: string; title: string; parent?: string; heartbeat?: number; log?: string } }
   | { type: "run.note"; run: string; text: string }
@@ -281,6 +297,10 @@ export interface PrView {
   sessionTitle?: string;
   project?: string;
   task?: string;
+  /** open, and its session has ended or it has none: the project's lead gets its news */
+  lead?: string;
+  /** open, its session has ended or it has none, and the project has no live lead: no one gets its news */
+  unrouted?: boolean;
 }
 
 /** Who counts as a human when deciding what wakes an agent. */

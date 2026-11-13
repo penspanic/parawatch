@@ -8,7 +8,7 @@ import {
   answerCard,
   beatRun,
   claimSession,
-  closeCard, dismissCard,
+  closeCard, dismissCard, endedSessions, handCard, handPr, leadOf, makeLead,
   commentCard,
   inboxScope,
   editCard,
@@ -233,6 +233,28 @@ program
   .action((id: string, o) => dismissCard(id, o.note));
 
 program
+  .command("hand <target> <session>")
+  .description("give a card or a pull request to another session (id prefix, 6+ characters); that session is told once")
+  .action((target: string, session: string) => {
+    if (/#\d+$|:\/\//.test(target)) {
+      const ref = resolvePrRef(target);
+      handPr(ref, session);
+      process.stdout.write(`${ref.repo}#${ref.number} → ${session.slice(0, 8)}\n`);
+      return;
+    }
+    const card = handCard(target, session);
+    process.stdout.write(`${card.id} → ${session.slice(0, 8)}\n`);
+  });
+
+program
+  .command("lead <project> <session>")
+  .description("make a session the project's lead: it gets what no session owns there, and what ended sessions left")
+  .action((project: string, session: string) => {
+    const r = makeLead(project, session);
+    process.stdout.write(`${r.session.slice(0, 8)} leads ${project}${r.handed.length ? `; handed ${r.handed.join(", ")}` : ""}\n`);
+  });
+
+program
   .command("show <card>")
   .description("show one card with its answers")
   .option("--json", "JSON output")
@@ -244,10 +266,15 @@ program
       return;
     }
     const waits = card.status === "closed" ? [] : listenersFor(card, listeners());
+    const state = readState();
+    const ended = endedSessions(state);
+    const noOne = card.status !== "closed" && (!card.session || ended(card.session)) && !leadOf(state, ended)(card.project);
     const delivery =
       card.status === "closed"
         ? ""
-        : waits.length
+        : noOne
+          ? `\nDelivery: no session gets an answer (${card.session ? "its session has ended" : "no session opened it"}, and ${card.project} has no lead). Pick a lead with parawatch lead ${card.project} <session>, or hand it on with parawatch hand ${card.id} <session>.`
+          : waits.length
           ? `\nDelivery: an agent is waiting (${waits.map((l) => l.consumer).join(", ")}); an answer wakes it now.`
           : "\nDelivery: no agent is waiting; an answer is kept until the agent next checks (its next turn, or its next wait).";
     process.stdout.write(cardDetail(card) + delivery + "\n");
@@ -384,7 +411,9 @@ program
     if (!session && process.env.CLAUDE_CODE_SESSION_ID === id) id = callingSubagent(id, /\bparawatch\b.*\bclaim\b/) ?? id;
     if (o.kind !== undefined && o.kind !== "scheduled") throw new UserError("--kind can only be 'scheduled'");
     const c = claimSession({ session: id, project: o.project, task: o.task, role: o.role, title: o.title, kind: o.kind, done: o.done });
-    process.stdout.write(`${id.slice(0, 8)} → ${c.project}${c.task ? ` / ${c.task}` : ""}${c.role ? ` (${c.role})` : ""}${c.done ? " · done" : ""}\n`);
+    // a new lead: earlier leads of the project step down, and it takes what no session got
+    const handed = o.role === "lead" && !c.done ? makeLead(c.project, id).handed : [];
+    process.stdout.write(`${id.slice(0, 8)} → ${c.project}${c.task ? ` / ${c.task}` : ""}${c.role ? ` (${c.role})` : ""}${c.done ? " · done" : ""}${handed.length ? `; handed ${handed.join(", ")}` : ""}\n`);
   });
 
 // ------------------------------------------------------------------ pull requests
@@ -476,16 +505,21 @@ program
       v.color ? `\x1b[1m${title}\x1b[0m  \x1b[2m${n}${extra.join("")}\x1b[0m` : `${title}  ${n}${extra.join("")}`;
     const open = cards.filter((c) => c.status === "open" && c.kind !== "todo");
     const todo = cards.filter((c) => c.status === "open" && c.kind === "todo");
-    const answered = cards.filter((c) => c.status === "answered");
+    // answered, but no session gets it: no owner left and no lead in the project
+    const stranded = cards.filter((c) => c.status === "answered" && c.unrouted);
+    const answered = cards.filter((c) => c.status === "answered" && !c.unrouted);
+    const strandedPrs = prs.filter((p) => p.unrouted);
     // a session held by a permission prompt needs the human as much as a card does
     const prompts = runs.filter((r) => r.asks?.via === "permission");
     const askers = runs.filter((r) => r.asks && r.asks.via !== "permission");
     const reviews = prs.filter((p) => p.reviewRequested && !p.mine);
-    const waiting = prs.filter((p) => !(p.reviewRequested && !p.mine));
+    const waiting = prs.filter((p) => !(p.reviewRequested && !p.mine) && !p.unrouted);
     const ls = snap.listeners ?? [];
     const out: string[] = [];
     out.push(head("NEEDS YOU", open.length + prompts.length || "nothing"));
-    out.push(...cardRows(open, v, now, "  "));
+    const noOne: Record<string, string> = {};
+    for (const c of open) if (c.unrouted) noOne[c.id] = "no session gets the answer";
+    out.push(...cardRows(open, v, now, "  ", noOne));
     out.push(...askRows(prompts, v, now, "  "));
     if (askers.length) {
       out.push("", head("ASKED IN CHAT, NO CARD", askers.length, "  (read from the log)"));
@@ -498,6 +532,14 @@ program
     if (todo.length) {
       out.push("", head("TO DO, NOTHING WAITS ON IT", todo.length));
       out.push(...cardRows(todo, v, now, "  "));
+    }
+    if (stranded.length || strandedPrs.length) {
+      out.push("", head("NO SESSION GETS THESE", stranded.length + strandedPrs.length, "  (no owner left, no lead)"));
+      out.push(...cardRows(stranded, v, now, "  "));
+      out.push(...prRows(strandedPrs, v, now, "  "));
+      const projects = [...new Set([...stranded.map((c) => c.project), ...strandedPrs.map((p) => p.project!)])];
+      const dim = (t: string) => (v.color ? `\x1b[2m${t}\x1b[0m` : t);
+      out.push(dim(`  pick a lead: parawatch lead ${projects.length === 1 ? projects[0] : "<project>"} <session>   or hand one on: parawatch hand <card or PR> <session>`));
     }
     if (answered.length) {
       const notes: Record<string, string> = {};

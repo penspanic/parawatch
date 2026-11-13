@@ -33,7 +33,7 @@ function cardStart(c: Card): string {
 
 /**
  * The waits an answer to this card would wake now (the CLI's `listenersFor`). A card whose session
- * has ended reaches the session waits in its project, as an unowned card does.
+ * has ended, or that no session opened, reaches the project's lead only (`lead` in the snapshot).
  */
 function waitingFor(c: Card, ls: Listener[]): Listener[] {
   const same = (x?: string, y?: string) => !!x && !!y && (x.startsWith(y) || y.startsWith(x));
@@ -43,7 +43,7 @@ function waitingFor(c: Card, ls: Listener[]): Listener[] {
       : l.scope === "session"
         ? c.session && same(l.session, c.session)
           ? true
-          : (!c.session || !!c.ownerEnded) && !!l.project && l.project === c.project
+          : (!c.session || !!c.ownerEnded) && same(l.session, c.lead)
         : !l.project || l.project === c.project,
   );
 }
@@ -181,6 +181,8 @@ export class Panel {
   private expanded = new Set<string>();
   /** answered and closed cards the human opened to read again */
   private reopened = new Set<string>();
+  /** where the human opened the help on picking a lead: "stranded", or a card id */
+  private helpOpen = new Set<string>();
   /** lays the media rows out again when the window changes width */
   private mediaSize = new ResizeObserver((entries) => {
     for (const e of entries) layoutMedia(e.target as HTMLElement);
@@ -380,6 +382,8 @@ export class Panel {
     const chat = asks - held;
     const askTip = [chat ? `${chat} session${chat === 1 ? "" : "s"} asked you in chat, without a card` : "", held ? `${held} wait${held === 1 ? "s" : ""} for you to approve a tool call` : ""].filter(Boolean).join("; ");
     if (asks) this.jumpTo(this.badge(row, "message-circle-question", asks, askTip, "pw-asks"), '[data-sec="asks"]');
+    const strandedN = (s?.cards.filter((c) => c.status === "answered" && c.unrouted).length ?? 0) + (s?.prs?.filter((p) => p.unrouted && !(p.reviewRequested && !p.mine)).length ?? 0);
+    if (strandedN) this.jumpTo(this.badge(row, "life-buoy", strandedN, `${strandedN} with no session to act on ${strandedN === 1 ? "it" : "them"}: pick a lead`, "pw-asks"), '[data-sec="stranded"]');
     const reviews = s?.prs?.filter((p) => p.reviewRequested && !p.mine).length ?? 0;
     if (reviews) this.jumpTo(this.badge(row, "eye", reviews, `${reviews} pull request${reviews === 1 ? "" : "s"} asking for your review`, "pw-chip-review"), '[data-sec="reviews"]');
     const stuck = s?.prs?.filter((p) => p.stalled && !(p.reviewRequested && !p.mine)).length ?? 0;
@@ -415,9 +419,11 @@ export class Panel {
     const cards = this.snapshot?.cards ?? [];
     const s = this.snapshot;
     const asks = (s?.runs ?? []).filter((r) => r.asks).map((r) => [r.id, r.title, r.asks!.text]);
-    const prs = (s?.prs ?? []).map((p) => [p.key, p.waitingOn, p.since, p.stalled, p.sessionTitle, p.title]);
+    const prs = (s?.prs ?? []).map((p) => [p.key, p.waitingOn, p.since, p.stalled, p.sessionTitle, p.title, p.lead, p.unrouted]);
     const ls = (s?.listeners ?? []).map((l) => [l.pid, l.project, l.card]);
-    return JSON.stringify([cards.map((c) => [c.id, c.status, c.kind, c.title, c.since, c.from, c.session, c.answers.length, c.comments.length, c.closedAt]), asks, prs, ls, [...this.busy], [...this.reopened]]);
+    // the lead help lists the project's sessions
+    const leaders = this.helpOpen.size ? (s?.runs ?? []).filter((r) => r.kind === "session").map((r) => [r.id, r.title, r.state, r.project]) : [];
+    return JSON.stringify([cards.map((c) => [c.id, c.status, c.kind, c.title, c.since, c.from, c.session, c.answers.length, c.comments.length, c.closedAt, c.lead, c.unrouted]), asks, prs, ls, [...this.busy], [...this.reopened], [...this.helpOpen], leaders]);
   }
 
   private renderCards(now: number): void {
@@ -433,10 +439,12 @@ export class Panel {
     const open = cards
       .filter((c) => c.status === "open")
       .sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || cardStart(a).localeCompare(cardStart(b)));
-    const answered = cards.filter((c) => c.status === "answered");
+    // answered, but no session gets it: no owner left and no lead in the project
+    const stranded = cards.filter((c) => c.status === "answered" && c.unrouted);
+    const answered = cards.filter((c) => c.status === "answered" && !c.unrouted);
     const closed = cards.filter((c) => c.status === "closed");
 
-    const othersAsk = (this.snapshot?.runs ?? []).some((r) => r.asks) || (this.snapshot?.prs ?? []).some((p) => p.reviewRequested && !p.mine);
+    const othersAsk = (this.snapshot?.runs ?? []).some((r) => r.asks) || (this.snapshot?.prs ?? []).some((p) => (p.reviewRequested && !p.mine) || p.unrouted) || cards.some((c) => c.status === "answered" && c.unrouted);
     if (!open.length && !othersAsk) {
       const empty = el("div", "pw-all-clear", undefined, root);
       if (this.snapshot) {
@@ -492,7 +500,8 @@ export class Panel {
 
     const prs = this.snapshot?.prs ?? [];
     const reviews = prs.filter((p) => p.reviewRequested && !p.mine);
-    const waiting = prs.filter((p) => !(p.reviewRequested && !p.mine));
+    const strandedPrs = prs.filter((p) => p.unrouted && !(p.reviewRequested && !p.mine));
+    const waiting = prs.filter((p) => !(p.reviewRequested && !p.mine) && !p.unrouted);
     if (reviews.length) {
       const body = this.foldGroup(root, "reviews", "", false, {
         tile: "eye",
@@ -501,6 +510,20 @@ export class Panel {
         label: `Reviews for you: ${reviews.length} pull request${reviews.length === 1 ? "" : "s"} asking for your review`,
       });
       for (const p of reviews) body.appendChild(this.prRow(p, now));
+    }
+    if (stranded.length || strandedPrs.length) {
+      const n = stranded.length + strandedPrs.length;
+      const projects = [...new Set([...stranded.map((c) => c.project), ...strandedPrs.map((p) => p.project!)])];
+      const body = this.foldGroup(root, "stranded", "", false, {
+        tile: "life-buoy",
+        tone: "asks",
+        count: n,
+        label: `No session gets these: ${n} answer${n === 1 ? "" : "s"} or pull request${n === 1 ? "" : "s"} with no session left to act on ${n === 1 ? "it" : "them"}, and no lead in the project`,
+      }, (head) => this.helpButton(head, "stranded"));
+      body.parentElement!.classList.add("pw-stranded-group");
+      if (this.helpOpen.has("stranded")) for (const p of projects) this.leadHelp(p, body);
+      for (const c of stranded) body.appendChild(this.pastCard(c, now));
+      for (const p of strandedPrs) body.appendChild(this.prRow(p, now));
     }
     // below this line nothing waits on the human: pull requests with others, answers with the agents
     if (waiting.length || answered.length) {
@@ -674,6 +697,11 @@ export class Panel {
     if (busy) box.classList.add("is-busy");
     this.cardHead(c, box, now, true);
     const title = el("div", "pw-card-title", c.title, box);
+    if (c.unrouted && c.kind !== "todo") {
+      const line = el("div", "pw-delivery pw-no-session", "No session gets your answer yet: the one that asked has ended, or none did, and there is no lead. ", box);
+      this.helpButton(line, c.id);
+      if (this.helpOpen.has(c.id)) this.leadHelp(c.project, box);
+    }
     this.cardDetail(c, box);
     this.reply(c, box, busy);
     // everything under the title folds away, so a card the human cannot answer yet keeps one line
@@ -682,6 +710,72 @@ export class Panel {
     box.appendChild(main);
     this.cardDismiss(c, box);
     this.cardFold(c, box, title);
+    return box;
+  }
+
+  /** A small Help button that opens or shuts the help on picking a lead, under `key`. */
+  private helpButton(parent: HTMLElement, key: string): void {
+    const b = el("button", "pw-help-btn", undefined, parent);
+    this.icon(b, "circle-help");
+    el("span", undefined, "Help", b);
+    b.title = "Who gets this, and how to pick a lead";
+    b.setAttribute("aria-expanded", String(this.helpOpen.has(key)));
+    b.onclick = (e) => {
+      e.stopPropagation();
+      if (this.helpOpen.has(key)) this.helpOpen.delete(key);
+      else this.helpOpen.add(key);
+      this.cardsSig = "";
+      this.update(undefined, this.error);
+    };
+  }
+
+  /** The project's sessions that can lead it: running ones, most recently active first. */
+  private sessionsIn(project: string): Run[] {
+    return (this.snapshot?.runs ?? [])
+      .filter((r) => r.kind === "session" && r.project === project && !r.done && r.state !== "done" && r.state !== "failed")
+      .sort((a, b) => (b.lastActivity ?? "").localeCompare(a.lastActivity ?? ""));
+  }
+
+  /** What no session gets goes to the project's lead: pick one of its sessions. */
+  private leadHelp(project: string, parent: HTMLElement): HTMLElement {
+    const box = el("div", "pw-lead-help", undefined, parent);
+    el(
+      "div",
+      "pw-lead-help-text",
+      `In ${project}, no session gets these: the session that asked has ended, or none did, and ${project} has no lead. Pick a session to lead ${project}. It is handed what is waiting now, and gets anything left without a session from then on.`,
+      box,
+    );
+    const list = this.sessionsIn(project);
+    if (!list.length) {
+      el("div", "pw-meta", `No session is working on ${project} now. In the session that should look after it, run: parawatch claim -p ${project} --role lead`, box);
+      return box;
+    }
+    for (const r of list) {
+      const row = el("div", "pw-lead-row", undefined, box);
+      this.icon(row, "bot");
+      el("span", "pw-lead-name", r.title || this.shortId(r.id), row);
+      el("span", "pw-meta", ` · ${STATE_LABEL[r.state]}${r.device ? ` on ${r.device}` : ""}`, row);
+      const b = el("button", "pw-lead-pick", "Make lead", row);
+      b.title = `Make this session lead ${project}`;
+      b.onclick = (e) => {
+        e.stopPropagation();
+        if (!this.backend.lead) {
+          this.host.notice(`Pick a lead from the command line: parawatch lead ${project} ${r.id.slice(0, 8)}`);
+          return;
+        }
+        b.disabled = true;
+        void this.backend
+          .lead(project, r.id)
+          .then(() => {
+            this.helpOpen.clear();
+            this.host.notice(`${r.title || this.shortId(r.id)} leads ${project} now`);
+          })
+          .catch((err) => {
+            b.disabled = false;
+            this.host.notice(`Could not pick a lead: ${err instanceof Error ? err.message : String(err)}`);
+          });
+      };
+    }
     return box;
   }
 
@@ -1049,7 +1143,10 @@ export class Panel {
         n.title = "Two machines answered before either saw the other. The earlier answer stands.";
       } else if (away) el("span", "pw-meta", ` · on ${away}`, line);
     }
-    if (c.status === "answered" && !waitingFor(c, this.snapshot?.listeners ?? []).length) {
+    if (c.status === "answered" && c.unrouted) {
+      const n = el("div", "pw-delivery", "No session gets this answer: pick a lead with Help above.", top);
+      n.title = "The session that asked has ended, or none did, and the project has no lead";
+    } else if (c.status === "answered" && !waitingFor(c, this.snapshot?.listeners ?? []).length) {
       const n = el("div", "pw-delivery", "No agent is waiting. It gets your answer on its next turn.", top);
       n.title = "No `parawatch wait` is running for this project";
     }

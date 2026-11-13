@@ -13,6 +13,8 @@ const PATHS: Record<string, string> = {
   "chevrons-down": '<path d="m7 7 5 5 5-5"/><path d="m7 13 5 5 5-5"/>',
   "arrow-up-right": '<path d="M7 17 17 7"/><path d="M8 7h9v9"/>',
   "arrow-up": '<path d="M12 19V5"/><path d="m6 11 6-6 6 6"/>',
+  "life-buoy": '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="m5.6 5.6 3.6 3.6"/><path d="m14.8 9.2 3.6-3.6"/><path d="m14.8 14.8 3.6 3.6"/><path d="m9.2 14.8-3.6 3.6"/>',
+  "circle-help": '<circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
   "corner-down-right": '<path d="M5 4v7a4 4 0 0 0 4 4h10"/><path d="m15 11 4 4-4 4"/>',
   link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   file: '<path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7z"/><path d="M14 3v4h4"/>',

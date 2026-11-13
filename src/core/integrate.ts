@@ -27,7 +27,7 @@ The human follows this work through \`parawatch\`. Use it instead of asking in c
 - Stuck until the human does something only they can do (install, sudo, sign in): \`parawatch block --project ${p} "what to do"\`
 - Something only the human can do, but nothing waits on it now: \`parawatch todo --project ${p} "what to do"\`
 - Put every question for the human on a card, not only in your reply: a question left in chat is easy to miss.
-- After opening a card or linking a pull request, keep a background wait armed: \`parawatch wait\`. It prints the human's answers to your cards and news on your pull requests and exits; act on them, \`parawatch close <card> --note "what you did"\`, then arm it again. A lead waits the same way; answers on another live session's cards go to that session.
+- After opening a card or linking a pull request, keep a background wait armed: \`parawatch wait\`. It prints the human's answers to your cards and news on your pull requests and exits; act on them, \`parawatch close <card> --note "what you did"\`, then arm it again. A lead waits the same way; answers on another live session's cards go to that session. What no session owns goes to the lead (\`parawatch claim --project ${p} --role lead\`).
 - A long job with no agent log (a bake, a benchmark): \`parawatch run start --project ${p} "title" --heartbeat <seconds> [--log <file>]\`, \`parawatch run note <id> "..."\`, \`parawatch run end <id>\`.
 - Never answer a card yourself. \`parawatch status\` shows everything that is open.
 ${END}`;

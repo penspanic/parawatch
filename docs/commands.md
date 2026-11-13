@@ -11,7 +11,7 @@ What you run yourself. What agents run is in [Agents](agents.md).
 | **Card** | Something that needs the human. Four kinds: `decide` (pick an option or write an answer), `try` (open a build, watch a video, look at a screen), `block` (only the human can do it and the agent is stuck until they do: install, sudo, sign in), `todo` (only the human can do it, but nothing waits on it now: check a bill, register a company). A card remembers the session that opened it, and `--since` keeps when the matter first came up when it is older than the card. |
 | **Run** | An agent at work. Most runs are *observed*: parawatch reads the agent's own log. Jobs that leave no log (a bake, a benchmark) can be *declared* with `parawatch run start`, with a heartbeat if they can hang silently. |
 | **Pull request** | Read through `gh`. Linked to the session that owns it, so its news wakes that session. |
-| **Lead** | A role, not a concept of its own. Claim a session with `--role lead` and it shows at the top of its project with its children under it. |
+| **Lead** | Claim a session with `--role lead` and it shows at the top of its project with its children under it. One per project: it gets what no session owns there and what ended sessions left open. With no lead, those wait in parawatch until the human picks one. |
 
 ## For the human
 
@@ -30,6 +30,8 @@ parawatch run hide <id>         # hide a run (6+ characters of its id) until it 
 parawatch run unhide <id>
 parawatch pr list                # open pull requests: what each waits on, since when, whose it is
 parawatch goto api#88            # open the session that owns a pull request
+parawatch lead game 811a9612     # make a session the project's lead; it is handed what no session got
+parawatch hand c12 811a9612      # give a card (or a pull request: api#88) to another session
 parawatch digest                 # what each session did today (--date, --json)
 ```
 

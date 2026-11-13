@@ -4,7 +4,10 @@
 
 - Fix: a lead waiting with `wait -p <project>` was woken by every answer and every pull request change in the project, also on cards and pull requests another live session owned and was waiting on itself, and spent a turn each time to say it was not its own. Inside a session, `-p` now only names the project: what another live session owns goes to that session. Outside a session, `-p` still reads everything. A lead that moves to the new rule starts where its project wait stopped.
 - Fix: once a session ended with `claim --done`, news on its pull requests that were already merged or closed (bot comments after a merge) woke every session waiting in the project. That news now wakes only the session that owned the pull request; open cards and open pull requests still pass to the project's sessions.
-- The skill, docs/agents.md and the instruction block now say a lead waits with a plain `parawatch wait`, and that a session the human started on their own keeps its cards.
+- What no session owns in a project, and what a session that has ended left open, now goes to the project's lead only, instead of waking every session there. A lead is the session that last claimed `--role lead`; one per project.
+- With no lead, such answers and pull requests wait in parawatch instead of being lost or waking everyone: `status` lists them under NO SESSION GETS THESE, a card says no session gets its answer yet, and the panel shows them in their own group with a Help button that lists the project's sessions and makes one the lead. The new lead is handed what was waiting and told once of each.
+- `parawatch lead <project> <session>` picks a lead from the command line. `parawatch hand <card or PR> <session>` gives a card or a pull request to another session, which is told once, with the card's answer.
+- The skill, docs/agents.md and the instruction block say a lead waits with a plain `parawatch wait`, that a session the human started on their own keeps its cards, and what a handed card looks like.
 
 ## 0.3.11 (2026-11-13)
 

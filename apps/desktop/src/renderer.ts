@@ -55,6 +55,7 @@ const backend: Backend = {
   goto: (target: string) => call(api.goto(target) as Promise<string>),
   hideRun: (id: string) => call(api.hideRun(id) as Promise<void>),
   dismiss: (card: string) => call(api.dismiss(card) as Promise<void>),
+  lead: (project: string, session: string) => call(api.lead(project, session) as Promise<void>),
   open: (target: string) => void call(api.open(target)).catch((err) => toast(plain(err).message)),
   mediaUrl: (file: string) => call(api.mediaUrl(file) as Promise<string | undefined>),
   saveAttachment: (data: ArrayBuffer, ext: string) => call(api.saveAttachment(data, ext) as Promise<string>),

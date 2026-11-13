@@ -13,7 +13,37 @@ const swatch = (label: string, hue: number) =>
     `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400"><rect width="640" height="400" fill="hsl(${hue},45%,35%)"/><circle cx="320" cy="230" r="120" fill="hsl(${hue},60%,70%)"/><text x="24" y="48" font-family="sans-serif" font-size="32" fill="white">${label}</text></svg>`,
   );
 
+/** the human picked a lead for "tools" */
+let strandedPrsLed = false;
+
 const cards: Card[] = [
+  {
+    // its session ended and "tools" has no lead: no session gets the answer
+    id: "c20",
+    kind: "try",
+    project: "tools",
+    title: "Try the new export on a big vault",
+    from: "Export rewrite",
+    session: "s-export",
+    openedAt: at(300),
+    status: "answered",
+    ownerEnded: true,
+    unrouted: true,
+    answers: [{ seq: 120, at: at(60), by: "human", comment: "Took 40 seconds and froze the window once" }],
+    comments: [],
+  },
+  {
+    id: "c21",
+    kind: "decide",
+    project: "tools",
+    title: "Drop the old CSV export?",
+    options: ["Drop it", "Keep it a release longer"],
+    openedAt: at(200),
+    status: "open",
+    unrouted: true,
+    answers: [],
+    comments: [],
+  },
   {
     id: "c9",
     kind: "decide",
@@ -124,6 +154,7 @@ const fakeRuns: Snapshot["runs"] = [
   { id: "s-settings", runtime: "claude-code", kind: "session", title: "Settings screen", project: "app", state: "idle", lastActivity: at(90), activity: mins([90, 110]) },
   { id: "s-release", runtime: "claude-code", kind: "session", title: "Release notes 1.4", project: "app", state: "idle", lastActivity: at(50), activity: mins([50, 58]) },
   { id: "old", runtime: "claude-code", kind: "session", title: "A session in some notes folder", state: "stalled", lastActivity: at(45), action: "Bash: long benchmark · or a permission prompt is open", activity: mins([45, 57]) },
+  { id: "s-docs", runtime: "claude-code", kind: "session", title: "Docs cleanup", project: "tools", state: "idle", lastActivity: at(18), activity: mins([18, 30]) },
   { id: "s-ticket", runtime: "claude-code", kind: "session", title: "Ticket 2207", project: "app", state: "idle", lastActivity: at(14), action: "Bash: Move the ticket to review", pendingTool: true, asks: { text: "approve a tool call: Bash: Move the ticket to review", via: "permission", blocked: true, at: at(13) }, activity: mins([14, 20]) },
 ];
 
@@ -158,6 +189,24 @@ async function load(): Promise<Snapshot> {
     prs: useReal
       ? real!.prs
       : [
+          {
+            key: "github.com/example/tools#5",
+            url: "https://github.com/example/tools/pull/5",
+            repo: "example/tools",
+            number: 5,
+            title: "Faster export",
+            state: "open",
+            draft: false,
+            waitingOn: "CI failed",
+            since: at(70),
+            stalled: false,
+            reviewRequested: false,
+            mine: true,
+            project: "tools",
+            session: "s-export",
+            sessionTitle: "Export rewrite",
+            ...(strandedPrsLed ? { lead: "s-docs" } : { unrouted: true }),
+          },
           {
             key: "github.com/example/game#101",
             url: "https://github.com/example/game/pull/101",
@@ -271,6 +320,13 @@ const backend: Backend = {
     log(`dismiss ${card}`);
     const c = cards.find((x) => x.id === card);
     if (c) Object.assign(c, { status: "closed", closedAt: new Date().toISOString(), dismissed: true });
+  },
+  lead: async (project, session) => {
+    log(`lead ${project} ${session}`);
+    for (const c of cards) if (c.project === project && c.unrouted) Object.assign(c, { unrouted: undefined, lead: session });
+    const r = fakeRuns.find((x) => x.id === session);
+    if (r) r.role = "lead";
+    strandedPrsLed = true;
   },
   hideRun: async (id) => {
     log(`hide ${id}`);

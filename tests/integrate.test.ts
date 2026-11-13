@@ -37,7 +37,7 @@ describe("claude code hook", () => {
   });
 
   it("finds the project from a claimed session id", () => {
-    claimSession({ session: "abcdef12", project: "game" });
+    claimSession({ session: "abcdef12", project: "game", role: "lead" });
     openCard({ kind: "block", project: "game", title: "Install Xcode" });
     answerCard("c1", { comment: "installed" });
     expect(hookContext({ session_id: "abcdef12-3456", cwd: "/vault" })).toContain("installed");
