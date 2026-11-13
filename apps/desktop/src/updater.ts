@@ -47,9 +47,15 @@ function wire(): void {
   autoUpdater.allowPrerelease = false;
   const stamp = () => new Date().toISOString();
   autoUpdater.on("checking-for-update", () => set({ ...state, status: state.status === "ready" ? "ready" : "checking" }));
-  autoUpdater.on("update-not-available", () => set({ status: "latest", checkedAt: stamp() }));
-  autoUpdater.on("update-available", (i: UpdateInfo) => set({ status: "available", version: i.version, checkedAt: stamp() }));
-  autoUpdater.on("download-progress", (p: { percent: number }) => set({ ...state, status: "downloading", percent: Math.round(p.percent) }));
+  // a downloaded update stays ready while a later check finds the same version, or nothing
+  autoUpdater.on("update-not-available", () => set(state.status === "ready" ? { ...state, checkedAt: stamp() } : { status: "latest", checkedAt: stamp() }));
+  autoUpdater.on("update-available", (i: UpdateInfo) => {
+    if (state.status === "ready" && state.version === i.version) set({ ...state, checkedAt: stamp() });
+    else set({ status: "available", version: i.version, checkedAt: stamp() });
+  });
+  autoUpdater.on("download-progress", (p: { percent: number }) => {
+    if (state.status !== "ready") set({ ...state, status: "downloading", percent: Math.round(p.percent) });
+  });
   autoUpdater.on("update-downloaded", (i: UpdateInfo) => set({ status: "ready", version: i.version, checkedAt: stamp(), ...(unfinished === i.version ? { interrupted: true } : {}) }));
   autoUpdater.on("error", (err: Error) => {
     logger.warn("update check failed:", err);
@@ -70,7 +76,9 @@ export async function checkNow(): Promise<UpdateState> {
     set({ status: "off", reason: off });
     return state;
   }
-  if (state.status === "ready" || state.status === "downloading" || state.status === "checking") return state;
+  // a ready update is checked again: a newer release may have come out since it was downloaded,
+  // and restarting into the older one would only mean a second update right after
+  if (state.status === "downloading" || state.status === "checking") return state;
   wire();
   try {
     await autoUpdater.checkForUpdates();
@@ -105,6 +113,18 @@ export function scheduleUpdates(on: boolean, onChange: (s: UpdateState) => void)
   if (!on) return;
   first = setTimeout(() => void checkNow(), FIRST_CHECK_MS);
   timer = setInterval(() => void checkNow(), EVERY_MS);
+}
+
+/**
+ * Before a restart to update: look once more, so the restart installs the newest release and not
+ * one downloaded hours ago. Gives up after `waitMs` and keeps what is ready.
+ */
+export async function freshestBeforeRestart(waitMs = 15_000): Promise<UpdateState> {
+  if (state.status !== "ready") return state;
+  let timeout: NodeJS.Timeout | undefined;
+  await Promise.race([checkNow(), new Promise((r) => (timeout = setTimeout(r, waitMs)))]);
+  if (timeout) clearTimeout(timeout);
+  return state;
 }
 
 /** Quit and open the new version. */

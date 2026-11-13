@@ -497,10 +497,12 @@ export function leadOf(state: State, ended: (session: string) => boolean): (proj
   return (project) => {
     if (!project) return undefined;
     if (!memo.has(project)) {
+      // the newest claim leads; claims keep log order, so a tie in time goes to the later one
       const leads = state.claims
-        .filter((c) => c.role === "lead" && c.project === project && !c.done && !ended(c.session))
-        .sort((a, b) => (b.at ?? "").localeCompare(a.at ?? ""));
-      memo.set(project, leads[0]?.session);
+        .map((c, i) => ({ c, i }))
+        .filter(({ c }) => c.role === "lead" && c.project === project && !c.done && !ended(c.session))
+        .sort((a, b) => (b.c.at ?? "").localeCompare(a.c.at ?? "") || b.i - a.i);
+      memo.set(project, leads[0]?.c.session);
     }
     return memo.get(project);
   };

@@ -25,7 +25,7 @@ import { siteIcon } from "./siteIcons.js";
 import { KEEP_CLOSED, SINCE_HOURS, THEMES, validPref, type AboutInfo, type Prefs, type Theme, type UpdateState } from "./prefs.js";
 import { alertFor, agentsWorking, issueUrl, needsYou, newlyStuck, summary } from "./rules.js";
 import { cliState, onCliChange, updateCli } from "./cliUpdate.js";
-import { checkNow, installNow, RELEASES_URL, resumeUnfinished, scheduleUpdates, stopUpdates, updateState } from "./updater.js";
+import { checkNow, freshestBeforeRestart, installNow, RELEASES_URL, resumeUnfinished, scheduleUpdates, stopUpdates, updateState } from "./updater.js";
 import { clearMarker, installingNotice, interruptedNotice, readMarker, startState, stillInstallingNotice, writeMarker } from "./updateInstall.js";
 
 const MEDIA_SCHEME = "pwfile";
@@ -278,8 +278,15 @@ function notifyAndWait(alert: { title: string; body: string }): Promise<void> {
  * app again meanwhile makes it fail, so say so first and leave a marker for the next start.
  */
 async function restartToUpdate(): Promise<void> {
-  const u = updateState();
-  if (u.status !== "ready" || !u.version) return;
+  if (updateState().status !== "ready") return;
+  const u = await freshestBeforeRestart();
+  if (u.status !== "ready" || !u.version) {
+    // a newer release came out after the last download: get it, then restart into it
+    restartWhenReady = true;
+    logger.info(`restart waits for ${u.version ?? "a newer version"} to download`);
+    return;
+  }
+  restartWhenReady = false;
   writeMarker(app.getPath("userData"), u.version);
   logger.info(`quitting to install ${u.version}`);
   await notifyAndWait(installingNotice(u.version));
@@ -310,11 +317,19 @@ function checkUnfinishedInstall(): boolean {
   return false;
 }
 
+/** The human asked to restart while a newer version was still downloading. */
+let restartWhenReady = false;
+
 function onUpdate(s: UpdateState): void {
   if (win && !win.isDestroyed()) win.webContents.send("pw:update", s);
   if (tray) tray.setContextMenu(trayMenu());
   buildAppMenu();
   if (s.status === "latest") clearUnfinishedMarker();
+  if (s.status === "error") restartWhenReady = false;
+  if (s.status === "ready" && restartWhenReady) {
+    void restartToUpdate();
+    return;
+  }
   if (s.status === "ready" && s.version && toldReady !== s.version) {
     toldReady = s.version;
     logger.info(`update ${s.version} downloaded`);
