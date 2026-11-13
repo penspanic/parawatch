@@ -709,8 +709,9 @@ function registerIpc(): void {
     refresh();
   });
   ipcMain.handle("pw:goto", async (_e, target: string) => {
-    const g = resolveGoto(target, readState());
+    const g = resolveGoto(target, readState(), latest?.runs);
     if (g.card) clipboard.writeText(cardContextLine(g.card));
+    if (!g.url && g.device) throw new UserError(`${g.name} runs on ${g.device}. Open it there, or turn on Remote Control for it in the Claude app to open it from here.`);
     if (!g.url) {
       clipboard.writeText(`claude --resume ${g.session}`);
       throw new UserError(`${g.name} is not a Claude desktop session. The command to resume it in a terminal is on your clipboard.`);

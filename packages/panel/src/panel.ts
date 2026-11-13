@@ -1410,11 +1410,13 @@ export class Panel {
     const row = el("div", `pw-br pw-mark-${r.mark}`);
     row.dataset.mark = r.mark;
     el("span", "pw-board-dot", undefined, row).title = MARK_HINT[r.mark];
-    const name = el(r.run ? "a" : "span", "pw-br-title", r.title, row);
-    if (r.run) {
+    const open = r.run && this.canOpen(r.run);
+    const name = el(open ? "a" : "span", "pw-br-title", r.title, row);
+    if (r.run && !open) name.title = `${r.title}${r.run.device ? `: runs on ${r.run.device}, with no Remote Control link to open it from here` : ""}`;
+    if (r.run && open) {
       const id = r.run.id;
       (name as HTMLAnchorElement).href = "#";
-      name.title = `${r.title}${r.run.task ? ` (${r.run.task})` : ""}. Click to open the session`;
+      name.title = `${r.title}${r.run.task ? ` (${r.run.task})` : ""}. ${this.openHint(r.run)}`;
       name.onclick = (e) => {
         e.preventDefault();
         void this.backend.goto(id).catch((err) => this.host.notice(err instanceof Error ? err.message : String(err)));
@@ -1574,6 +1576,30 @@ export class Panel {
     return "terminal";
   }
 
+  /** The session a run works under: itself, or the session its subagent or job belongs to. */
+  private rootOf(r: Run): Run {
+    const byId = new Map((this.snapshot?.runs ?? []).map((x) => [x.id, x]));
+    let root = r;
+    for (let i = 0; root.parent && byId.has(root.parent) && i < 8; i++) root = byId.get(root.parent)!;
+    return root;
+  }
+
+  /**
+   * Whether a click can open the run's session: a Claude Code session on this machine opens in the
+   * Claude app, one elsewhere through its Remote Control link. A subagent opens its session.
+   */
+  private canOpen(r: Run): boolean {
+    const root = this.rootOf(r);
+    if (root.runtime !== "claude-code" || root.kind !== "session") return false;
+    return !root.device || !!root.remote;
+  }
+
+  private openHint(r: Run): string {
+    const root = this.rootOf(r);
+    const where = root.device ? `on ${root.device}, through Remote Control` : "in the Claude app";
+    return root === r ? `Open this session ${where}` : `Open ${root.title}, the session it works under, ${where}`;
+  }
+
   /** Open cards this run opened that it may be stopped on (a to-do waits on nothing). */
   private openCardsOf(r: Run): Card[] {
     if (r.kind === "declared") return [];
@@ -1640,9 +1666,9 @@ export class Panel {
     mark.title = `${service ? `${service} ${r.kind}` : r.kind === "declared" ? "declared job" : `${r.runtime} ${r.kind}`}${r.role === "lead" ? " (lead)" : ""} · ${STATE_LABEL[r.state]}`;
     const text = el("div", "pw-run-text", undefined, who);
     const title = el("span", "pw-run-title", r.title, text);
-    // a session on another machine cannot be opened from here
-    if (r.runtime === "claude-code" && r.kind === "session" && !r.device) {
+    if (this.canOpen(r)) {
       title.classList.add("is-link");
+      title.title = this.openHint(r);
       title.setAttribute("role", "link");
       title.tabIndex = 0;
       const go = () =>
