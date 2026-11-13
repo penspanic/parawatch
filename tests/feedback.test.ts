@@ -16,6 +16,7 @@ import {
   handPr,
   inboxFrom,
   inboxScope,
+  closeCard,
   linkPr,
   listeners,
   listenersFor,
@@ -514,6 +515,36 @@ describe("waits per session", () => {
     expect(read(sessions[0]!).map((i) => `${i.pr?.ref.number} ${i.pr?.change}`)).toEqual(["1 merged", "1 commented"]);
     // and the project wait outside a session keeps everything
     expect(readInbox("bugs", { project: "bugs" }, false)).toHaveLength(3);
+  });
+
+  it("a new lead's first wait starts where the session first shows, not at the top of the log", () => {
+    // weeks of history no session owns: pull request news and an answer since closed
+    linkPr({ pr: parsePrRef("acme/app#7")!, project: "bugs" });
+    linkPr({ pr: parsePrRef("acme/app#8")!, project: "bugs" });
+    prEvent(parsePrRef("acme/app#7")!, "ci_failed");
+    prEvent(parsePrRef("acme/app#7")!, "merged");
+    prEvent(parsePrRef("acme/app#8")!, "conflict");
+    const old = openCard({ kind: "decide", project: "bugs", title: "Old?" });
+    answerCard(old.id, { comment: "yes" });
+    closeCard(old.id, "done");
+    const lead = "ffff6666-0006";
+    claimSession({ session: lead, project: "bugs", role: "lead" });
+    expect(read(lead)).toHaveLength(0);
+    const viaProject = "eeee5555-0005";
+    claimSession({ session: viaProject, project: "bugs", role: "lead" });
+    const scope = inboxScope({ project: "bugs" }, viaProject);
+    expect(readInbox(scope.consumer, scope.filter, true)).toHaveLength(0);
+    // what comes after reaches the lead
+    prEvent(parsePrRef("acme/app#8")!, "ci_failed");
+    expect(readInbox(scope.consumer, scope.filter, true).map((i) => `${i.pr?.ref.number} ${i.pr?.change}`)).toEqual(["8 ci_failed"]);
+  });
+
+  it("a session that opened a card before it claimed still gets the answer", () => {
+    const s = "abab0000-0009";
+    const c = openCard({ kind: "decide", project: "bugs", title: "Which?", session: s });
+    answerCard(c.id, { comment: "the first" });
+    claimSession({ session: s, project: "bugs" });
+    expect(read(s).map((i) => i.card?.id)).toEqual([c.id]);
   });
 
   it("moving from a project wait starts where that wait stopped", () => {
