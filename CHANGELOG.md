@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.12 (2026-11-13)
 
 - Fix: a lead waiting with `wait -p <project>` was woken by every answer and every pull request change in the project, also on cards and pull requests another live session owned and was waiting on itself, and spent a turn each time to say it was not its own. Inside a session, `-p` now only names the project: what another live session owns goes to that session. Outside a session, `-p` still reads everything. A lead that moves to the new rule starts where its project wait stopped.
 - Fix: once a session ended with `claim --done`, news on its pull requests that were already merged or closed (bot comments after a merge) woke every session waiting in the project. That news now wakes only the session that owned the pull request; open cards and open pull requests still pass to the project's sessions.
