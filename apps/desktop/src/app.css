@@ -13,10 +13,23 @@ body {
   padding: 0 0 32px;
 }
 /* the content keeps a readable width; the status row spans the window */
-#panel > .pw-agents,
-#panel > .pw-cards {
+#panel > .pw-feed,
+#panel > .pw-board {
   margin-left: max(12px, calc((100% - 720px) / 2));
   margin-right: max(12px, calc((100% - 720px) / 2));
+}
+/* wide: the board takes what the feed leaves, the feed keeps its readable width */
+#panel.pw-split > .pw-board,
+#panel.pw-split > .pw-feed {
+  margin: 0;
+}
+#panel.pw-split {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+#panel.pw-split > .pw-head {
+  margin-left: -12px;
+  margin-right: -12px;
 }
 
 /* the status row stays on top; on macOS it is the title bar */
@@ -31,9 +44,11 @@ body {
   border-bottom: 1px solid transparent;
 }
 #panel > .pw-head .pw-status {
-  height: 44px;
+  /* a second line when a narrow window has many counts, instead of spilling out of the title bar */
+  min-height: 44px;
   padding: 0;
   justify-content: flex-end;
+  row-gap: 0;
 }
 #panel > .pw-head .pw-icon-btn {
   margin-left: 0;

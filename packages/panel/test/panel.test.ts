@@ -228,3 +228,53 @@ describe("panel", () => {
     expect(sec("cards:app")!.classList.contains("is-collapsed")).toBe(true);
   });
 });
+
+describe("board and feed", () => {
+  const busy = () =>
+    snapshot({
+      runs: [run({ id: "a1", title: "App Director", state: "waiting" }), run({ id: "a2", title: "Settings screen", state: "stalled" })],
+      cards: [card({ id: "c1", title: "Ship?", session: "a1", options: ["Ship"] })],
+    });
+  const viewBtn = () => root.querySelector<HTMLButtonElement>(".pw-view-btn");
+
+  it("a narrow window shows the feed, and one button switches to the board and back, remembered", () => {
+    mount(busy());
+    expect(root.classList.contains("pw-view-feed")).toBe(true);
+    viewBtn()!.click();
+    expect(root.classList.contains("pw-view-board")).toBe(true);
+    expect(window.localStorage.getItem("parawatch:view")).toBe("board");
+    const rows = [...root.querySelectorAll(".pw-board .pw-br")].map((r) => `${r.querySelector(".pw-br-title")?.textContent} ${r.getAttribute("data-mark")}`);
+    expect(rows).toEqual(["App Director you", "Settings screen stopped"]);
+    viewBtn()!.click();
+    expect(root.classList.contains("pw-view-feed")).toBe(true);
+  });
+
+  it("a card chip on the board goes to the card in the feed", () => {
+    window.localStorage.setItem("parawatch:view", "board");
+    mount(busy());
+    root.querySelector<HTMLButtonElement>(".pw-br .pw-lane-card")!.click();
+    expect(root.classList.contains("pw-view-feed")).toBe(true);
+  });
+
+  it("the summary filters the board to one kind of line", () => {
+    window.localStorage.setItem("parawatch:view", "board");
+    mount(busy());
+    const stopped = root.querySelector<HTMLButtonElement>(".pw-board-count.pw-mark-stopped")!;
+    expect(stopped.querySelector(".pw-board-n")?.textContent).toBe("1");
+    stopped.click();
+    expect([...root.querySelectorAll(".pw-board .pw-br-title")].map((t) => t.textContent)).toEqual(["Settings screen"]);
+    root.querySelector<HTMLButtonElement>(".pw-board-count.pw-mark-stopped")!.click();
+    expect(root.querySelectorAll(".pw-board .pw-br")).toHaveLength(2);
+  });
+
+  it("a wide window shows both side by side, with no switch", () => {
+    Object.defineProperty(root, "clientWidth", { configurable: true, value: 1400 });
+    mount(busy());
+    expect(root.classList.contains("pw-split")).toBe(true);
+    expect(root.classList.contains("pw-view-board") || root.classList.contains("pw-view-feed")).toBe(false);
+    expect(viewBtn()).toBeNull();
+    expect(root.querySelector(".pw-board .pw-br")).not.toBeNull();
+    expect(root.querySelector(".pw-feed .pw-card")).not.toBeNull();
+  });
+});
+
