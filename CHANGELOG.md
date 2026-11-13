@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Fix: the app could update twice in a row. Once an update was downloaded, it stopped looking, so a release that came out later was only found after the restart. It now keeps looking while an update is ready, and looks once more right before Restart to Update; when something newer is out, it downloads that and then restarts into it.
+- Fix: when two sessions claimed `--role lead` in the same project within the same millisecond, the earlier one stayed lead. The later claim now wins.
+- Tests for the command line, the panel and the updater. Windows CI failures now fail the build.
+
 ## 0.3.13 (2026-11-13)
 
 - Fix: a session's first wait read the log from the top. A new lead was then woken by every old change on the project's pull requests, also ones merged weeks before (CI results, conflicts). A first wait now starts just before the session first shows in the log: its claim, a card it opened, a pull request linked or handed to it.

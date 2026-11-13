@@ -13,8 +13,6 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    # Windows is not supported yet; run it to see what breaks without failing the build
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     env:
       # the tests do not start Electron, so skip its 100 MB download
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
