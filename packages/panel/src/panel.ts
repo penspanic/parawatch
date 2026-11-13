@@ -1,3 +1,4 @@
+import { boardModel, MARKS, type BoardRow, type Mark } from "./board";
 import { serviceName, siteForPr, siteForRun } from "../../../src/core/sites.js";
 import { ago, clean, groupRuns, OTHER, type FoldNode, type Group, type RunNode } from "./tree";
 import type { Backend, Card, Listener, PrView, Reply, Run, Snapshot } from "./types";
@@ -196,6 +197,17 @@ export class Panel {
   private head: HTMLElement;
   private cardsEl: HTMLElement;
   private agentsEl: HTMLElement;
+  private boardEl: HTMLElement;
+  /** the chart and the cards: where the human answers */
+  private feedEl: HTMLElement;
+  /** what a narrow window shows; a wide one shows both side by side */
+  private mode: "board" | "feed" = loadView();
+  private split = false;
+  /** the board shows only this kind of line, when the human picked one in its summary */
+  private boardFilter?: Mark;
+  /** projects whose quiet sessions the human unfolded on the board */
+  private boardOpen = new Set<string>();
+  private sizer = new ResizeObserver(() => this.layout());
 
   constructor(
     private root: HTMLElement,
@@ -205,9 +217,14 @@ export class Panel {
     root.classList.add("pw-panel");
     root.replaceChildren();
     this.head = el("div", "pw-head", undefined, root);
+    // every project at a glance; beside the feed when the window is wide enough
+    this.boardEl = el("div", "pw-board", undefined, root);
+    this.feedEl = el("div", "pw-feed", undefined, root);
     // what the agents are doing sits on top, as a chart; what needs you follows
-    this.agentsEl = el("div", "pw-agents", undefined, root);
-    this.cardsEl = el("div", "pw-cards", undefined, root);
+    this.agentsEl = el("div", "pw-agents", undefined, this.feedEl);
+    this.cardsEl = el("div", "pw-cards", undefined, this.feedEl);
+    this.layout();
+    this.sizer.observe(root);
     this.renderHead();
     el("div", "pw-empty", "Loading…", this.cardsEl);
   }
@@ -226,6 +243,25 @@ export class Panel {
       for (const age of Array.from(this.cardsEl.querySelectorAll<HTMLElement>("[data-since]"))) age.textContent = ago(age.dataset.since, now);
     }
     this.renderAgents(now);
+    this.renderBoard(now);
+  }
+
+  /** Board, feed, or both side by side, by the window's width and the human's pick. */
+  private layout(): void {
+    const split = this.root.clientWidth >= SPLIT_WIDTH;
+    const changed = split !== this.split;
+    this.split = split;
+    this.root.classList.toggle("pw-split", split);
+    this.root.classList.toggle("pw-view-board", !split && this.mode === "board");
+    this.root.classList.toggle("pw-view-feed", !split && this.mode === "feed");
+    if (changed) this.renderHead();
+  }
+
+  private setView(v: "board" | "feed"): void {
+    this.mode = v;
+    saveView(v);
+    this.layout();
+    this.renderHead();
   }
 
   /** Draw the status row again, for when the host's own controls in it change. */
@@ -235,6 +271,7 @@ export class Panel {
 
   /** Bring one card into view, opening any folded section it sits in. */
   focusCard(id: string): void {
+    if (!this.split && this.mode === "board") this.setView("feed");
     const box = this.cardsEl.querySelector<HTMLElement>(`[data-card-id="${CSS.escape(id)}"]`);
     if (!box) return;
     for (let g = box.closest<HTMLElement>(".pw-fold-group.is-collapsed"); g; g = g.parentElement?.closest<HTMLElement>(".pw-fold-group.is-collapsed") ?? null) {
@@ -390,6 +427,16 @@ export class Panel {
     const prs = (s?.prs?.length ?? 0) - reviews;
     if (prs > 0) this.jumpTo(this.badge(row, "git-pull-request", prs, `${prs} open pull request${prs === 1 ? "" : "s"} waiting on others${stuck ? `, ${stuck} stuck` : ""}`, stuck ? "pw-prs is-stuck" : "pw-prs"), '[data-sec="waiting"]');
     this.jumpTo(this.badge(row, "activity", working, `${working} agent${working === 1 ? "" : "s"} working`, working ? "pw-chip-agents" : "is-zero"), ".pw-agents");
+    if (!this.split) {
+      // one button: it shows where it goes
+      const toBoard = this.mode === "feed";
+      const label = toBoard ? "Show the board: every project at a glance" : "Show the feed: the cards to answer, and the agents' chart";
+      const v = el("button", "pw-icon-btn clickable-icon pw-view-btn", undefined, row);
+      this.host.icon(v, toBoard ? "layout-grid" : "list");
+      v.title = label;
+      v.setAttribute("aria-label", label);
+      v.onclick = () => this.setView(toBoard ? "board" : "feed");
+    }
     const btn = el("button", "pw-icon-btn clickable-icon", undefined, row);
     btn.setAttribute("aria-label", "Refresh");
     btn.title = "Refresh";
@@ -1287,6 +1334,123 @@ export class Panel {
    * The agents as a chart: one lane per run over the last hour, its active minutes drawn as
    * segments, now at the right edge. The whole block folds away to one line of counts.
    */
+  // ---------------------------------------------------------------- board
+
+  private renderBoard(now: number): void {
+    const root = this.boardEl;
+    root.replaceChildren();
+    if (!this.snapshot) return;
+    const m = boardModel(this.snapshot);
+    const sum = el("div", "pw-board-sum", undefined, root);
+    for (const mark of MARKS) {
+      if (mark === "quiet") continue;
+      const n = m.counts[mark];
+      const b = el("button", `pw-board-count pw-mark-${mark}${n ? "" : " is-zero"}${this.boardFilter === mark ? " is-on" : ""}`, undefined, sum);
+      el("span", "pw-board-dot", undefined, b);
+      el("span", "pw-board-n", String(n), b);
+      el("span", "pw-board-word", MARK_WORD[mark], b);
+      b.title = `${MARK_HINT[mark]}. Click to show only these`;
+      b.setAttribute("aria-pressed", String(this.boardFilter === mark));
+      b.onclick = () => {
+        this.boardFilter = this.boardFilter === mark ? undefined : mark;
+        this.renderBoard(Date.now());
+      };
+    }
+    if (m.todo) {
+      const t = el("button", "pw-board-extra", undefined, sum);
+      this.icon(t, KIND_ICON.todo);
+      el("span", undefined, `${m.todo} to do`, t);
+      t.title = "Things only you can do; nothing waits on them";
+      t.onclick = () => this.feedJump('[data-sec^="todo:"]');
+    }
+    if (m.reviews.length) {
+      const r = el("button", "pw-board-extra", undefined, sum);
+      this.icon(r, "eye");
+      el("span", undefined, `${m.reviews.length} review${m.reviews.length === 1 ? "" : "s"}`, r);
+      r.title = m.reviews.map((p) => `${p.repo}#${p.number}: ${p.title}`).join("\n");
+      r.onclick = () => this.feedJump('[data-sec="reviews"]');
+    }
+
+    const grid = el("div", "pw-board-grid", undefined, root);
+    const show = (r: BoardRow) => !this.boardFilter || r.mark === this.boardFilter;
+    let drawn = 0;
+    for (const t of m.tiles) {
+      const rows = t.rows.filter(show);
+      const quiet = t.quiet.filter(show);
+      if (!rows.length && !quiet.length) continue;
+      drawn++;
+      const box = el("div", `pw-bt pw-mark-${t.mark}`, undefined, grid);
+      box.dataset.project = t.project;
+      const head = el("div", "pw-bt-head", undefined, box);
+      this.icon(head, "folder");
+      el("span", "pw-bt-name", t.project === OTHER ? "Other" : t.project, head);
+      const marks = el("span", "pw-bt-marks", undefined, head);
+      for (const mark of MARKS) {
+        const n = [...t.rows, ...t.quiet].filter((r) => r.mark === mark).length;
+        if (n && mark !== "quiet") el("span", `pw-bt-mark pw-mark-${mark}`, String(n), marks).title = `${n} ${MARK_WORD[mark]}`;
+      }
+      for (const r of rows) box.appendChild(this.boardRow(r, now));
+      if (quiet.length) {
+        const open = this.boardOpen.has(t.project) || (!!this.boardFilter && !rows.length);
+        if (open) for (const r of quiet) box.appendChild(this.boardRow(r, now));
+        const more = el("button", "pw-br-more", open ? "Fold the quiet ones" : `+${quiet.length} idle or done`, box);
+        more.title = quiet.map((r) => r.title).join("\n");
+        more.onclick = () => {
+          if (this.boardOpen.has(t.project)) this.boardOpen.delete(t.project);
+          else this.boardOpen.add(t.project);
+          this.renderBoard(Date.now());
+        };
+      }
+    }
+    if (!drawn) el("div", "pw-empty", this.boardFilter ? `Nothing ${MARK_WORD[this.boardFilter]}.` : "No agent activity in the last hours.", grid);
+  }
+
+  /** One session on the board: a dot, its name, why, and what it is stopped on. */
+  private boardRow(r: BoardRow, now: number): HTMLElement {
+    const row = el("div", `pw-br pw-mark-${r.mark}`);
+    row.dataset.mark = r.mark;
+    el("span", "pw-board-dot", undefined, row).title = MARK_HINT[r.mark];
+    const name = el(r.run ? "a" : "span", "pw-br-title", r.title, row);
+    if (r.run) {
+      const id = r.run.id;
+      (name as HTMLAnchorElement).href = "#";
+      name.title = `${r.title}${r.run.task ? ` (${r.run.task})` : ""}. Click to open the session`;
+      name.onclick = (e) => {
+        e.preventDefault();
+        void this.backend.goto(id).catch((err) => this.host.notice(err instanceof Error ? err.message : String(err)));
+      };
+    }
+    if (r.subs) el("span", "pw-br-subs", `+${r.subs}`, row).title = `${r.subs} subagent${r.subs === 1 ? "" : "s"} or job${r.subs === 1 ? "" : "s"} under it still going`;
+    const chips = el("span", "pw-br-chips", undefined, row);
+    for (const c of r.cards.slice(0, 3)) {
+      const b = el("button", `pw-lane-card pw-kind-${c.kind}`, undefined, chips);
+      this.icon(b, c.status === "answered" ? "life-buoy" : KIND_ICON[c.kind]);
+      el("span", undefined, this.shortId(c.id), b);
+      b.title = `${c.id}: ${c.title}. Click to go to the card`;
+      b.onclick = () => this.focusCard(c.id);
+    }
+    for (const p of r.prs.slice(0, 2)) {
+      const b = el("button", `pw-lane-card pw-lane-pr pw-pr-${PR_TONE[p.waitingOn] ?? "wait"}${p.stalled ? " is-stuck" : ""}`, undefined, chips);
+      this.icon(b, "git-pull-request");
+      el("span", undefined, `#${p.number}`, b);
+      b.title = `${p.repo}#${p.number}: ${prWait(p)}\n${p.title}\nClick to open it`;
+      b.onclick = () => this.backend.open(p.url);
+      this.withMenu(b, p.url);
+    }
+    const rest = r.cards.length - Math.min(3, r.cards.length) + r.prs.length - Math.min(2, r.prs.length);
+    if (rest > 0) el("span", "pw-lane-more", `+${rest}`, chips);
+    el("span", "pw-br-note", r.note, row);
+    if (r.device && this.snapshot?.devices?.others?.length) el("span", "pw-br-device", r.device, row);
+    el("span", "pw-br-age", ago(r.at, now), row);
+    return row;
+  }
+
+  /** Show the feed (when the board stands alone) and go to a section of it. */
+  private feedJump(selector: string): void {
+    if (!this.split && this.mode === "board") this.setView("feed");
+    this.reveal(selector, "start");
+  }
+
   private renderAgents(now: number): void {
     const root = this.agentsEl;
     root.replaceChildren();
@@ -1583,6 +1747,33 @@ export class Panel {
 }
 
 const COLLAPSED_KEY = "parawatch:collapsed";
+const VIEW_KEY = "parawatch:view";
+/** From this width the board and the feed sit side by side. */
+const SPLIT_WIDTH = 980;
+
+const MARK_WORD: Record<Mark, string> = { you: "need you", stopped: "stopped", running: "running", others: "waiting", quiet: "quiet" };
+const MARK_HINT: Record<Mark, string> = {
+  you: "Waits on you: a card, a question in chat, a permission prompt, or no session to take an answer",
+  stopped: "Stopped: stalled, failed, or its pull request is stuck",
+  running: "Running now",
+  others: "Waiting on others: reviewers, CI, or an answer it has not picked up",
+  quiet: "Idle or done",
+};
+
+function loadView(): "board" | "feed" {
+  try {
+    return window.localStorage.getItem(VIEW_KEY) === "board" ? "board" : "feed";
+  } catch {
+    return "feed";
+  }
+}
+function saveView(v: "board" | "feed"): void {
+  try {
+    window.localStorage.setItem(VIEW_KEY, v);
+  } catch {
+    // storage unavailable; the pick lasts for this session only
+  }
+}
 
 function loadCollapsed(): Set<string> {
   try {

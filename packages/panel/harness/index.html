@@ -34,6 +34,8 @@
     <div id="log"></div>
     <script>
       if (new URLSearchParams(location.search).get("theme") === "dark") document.documentElement.dataset.theme = "dark";
+      // ?wide lets the panel take the page, to see the board beside the feed
+      if (new URLSearchParams(location.search).has("wide")) document.getElementById("panel").style.cssText = "width:auto;flex:1;min-width:0";
     </script>
     <script src="harness.js"></script>
   </body>

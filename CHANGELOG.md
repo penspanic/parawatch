@@ -4,6 +4,8 @@
 
 - Fix: the app could update twice in a row. Once an update was downloaded, it stopped looking, so a release that came out later was only found after the restart. It now keeps looking while an update is ready, and looks once more right before Restart to Update; when something newer is out, it downloads that and then restarts into it.
 - Fix: when two sessions claimed `--role lead` in the same project within the same millisecond, the earlier one stayed lead. The later claim now wins.
+- The app has a board: every project at a glance, one line per session, marked as needing you, stopped, running, waiting on others, or quiet, with the cards and pull requests it is stopped on as chips. A button in the title bar switches between the board and the feed (the cards and the agents' chart); from about 1000 pixels wide both show side by side. The summary at the top filters the board, and a card chip goes to the card in the feed.
+- On macOS the title bar takes a second line when a narrow window has many counts, instead of spilling over.
 - Tests for the command line, the panel and the updater. Windows CI failures now fail the build.
 
 ## 0.3.13 (2026-11-13)
