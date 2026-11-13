@@ -91,6 +91,13 @@ export function fold(events: PwEvent[], map?: PathMap): State {
         if (ev.dismissed) c.dismissed = true;
         break;
       }
+      case "card.hand": {
+        const c = s.cards.get(ev.card);
+        if (!c) break;
+        c.session = ev.session;
+        c.handedAt = ev.ts;
+        break;
+      }
       case "run.start":
         s.runs.set(ev.run.id, { ...ev.run, startedAt: ev.ts, lastActivity: ev.ts, status: "running" });
         break;

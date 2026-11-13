@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { prViews, keyOf, parsePrRef, readCache, githubConfig, githubFailing } from "./github.js";
-import { endedSessions, linkPr, listeners, readState } from "./ops.js";
+import { endedSessions, leadOf, linkPr, listeners, readState } from "./ops.js";
 import { collectRuns } from "./runs.js";
 import type { State } from "./state.js";
 import { deviceName, eventFiles, sharedDir } from "./store.js";
@@ -21,8 +21,15 @@ export function snapshot(opts: { sinceHours?: number; project?: string; closed?:
   if (linkCreatedPrs(runs, state)) state = readState();
   const all = [...state.cards.values()].filter((c) => !opts.project || c.project === opts.project);
   const ended = endedSessions(state);
+  const lead = leadOf(state, ended);
+  // what has no live owner goes to the project's lead; with none, it waits here
+  const route = <T extends { project?: string }>(x: T): T => {
+    const to = lead(x.project);
+    return to ? { ...x, lead: to } : { ...x, unrouted: true };
+  };
   const cards = [...all.filter((c) => c.status !== "closed"), ...recentlyClosed(all, opts.closed ?? 0)]
     .map((c) => (c.status !== "closed" && c.session && ended(c.session) ? { ...c, ownerEnded: true } : c))
+    .map((c) => (c.status !== "closed" && (!c.session || c.ownerEnded) ? route(c) : c))
     .map((c) => {
       const missing = notHere([...(c.attach ?? []), ...(c.open ?? [])]);
       return missing.length ? { ...c, missing } : c;
@@ -32,6 +39,8 @@ export function snapshot(opts: { sinceHours?: number; project?: string; closed?:
   const enabled = githubConfig().enabled && (cache.hosts === undefined ? false : cache.hosts.length > 0);
   let prs = enabled ? prViews(cache, state, runs) : undefined;
   if (prs && opts.project) prs = prs.filter((p) => p.project === opts.project);
+  // a pull request linked to a project whose session has ended, or that has none
+  if (prs) prs = prs.map((p) => (p.state === "open" && p.project && (!p.session || ended(p.session)) ? route(p) : p));
   return {
     v: SCHEMA_VERSION,
     generatedAt: new Date().toISOString(),

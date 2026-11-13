@@ -1690,3 +1690,78 @@ a.pw-pr-owner:hover {
 .pw-run-sub.is-waiting-card .pw-run-action {
   color: var(--pw-decide);
 }
+
+/* ---------------------------------------------------------------- no session gets these */
+
+.pw-help-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  height: auto;
+  border-radius: 999px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  box-shadow: none;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.pw-help-btn:hover {
+  color: var(--text-normal);
+  border-color: var(--text-faint);
+}
+.pw-help-btn .pw-icon,
+.pw-help-btn svg {
+  width: 13px;
+  height: 13px;
+}
+.pw-no-session {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+.pw-lead-help {
+  margin: 6px 0 8px;
+  padding: 10px 12px;
+  border-radius: var(--pw-radius, 8px);
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--font-ui-small);
+}
+.pw-lead-help-text {
+  color: var(--text-normal);
+  line-height: 1.45;
+}
+.pw-lead-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.pw-lead-row .pw-icon {
+  flex: none;
+  color: var(--text-muted);
+}
+.pw-lead-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.pw-lead-row .pw-meta {
+  flex: none;
+}
+.pw-lead-pick {
+  margin-left: auto;
+  flex: none;
+  padding: 2px 10px;
+  height: auto;
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+}

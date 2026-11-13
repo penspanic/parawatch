@@ -195,12 +195,23 @@ export function prChangeText(change: string, by?: string): string {
 }
 
 export function inboxLine(i: InboxItem): string {
+  if (i.kind === "handed" && i.pr) {
+    const p = i.pr;
+    return `[${p.project ?? "?"}] PR ${p.ref.repo}#${p.ref.number}${p.title ? ` "${p.title}"` : ""} handed to you by the human: its news wakes you from now on (${p.ref.url})`;
+  }
   if (i.kind === "pr" && i.pr) {
     const p = i.pr;
-    return `[${p.project ?? "?"}] PR ${p.ref.repo}#${p.ref.number}${p.title ? ` "${p.title}"` : ""}: ${prChangeText(p.change, i.by)}${p.text ? `; ${p.text}` : ""} (${p.ref.url})`;
+    return `[${p.project ?? "?"}] PR ${p.ref.repo}#${p.ref.number}${p.title ? ` "${p.title}"` : ""}: ${p.change ? prChangeText(p.change, i.by) : "news"}${p.text ? `; ${p.text}` : ""} (${p.ref.url})`;
   }
   const card = i.card!;
   const head = `[${card.project}] ${card.id} "${card.title}"`;
+  if (i.kind === "handed") {
+    const was: string[] = [];
+    if (i.choice !== undefined) was.push(`chose ${i.choice}${i.choiceText ? ` (${i.choiceText})` : ""}`);
+    if (i.comment) was.push(`said: ${i.comment}`);
+    if (i.attach?.length) was.push(`attached: ${i.attach.join(", ")}`);
+    return `${head} handed to you by the human; ${was.length ? `the answer: ${was.join("; ")}` : "not answered yet"}`;
+  }
   if (i.kind === "comment") return `${head} comment: ${i.comment}`;
   if (i.kind === "dismissed") return `${head} dismissed by the human: no longer needed, do not act on it${i.comment ? `; said: ${i.comment}` : ""}`;
   const parts: string[] = [];

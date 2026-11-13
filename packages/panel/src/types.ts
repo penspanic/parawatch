@@ -27,6 +27,8 @@ export interface Backend {
   goto(target: string): Promise<string>;
   /** Close a card without answering it; the agent that asked is told. */
   dismiss(card: string): Promise<void>;
+  /** Make a session the project's lead: it is handed what no session got, and gets such things from then on. */
+  lead?(project: string, session: string): Promise<void>;
   /** Hide a run until it does something new. */
   hideRun(id: string): Promise<void>;
   /** Open a file, app or URL with the system. */

@@ -12,11 +12,14 @@ import {
   answerCard,
   claimSession,
   dismissCard,
+  handCard,
+  handPr,
   inboxFrom,
   inboxScope,
   linkPr,
   listeners,
   listenersFor,
+  makeLead,
   openCard,
   prEvent,
   readInbox,
@@ -346,12 +349,13 @@ describe("waits per session", () => {
     expect(mine).toHaveLength(1);
     expect(mine[0]).toMatchObject({ kind: "pr", pr: { change: "ci_failed" } });
     expect(read(sessions[1]!)).toHaveLength(0);
-    // a lead waiting on the whole project still sees it
+    // a project wait outside a session still sees it
     expect(readInbox("bugs", { project: "bugs" }, false)).toHaveLength(1);
   });
 
-  it("an answer goes to the session that opened the card; an unowned card to the project's sessions", () => {
+  it("an answer goes to the session that opened the card; an unowned card to the project's lead", () => {
     setup();
+    claimSession({ session: sessions[0]!, role: "lead" });
     const own = openCard({ kind: "decide", project: "bugs", title: "Ship?", session: sessions[0] });
     const loose = openCard({ kind: "block", project: "bugs", title: "Sign in" });
     const away = openCard({ kind: "block", project: "web", title: "Elsewhere" });
@@ -359,7 +363,8 @@ describe("waits per session", () => {
     answerCard(loose.id, { comment: "done" });
     answerCard(away.id, { comment: "done" });
     expect(read(sessions[0]!).map((i) => i.card?.id)).toEqual([own.id, loose.id]);
-    expect(read(sessions[1]!).map((i) => i.card?.id)).toEqual([loose.id]);
+    // the other sessions in the project are not woken for it
+    expect(read(sessions[1]!).map((i) => i.card?.id)).toEqual([]);
     // an unclaimed session gets only what it owns
     expect(read("eeee5555-0005")).toHaveLength(0);
   });
@@ -386,10 +391,129 @@ describe("waits per session", () => {
     expect(() => dismissCard(own.id)).toThrow(/already closed/);
   });
 
-  it("outside a session, or with -p or --card, the scope is what it was", () => {
+  it("outside a session, or with --card, the scope is what it was", () => {
     expect(inboxScope({}, undefined)).toEqual({ consumer: "default", filter: { project: undefined, card: undefined } });
-    expect(inboxScope({ project: "bugs" }, sessions[0])).toEqual({ consumer: "bugs", filter: { project: "bugs", card: undefined } });
+    expect(inboxScope({ project: "bugs" }, undefined)).toEqual({ consumer: "bugs", filter: { project: "bugs", card: undefined } });
     expect(inboxScope({ card: "c1" }, sessions[0]).consumer).toBe("card-c1");
+  });
+
+  it("a lead waiting on its project from a session does not take what another live session owns", () => {
+    setup();
+    const lead = "ffff6666-0006";
+    claimSession({ session: lead, project: "bugs", role: "lead" });
+    const scope = inboxScope({ project: "bugs" }, lead);
+    expect(scope).toEqual({ consumer: sessionConsumer(lead), filter: { session: lead, project: "bugs" } });
+    const theirs = openCard({ kind: "try", project: "bugs", title: "Play a few rounds", session: sessions[0] });
+    const loose = openCard({ kind: "block", project: "bugs", title: "Sign in" });
+    const mine = openCard({ kind: "decide", project: "bugs", title: "Merge?", session: lead });
+    for (const c of [theirs, loose, mine]) answerCard(c.id, { comment: "ok" });
+    prEvent(parsePrRef("acme/app#1")!, "ci_failed");
+    expect(readInbox(scope.consumer, scope.filter, true).map((i) => i.card?.id)).toEqual([loose.id, mine.id]);
+    // the owner still gets its own, and not the unowned one: that is the lead's
+    expect(read(sessions[0]!).map((i) => i.card?.id ?? i.pr?.ref.number)).toEqual([theirs.id, 1]);
+    // its listener counts only where it would wake
+    const stop = startListening({ consumer: scope.consumer, project: "bugs", session: lead, scope: "session" });
+    expect(listenersFor(theirs, listeners())).toHaveLength(0);
+    expect(listenersFor(loose, listeners())).toHaveLength(1);
+    stop();
+  });
+
+  it("without a lead, what no session owns wakes no one and waits in parawatch", () => {
+    setup();
+    const loose = openCard({ kind: "decide", project: "bugs", title: "Which name?" });
+    answerCard(loose.id, { comment: "the short one" });
+    linkPr({ pr: parsePrRef("acme/app#7")!, project: "bugs" });
+    prEvent(parsePrRef("acme/app#7")!, "ci_failed");
+    for (const s of sessions) expect(read(s)).toHaveLength(0);
+    const card = snapshot().cards.find((c) => c.id === loose.id)!;
+    expect(card).toMatchObject({ unrouted: true });
+    expect(card.lead).toBeUndefined();
+    // a wait outside a session still reads it
+    expect(readInbox("bugs", { project: "bugs" }, false).length).toBe(2);
+  });
+
+  it("the human picks a lead: earlier leads step down, and it is handed what no session got", () => {
+    setup();
+    claimSession({ session: sessions[3]!, role: "lead" });
+    claimSession({ session: sessions[3]!, done: "Finished" }); // the old lead ended
+    const loose = openCard({ kind: "decide", project: "bugs", title: "Which name?", options: ["Short", "Long"] });
+    answerCard(loose.id, { choice: 1, comment: "short" });
+    expect(snapshot().cards.find((c) => c.id === loose.id)).toMatchObject({ unrouted: true });
+    read(sessions[1]!); // its cursor is past the answer already
+    const r = makeLead("bugs", sessions[1]!.slice(0, 8));
+    expect(r).toEqual({ session: sessions[1], handed: [loose.id] });
+    const state = fold(readEvents());
+    expect(state.claims.find((c) => c.session === sessions[1])).toMatchObject({ role: "lead", project: "bugs", task: "BUG-2" });
+    expect(state.claims.find((c) => c.session === sessions[3])?.role).toBe("");
+    const got = read(sessions[1]!);
+    expect(got).toHaveLength(1);
+    expect(got[0]).toMatchObject({ kind: "handed", card: { id: loose.id }, choice: 1, choiceText: "Short", comment: "short" });
+    expect(inboxLine(got[0]!)).toBe(`[bugs] ${loose.id} "Which name?" handed to you by the human; the answer: chose 1 (Short); said: short`);
+    expect(read(sessions[1]!)).toHaveLength(0);
+    expect(read(sessions[0]!)).toHaveLength(0);
+    // from now on the lead gets what has no owner
+    const next = openCard({ kind: "block", project: "bugs", title: "Sign in" });
+    answerCard(next.id, { comment: "done" });
+    expect(read(sessions[1]!).map((i) => i.card?.id)).toEqual([next.id]);
+    expect(snapshot().cards.find((c) => c.id === next.id)).toMatchObject({ lead: sessions[1] });
+  });
+
+  it("a card or a pull request handed to another session goes to it from then on", () => {
+    setup();
+    const card = openCard({ kind: "try", project: "bugs", title: "Play it", session: sessions[0] });
+    handCard(card.id, sessions[2]!);
+    const got = read(sessions[2]!);
+    expect(got).toHaveLength(1);
+    expect(inboxLine(got[0]!)).toContain("handed to you by the human; not answered yet");
+    answerCard(card.id, { comment: "feels slow" });
+    expect(read(sessions[0]!)).toHaveLength(0);
+    expect(read(sessions[2]!).map((i) => i.comment)).toEqual(["feels slow"]);
+    handPr(parsePrRef("acme/app#1")!, sessions[3]!);
+    const pr = read(sessions[3]!);
+    expect(pr[0]).toMatchObject({ kind: "handed", pr: { ref: { number: 1 }, project: "bugs" } });
+    expect(inboxLine(pr[0]!)).toContain("handed to you by the human");
+    prEvent(parsePrRef("acme/app#1")!, "approved");
+    expect(read(sessions[0]!)).toHaveLength(0);
+    expect(read(sessions[3]!).map((i) => i.pr?.change)).toEqual(["approved"]);
+    expect(() => handCard("c999", sessions[1]!)).toThrow();
+  });
+
+  it("a snapshot card names who would be woken: its lead, or no one", () => {
+    setup();
+    const loose = openCard({ kind: "decide", project: "bugs", title: "Anyone?" });
+    const stop = startListening({ consumer: sessionConsumer(sessions[0]!), project: "bugs", session: sessions[0], scope: "session" });
+    expect(listenersFor(snapshot().cards.find((c) => c.id === loose.id)!, listeners())).toHaveLength(0);
+    claimSession({ session: sessions[0]!, role: "lead" });
+    expect(listenersFor(snapshot().cards.find((c) => c.id === loose.id)!, listeners())).toHaveLength(1);
+    stop();
+  });
+
+  it("a lead moving from the project cursor to its own does not hear old news again", () => {
+    setup();
+    const lead = "ffff6666-0006";
+    claimSession({ session: lead, project: "bugs", role: "lead" });
+    const loose = openCard({ kind: "block", project: "bugs", title: "Sign in" });
+    answerCard(loose.id, { comment: "done" });
+    readInbox("bugs", { project: "bugs" }, true); // an older lead wait handled it
+    const scope = inboxScope({ project: "bugs" }, lead);
+    expect(readInbox(scope.consumer, scope.filter, true)).toHaveLength(0);
+  });
+
+  it("news after the merge of a pull request whose owner has ended wakes no other session", () => {
+    setup();
+    claimSession({ session: sessions[2]!, role: "lead" });
+    claimSession({ session: sessions[0]!, done: "Merged #1" });
+    claimSession({ session: sessions[1]!, done: "Handed over #2" });
+    prEvent(parsePrRef("acme/app#1")!, "merged");
+    prEvent(parsePrRef("acme/app#1")!, "commented");
+    prEvent(parsePrRef("acme/app#2")!, "ci_failed");
+    // the open one still needs someone: the lead
+    expect(read(sessions[3]!)).toHaveLength(0);
+    expect(read(sessions[2]!).map((i) => `${i.pr?.ref.number} ${i.pr?.change}`)).toEqual(["2 ci_failed"]);
+    // the owner, if it still waits, hears its own, and not what another ended session left
+    expect(read(sessions[0]!).map((i) => `${i.pr?.ref.number} ${i.pr?.change}`)).toEqual(["1 merged", "1 commented"]);
+    // and the project wait outside a session keeps everything
+    expect(readInbox("bugs", { project: "bugs" }, false)).toHaveLength(3);
   });
 
   it("moving from a project wait starts where that wait stopped", () => {
@@ -401,8 +525,9 @@ describe("waits per session", () => {
     expect(read(sessions[0]!)).toHaveLength(1);
   });
 
-  it("a session wait counts as listening only for its own cards and the project's unowned ones", () => {
+  it("a session wait counts as listening only for its own cards, and for the project's unowned ones when it leads", () => {
     setup();
+    claimSession({ session: sessions[0]!, role: "lead" });
     const stop = startListening({ consumer: sessionConsumer(sessions[0]!), project: "bugs", session: sessions[0], scope: "session" });
     const own = openCard({ kind: "decide", project: "bugs", title: "Mine?", session: sessions[0] });
     const theirs = openCard({ kind: "decide", project: "bugs", title: "Theirs?", session: sessions[1] });
@@ -413,8 +538,9 @@ describe("waits per session", () => {
     stop();
   });
 
-  it("what a session that has ended owned goes to the project's sessions", () => {
+  it("what a session that has ended owned goes to the project's lead", () => {
     setup();
+    claimSession({ session: sessions[1]!, role: "lead" });
     const done = openCard({ kind: "decide", project: "bugs", title: "Ship?", session: sessions[0] });
     const archived = openCard({ kind: "decide", project: "bugs", title: "Rename?", session: sessions[2] });
     const live = openCard({ kind: "decide", project: "bugs", title: "Keep?", session: sessions[3] });
@@ -426,9 +552,10 @@ describe("waits per session", () => {
     for (const c of [done, archived, live]) answerCard(c.id, { comment: "yes" });
     prEvent(parsePrRef("acme/app#1")!, "merged");
     const got = read(sessions[1]!);
-    expect(got.map((i) => i.card?.id ?? i.pr?.ref.number)).toEqual([done.id, archived.id, 1]);
-    // the session itself still gets its own news, and like any reader in the project, the rest
-    expect(read(sessions[0]!).map((i) => i.card?.id ?? i.pr?.ref.number)).toEqual([done.id, archived.id, 1]);
+    // the merged pull request needs no one, so only its owner hears of it
+    expect(got.map((i) => i.card?.id ?? i.pr?.ref.number)).toEqual([done.id, archived.id]);
+    // the session itself still gets its own news; what another ended session left is the lead's
+    expect(read(sessions[0]!).map((i) => i.card?.id ?? i.pr?.ref.number)).toEqual([done.id, 1]);
     // and a wait on the project counts as listening for those cards
     const stop = startListening({ consumer: sessionConsumer(sessions[1]!), project: "bugs", session: sessions[1], scope: "session" });
     const state = fold(readEvents());

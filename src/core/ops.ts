@@ -251,6 +251,65 @@ export function dismissCard(id: string, note?: string): void {
   appendEvent(() => ({ type: "card.close", card: card.id, note: note?.trim() || undefined, dismissed: true }));
 }
 
+/** The session id as claims hold it, when one matches; else as given. */
+function claimedId(state: State, session: string): string {
+  return state.claims.find((c) => sameSession(c.session, session))?.session ?? session;
+}
+
+/** Give an open card to another session. That session is told once, with the last answer. */
+export function handCard(id: string, session: string): Card {
+  const card = requireCard(id);
+  if (card.status === "closed") throw new UserError(`card ${card.id} is already closed`);
+  if (session.length < 6) throw new UserError("give at least 6 characters of the session id");
+  const to = claimedId(readState(), session);
+  appendEvent(() => ({ type: "card.hand", card: card.id, session: to, by: HUMAN }));
+  return card;
+}
+
+/** Give a pull request to another session: its news wakes that session from now on. */
+export function handPr(pr: PrRef, session: string): void {
+  if (session.length < 6) throw new UserError("give at least 6 characters of the session id");
+  const state = readState();
+  const link = state.prLinks.get(pr.key);
+  linkPr({ pr, session: claimedId(state, session), project: link?.project, task: link?.task, handed: true });
+}
+
+/**
+ * Answered cards no session gets in a project: no owner, or the owner has ended, and no live lead
+ * (or a lead that came after the answer). A new lead takes them over.
+ */
+export function backlogOf(project: string, state = readState()): Card[] {
+  const ended = endedSessions(state);
+  return [...state.cards.values()].filter((c) => c.project === project && c.status === "answered" && (!c.session || ended(c.session)));
+}
+
+/** Hand the answered cards no session gets to the project's lead, who is told of each once. */
+export function takeBacklog(project: string, session: string): string[] {
+  const handed: string[] = [];
+  for (const c of backlogOf(project)) {
+    if (sameSession(c.session, session)) continue;
+    handCard(c.id, session);
+    handed.push(c.id);
+  }
+  return handed;
+}
+
+/**
+ * Make a session the project's lead (the human's pick, from the panel or `parawatch lead`).
+ * Earlier leads of the project step down; answered cards no session got are handed to it.
+ */
+export function makeLead(project: string, session: string): { session: string; handed: string[] } {
+  if (session.length < 6) throw new UserError("give at least 6 characters of the session id");
+  const state = readState();
+  const to = claimedId(state, session);
+  for (const c of state.claims) {
+    if (c.role === "lead" && c.project === project && !sameSession(c.session, to)) claimSession({ session: c.session, role: "", done: c.done });
+  }
+  // a lead works on: any done it said earlier no longer stands
+  claimSession({ session: to, project, role: "lead" });
+  return { session: to, handed: takeBacklog(project, to) };
+}
+
 export interface RunInput {
   project: string;
   task?: string;
@@ -353,13 +412,13 @@ export function claimSession(input: ClaimInput): Claim {
 
 // ---------------------------------------------------------------- pull requests
 
-export function linkPr(link: { pr: PrRef; session?: string; project?: string; task?: string; auto?: boolean }): void {
+export function linkPr(link: { pr: PrRef; session?: string; project?: string; task?: string; auto?: boolean; handed?: boolean }): void {
   const claims = readState().claims;
   const claim = link.session ? claims.find((c) => link.session!.startsWith(c.session)) : undefined;
   const project = link.project?.trim() || claim?.project;
   appendEvent(() => ({
     type: "pr.link",
-    link: { pr: link.pr, session: link.session, project, task: link.task?.trim() || claim?.task, auto: link.auto || undefined },
+    link: { pr: link.pr, session: link.session, project, task: link.task?.trim() || claim?.task, auto: link.auto || undefined, handed: link.handed || undefined },
   }));
 }
 
@@ -381,11 +440,12 @@ export interface InboxItem {
   /** the machine whose log holds it (with `seq`, where a reader has read up to) */
   dev?: string;
   at: string;
-  kind: "answer" | "comment" | "dismissed" | "pr";
+  /** "handed": the human gave this session a card (with its last answer) or a pull request */
+  kind: "answer" | "comment" | "dismissed" | "pr" | "handed";
   /** the card answered or commented on; absent for pull request news */
   card?: Card;
-  /** pull request news for a PR linked to the project */
-  pr?: { ref: PrRef; change: PrChange; title?: string; text?: string; project?: string };
+  /** pull request news for a PR linked to the project; no change when it was handed over */
+  pr?: { ref: PrRef; change?: PrChange; title?: string; text?: string; project?: string };
   by: string;
   choice?: number;
   choiceText?: string;
@@ -399,7 +459,8 @@ export interface InboxFilter {
   /**
    * Only what belongs to this agent session: cards it opened and pull requests linked to it. With
    * `project`, cards and pull requests that no session owns in that project come along, and so
-   * do those of sessions that have ended.
+   * do those of sessions that have ended, except a pull request already merged or closed. What
+   * another live session owns is never in it: that session gets it, even when this one leads.
    */
   session?: string;
   /** whether a session has ended; read from the claims and the Claude desktop app when absent */
@@ -427,13 +488,37 @@ export function endedSessions(state: State, isArchived?: (session: string) => bo
   };
 }
 
+/**
+ * The project's lead: the session that most recently claimed it with `--role lead` and has not
+ * ended. It gets what no session owns in the project, and what a session that has ended left.
+ */
+export function leadOf(state: State, ended: (session: string) => boolean): (project?: string) => string | undefined {
+  const memo = new Map<string, string | undefined>();
+  return (project) => {
+    if (!project) return undefined;
+    if (!memo.has(project)) {
+      const leads = state.claims
+        .filter((c) => c.role === "lead" && c.project === project && !c.done && !ended(c.session))
+        .sort((a, b) => (b.at ?? "").localeCompare(a.at ?? ""));
+      memo.set(project, leads[0]?.session);
+    }
+    return memo.get(project);
+  };
+}
+
 /** Whether something owned by `owner` in `project` is for a reader with this filter. */
-function inScope(owner: string | undefined, project: string | undefined, f: InboxFilter, ended: (session: string) => boolean): boolean {
+function inScope(
+  owner: string | undefined,
+  project: string | undefined,
+  f: InboxFilter,
+  ended: (session: string) => boolean,
+  lead: (project?: string) => string | undefined,
+): boolean {
   if (f.session) {
     if (owner && sameSession(owner, f.session)) return true;
-    // what a session that has ended owned is the project's now
     if (owner && !ended(owner)) return false;
-    return !!f.project && project === f.project;
+    // no owner, or it has ended: the project's lead takes it; without a lead it waits in parawatch
+    return sameSession(lead(project), f.session);
   }
   return !f.project || project === f.project;
 }
@@ -452,8 +537,48 @@ export function inboxFrom(events: PwEvent[], after: Position | number, filter: I
   const reported = new Map<string, { dev?: string; at: number }>();
   const answerNo = new Map<string, number>();
   const ended = filter.ended ?? endedSessions(state);
-  for (const ev of events) {
+  const lead = leadOf(state, ended);
+  const finished = new Set<string>();
+  // a card handed to this reader comes with its last answer; the answers before it are not repeated
+  const handedAt = new Map<string, number>();
+  if (filter.session) {
+    events.forEach((ev, i) => {
+      if (ev.type === "card.hand" && isAfter(ev, pos) && sameSession(ev.session, filter.session)) handedAt.set(ev.card, i);
+    });
+  }
+  for (const [i, ev] of events.entries()) {
+    if (ev.type === "pr.link") {
+      // a pull request the human handed to this session: told once
+      if (!ev.link.handed || !isAfter(ev, pos) || !filter.session || filter.card || !sameSession(ev.link.session, filter.session)) continue;
+      const now = state.prLinks.get(ev.link.pr.key);
+      if (!now || !sameSession(now.session, filter.session)) continue;
+      out.push({ seq: ev.seq, dev: ev.dev, at: ev.ts, kind: "handed", by: HUMAN, pr: { ref: ev.link.pr, project: now.project } });
+      continue;
+    }
+    if (ev.type === "card.hand") {
+      // a card the human handed to this session: told once, with the last answer on it
+      if (!isAfter(ev, pos) || !filter.session || !sameSession(ev.session, filter.session)) continue;
+      const card = state.cards.get(ev.card);
+      if (!card || card.status === "closed" || !sameSession(card.session, filter.session)) continue;
+      if (filter.card && card.id !== filter.card) continue;
+      const last = [...card.answers].reverse().find((a) => a.by === HUMAN && !a.late);
+      out.push({
+        seq: ev.seq,
+        dev: ev.dev,
+        at: ev.ts,
+        kind: "handed",
+        card,
+        by: ev.by,
+        choice: last?.choice,
+        choiceText: last?.choice !== undefined ? card.options?.[last.choice - 1] : undefined,
+        comment: last?.comment,
+        attach: last?.attach,
+      });
+      continue;
+    }
     if (ev.type === "pr.change") {
+      const wasOver = finished.has(ev.pr.key);
+      if (ev.change === "merged" || ev.change === "closed") finished.add(ev.pr.key);
       const k = `${ev.pr.key}|${ev.change}|${ev.text ?? ""}`;
       const prev = reported.get(k);
       const at = Date.parse(ev.ts);
@@ -461,7 +586,10 @@ export function inboxFrom(events: PwEvent[], after: Position | number, filter: I
       if (prev && prev.dev !== ev.dev && at - prev.at < ECHO_MS) continue;
       if (!isAfter(ev, pos)) continue;
       const link = state.prLinks.get(ev.pr.key);
-      if (!link || filter.card || !inScope(link.session, link.project, filter, ended)) continue;
+      if (!link || filter.card || !inScope(link.session, link.project, filter, ended, lead)) continue;
+      // a merged or closed pull request whose owner has ended needs no one: its news, the merge
+      // itself and the bot comments after it, stays on the pull request
+      if (filter.session && !sameSession(link.session, filter.session) && (wasOver || finished.has(ev.pr.key))) continue;
       out.push({ seq: ev.seq, dev: ev.dev, at: ev.ts, kind: "pr", by: ev.by ?? ev.source, pr: { ref: ev.pr, change: ev.change, title: ev.title, text: ev.text, project: link.project } });
       continue;
     }
@@ -469,7 +597,7 @@ export function inboxFrom(events: PwEvent[], after: Position | number, filter: I
       // a card the human dismissed reaches the agent that asked, once
       if (!ev.dismissed || !isAfter(ev, pos)) continue;
       const card = state.cards.get(ev.card);
-      if (!card || !inScope(card.session, card.project, filter, ended)) continue;
+      if (!card || !inScope(card.session, card.project, filter, ended, lead)) continue;
       if (filter.card && card.id !== filter.card) continue;
       out.push({ seq: ev.seq, dev: ev.dev, at: ev.ts, kind: "dismissed", card, by: HUMAN, comment: ev.note });
       continue;
@@ -483,9 +611,10 @@ export function inboxFrom(events: PwEvent[], after: Position | number, filter: I
     }
     if (!isAfter(ev, pos)) continue;
     if (ev.by !== HUMAN || late) continue;
+    if ((handedAt.get(ev.card) ?? -1) > i) continue;
     const card = state.cards.get(ev.card);
     if (!card || card.status === "closed") continue;
-    if (!inScope(card.session, card.project, filter, ended)) continue;
+    if (!inScope(card.session, card.project, filter, ended, lead)) continue;
     if (filter.card && card.id !== filter.card) continue;
     if (ev.type === "card.answer") {
       out.push({
@@ -596,20 +725,24 @@ export function listeners(now = Date.now()): Listener[] {
 }
 
 /**
- * The waits an answer to this card would wake right now. A card whose session has ended reaches
- * the session waits in its project, as an unowned card does. A snapshot's card says so itself
- * (`ownerEnded`); otherwise `ended` tells.
+ * The waits an answer to this card would wake right now. A card whose session has ended, or that
+ * no session opened, reaches the project's lead only. A snapshot's card says so itself
+ * (`ownerEnded`, `lead`, `unrouted`); otherwise `ended` and the claims tell.
  */
 export function listenersFor(card: Card, ls: Listener[], ended?: (session: string) => boolean): Listener[] {
   let gone: boolean | undefined = card.ownerEnded;
-  const ownerGone = () => (gone ??= !!card.session && (ended ?? endedSessions(readState()))(card.session));
+  const isEnded = () => ended ?? endedSessions(readState());
+  const ownerGone = () => (gone ??= !!card.session && isEnded()(card.session));
+  // a snapshot's card names its lead, or says it has none
+  let lead: string | null | undefined = card.lead ?? (card.unrouted ? null : undefined);
+  const leadNow = () => (lead === undefined ? (lead = leadOf(readState(), isEnded())(card.project) ?? null) : lead) ?? undefined;
   return ls.filter((l) =>
     l.card
       ? l.card === card.id
       : l.scope === "session"
         ? card.session && sameSession(l.session, card.session)
           ? true
-          : (!card.session || ownerGone()) && !!l.project && l.project === card.project
+          : (!card.session || ownerGone()) && sameSession(l.session, leadNow())
         : !l.project || l.project === card.project,
   );
 }
@@ -640,12 +773,21 @@ export interface InboxScope {
  * that name. Called from an agent session without either, it reads that session's own cards and
  * pull requests, plus unowned ones in the project the session claimed, with a cursor of its own:
  * sessions in one project neither wake for each other's news nor take it from each other.
- * Outside a session, it reads everything.
+ * `--project` from a session names the project instead of the claim, with the same rule. Outside
+ * a session, it reads everything.
  */
 export function inboxScope(opts: { as?: string; project?: string; card?: string }, session?: string): InboxScope {
-  if (opts.card || opts.project || !session) return { consumer: consumerName(opts), filter: { project: opts.project, card: opts.card } };
-  const claim = readState().claims.find((c) => sameSession(session, c.session));
+  if (opts.card || !session) return { consumer: consumerName(opts), filter: { project: opts.project, card: opts.card } };
   const consumer = opts.as || sessionConsumer(session);
+  if (opts.project) {
+    // A lead waiting on its project from a session: what other live sessions own is theirs. It
+    // takes over the project cursor once, so it does not hear again what that wait delivered.
+    const mine = readCursor(consumer);
+    const merged = furthest(mine, readCursor(opts.project));
+    if (JSON.stringify(merged) !== JSON.stringify(mine)) writeCursor(consumer, merged);
+    return { consumer, filter: { session, project: opts.project } };
+  }
+  const claim = readState().claims.find((c) => sameSession(session, c.session));
   // A session that used to wait on its project starts where that wait stopped, so moving to its
   // own cursor does not bring back news it has already handled.
   if (claim && !Object.keys(readCursor(consumer)).length) {
