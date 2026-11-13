@@ -346,7 +346,7 @@ describe("waits per session", () => {
     expect(mine).toHaveLength(1);
     expect(mine[0]).toMatchObject({ kind: "pr", pr: { change: "ci_failed" } });
     expect(read(sessions[1]!)).toHaveLength(0);
-    // a lead waiting on the whole project still sees it
+    // a project wait outside a session still sees it
     expect(readInbox("bugs", { project: "bugs" }, false)).toHaveLength(1);
   });
 
@@ -386,10 +386,57 @@ describe("waits per session", () => {
     expect(() => dismissCard(own.id)).toThrow(/already closed/);
   });
 
-  it("outside a session, or with -p or --card, the scope is what it was", () => {
+  it("outside a session, or with --card, the scope is what it was", () => {
     expect(inboxScope({}, undefined)).toEqual({ consumer: "default", filter: { project: undefined, card: undefined } });
-    expect(inboxScope({ project: "bugs" }, sessions[0])).toEqual({ consumer: "bugs", filter: { project: "bugs", card: undefined } });
+    expect(inboxScope({ project: "bugs" }, undefined)).toEqual({ consumer: "bugs", filter: { project: "bugs", card: undefined } });
     expect(inboxScope({ card: "c1" }, sessions[0]).consumer).toBe("card-c1");
+  });
+
+  it("a lead waiting on its project from a session does not take what another live session owns", () => {
+    setup();
+    const lead = "ffff6666-0006";
+    claimSession({ session: lead, project: "bugs", role: "lead" });
+    const scope = inboxScope({ project: "bugs" }, lead);
+    expect(scope).toEqual({ consumer: sessionConsumer(lead), filter: { session: lead, project: "bugs" } });
+    const theirs = openCard({ kind: "try", project: "bugs", title: "Play a few rounds", session: sessions[0] });
+    const loose = openCard({ kind: "block", project: "bugs", title: "Sign in" });
+    const mine = openCard({ kind: "decide", project: "bugs", title: "Merge?", session: lead });
+    for (const c of [theirs, loose, mine]) answerCard(c.id, { comment: "ok" });
+    prEvent(parsePrRef("acme/app#1")!, "ci_failed");
+    expect(readInbox(scope.consumer, scope.filter, true).map((i) => i.card?.id)).toEqual([loose.id, mine.id]);
+    // the owner still gets its own
+    expect(read(sessions[0]!).map((i) => i.card?.id ?? i.pr?.ref.number)).toEqual([theirs.id, loose.id, 1]);
+    // its listener counts only where it would wake
+    const stop = startListening({ consumer: scope.consumer, project: "bugs", session: lead, scope: "session" });
+    expect(listenersFor(theirs, listeners())).toHaveLength(0);
+    expect(listenersFor(loose, listeners())).toHaveLength(1);
+    stop();
+  });
+
+  it("a lead moving from the project cursor to its own does not hear old news again", () => {
+    setup();
+    const lead = "ffff6666-0006";
+    claimSession({ session: lead, project: "bugs", role: "lead" });
+    const loose = openCard({ kind: "block", project: "bugs", title: "Sign in" });
+    answerCard(loose.id, { comment: "done" });
+    readInbox("bugs", { project: "bugs" }, true); // an older lead wait handled it
+    const scope = inboxScope({ project: "bugs" }, lead);
+    expect(readInbox(scope.consumer, scope.filter, true)).toHaveLength(0);
+  });
+
+  it("news after the merge of a pull request whose owner has ended wakes no other session", () => {
+    setup();
+    claimSession({ session: sessions[0]!, done: "Merged #1" });
+    claimSession({ session: sessions[1]!, done: "Handed over #2" });
+    prEvent(parsePrRef("acme/app#1")!, "merged");
+    prEvent(parsePrRef("acme/app#1")!, "commented");
+    prEvent(parsePrRef("acme/app#2")!, "ci_failed");
+    // the open one still needs someone
+    expect(read(sessions[2]!).map((i) => `${i.pr?.ref.number} ${i.pr?.change}`)).toEqual(["2 ci_failed"]);
+    // the owner, if it still waits, hears its own
+    expect(read(sessions[0]!).map((i) => `${i.pr?.ref.number} ${i.pr?.change}`)).toEqual(["1 merged", "1 commented", "2 ci_failed"]);
+    // and the project wait outside a session keeps everything
+    expect(readInbox("bugs", { project: "bugs" }, false)).toHaveLength(3);
   });
 
   it("moving from a project wait starts where that wait stopped", () => {
@@ -426,7 +473,8 @@ describe("waits per session", () => {
     for (const c of [done, archived, live]) answerCard(c.id, { comment: "yes" });
     prEvent(parsePrRef("acme/app#1")!, "merged");
     const got = read(sessions[1]!);
-    expect(got.map((i) => i.card?.id ?? i.pr?.ref.number)).toEqual([done.id, archived.id, 1]);
+    // the merged pull request needs no one, so only its owner hears of it
+    expect(got.map((i) => i.card?.id ?? i.pr?.ref.number)).toEqual([done.id, archived.id]);
     // the session itself still gets its own news, and like any reader in the project, the rest
     expect(read(sessions[0]!).map((i) => i.card?.id ?? i.pr?.ref.number)).toEqual([done.id, archived.id, 1]);
     // and a wait on the project counts as listening for those cards

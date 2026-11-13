@@ -80,7 +80,7 @@ Right after opening cards or linking a pull request, keep exactly one wait armed
 - **Claude Code**: run `parawatch wait` as a background Bash command (`run_in_background: true`). When the human answers, the command exits, its output is the answer, and you are woken. Do not poll, do not sleep-loop, do not start a second wait while one is running.
 - **Other runtimes**: check `parawatch inbox` at the start of every turn.
 
-Inside your session, `wait` and `inbox` read only what is yours: answers on cards you opened, news on pull requests linked to you, and cards or pull requests no session owns in the project you claimed. Other sessions in the same project are not woken by your news and cannot take it from you. `-p <project>` reads the whole project instead; leave it to a lead (section 8).
+Inside your session, `wait` and `inbox` read only what is yours: answers on cards you opened, news on pull requests linked to you, and in the project you claimed, cards and pull requests no session owns or whose session has ended. Other sessions in the same project are not woken by your news and cannot take it from you, and you are not woken by theirs. This holds for a lead too. `-p <project>` only names a project other than the one you claimed.
 
 Keep working on other things meanwhile. A wait with `--timeout <seconds>` exits with code 2 when nothing came; re-arm it if you still need the answer. While no wait runs, an answer is kept, and the card tells the human that no agent is waiting; it reaches you on your next turn or your next wait.
 
@@ -120,12 +120,13 @@ When your work is finished, say so with one line on how it ended:
 parawatch claim --done "Merged #88; login works on staging"
 ```
 
-The session then shows as done, not as idle, and the line goes into the human's daily digest (`parawatch digest`). It stays done until someone writes to the session again.
+The session then shows as done, not as idle, and the line goes into the human's daily digest (`parawatch digest`). It stays done until someone writes to the session again. Close the cards you handled first: cards still open and pull requests not yet merged pass to the other sessions in the project, and their news wakes them. News on your pull requests that are already merged or closed wakes no one else.
 
 ## 8. Leads and workers
 
-- A lead that watches the whole project waits with `parawatch wait -p <project>`.
-- The lead owns the cards for its project. Workers (subagents, `codex exec` jobs, other sessions you start) report back to the lead instead of opening cards, unless the lead told them to ask the human directly.
+- A lead waits like any session, with a plain `parawatch wait`. It gets its own news, cards and pull requests no session owns in its project, and those of sessions that have ended.
+- The lead owns the cards for the work it hands out. Workers (subagents, `codex exec` jobs, other sessions you start) report back to the lead instead of opening cards, unless the lead told them to ask the human directly.
+- A session the human started on their own asks the human directly. Its cards and pull requests are its own: answers and news on them go to it, not to the lead. When that work belongs in the lead's queue, the session tells the lead, not the other way round.
 - Tell workers in their brief what to return to you, so the lead can turn it into one clear card.
 - Before ending a session, close cards you handled, end runs you started, and claim `--done`.
 

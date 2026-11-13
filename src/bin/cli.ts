@@ -269,9 +269,9 @@ program
 
 function inboxOptions(c: Command) {
   return c
-    .option("-p, --project <name>", "everything in this project, whoever owns it (for a lead)")
+    .option("-p, --project <name>", "this project instead of the claimed one; outside a session, everything in it")
     .option("--card <id>", "only answers to this card")
-    .option("--as <consumer>", "cursor name (defaults to the session, or the project with -p)")
+    .option("--as <consumer>", "cursor name (defaults to the session; outside a session, the project with -p)")
     .option("--json", "JSON output");
 }
 

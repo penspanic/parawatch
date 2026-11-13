@@ -399,7 +399,8 @@ export interface InboxFilter {
   /**
    * Only what belongs to this agent session: cards it opened and pull requests linked to it. With
    * `project`, cards and pull requests that no session owns in that project come along, and so
-   * do those of sessions that have ended.
+   * do those of sessions that have ended, except a pull request already merged or closed. What
+   * another live session owns is never in it: that session gets it, even when this one leads.
    */
   session?: string;
   /** whether a session has ended; read from the claims and the Claude desktop app when absent */
@@ -452,8 +453,11 @@ export function inboxFrom(events: PwEvent[], after: Position | number, filter: I
   const reported = new Map<string, { dev?: string; at: number }>();
   const answerNo = new Map<string, number>();
   const ended = filter.ended ?? endedSessions(state);
+  const finished = new Set<string>();
   for (const ev of events) {
     if (ev.type === "pr.change") {
+      const wasOver = finished.has(ev.pr.key);
+      if (ev.change === "merged" || ev.change === "closed") finished.add(ev.pr.key);
       const k = `${ev.pr.key}|${ev.change}|${ev.text ?? ""}`;
       const prev = reported.get(k);
       const at = Date.parse(ev.ts);
@@ -462,6 +466,9 @@ export function inboxFrom(events: PwEvent[], after: Position | number, filter: I
       if (!isAfter(ev, pos)) continue;
       const link = state.prLinks.get(ev.pr.key);
       if (!link || filter.card || !inScope(link.session, link.project, filter, ended)) continue;
+      // a merged or closed pull request whose owner has ended needs no one: its news, the merge
+      // itself and the bot comments after it, stays on the pull request
+      if (filter.session && !sameSession(link.session, filter.session) && (wasOver || finished.has(ev.pr.key))) continue;
       out.push({ seq: ev.seq, dev: ev.dev, at: ev.ts, kind: "pr", by: ev.by ?? ev.source, pr: { ref: ev.pr, change: ev.change, title: ev.title, text: ev.text, project: link.project } });
       continue;
     }
@@ -640,12 +647,21 @@ export interface InboxScope {
  * that name. Called from an agent session without either, it reads that session's own cards and
  * pull requests, plus unowned ones in the project the session claimed, with a cursor of its own:
  * sessions in one project neither wake for each other's news nor take it from each other.
- * Outside a session, it reads everything.
+ * `--project` from a session names the project instead of the claim, with the same rule. Outside
+ * a session, it reads everything.
  */
 export function inboxScope(opts: { as?: string; project?: string; card?: string }, session?: string): InboxScope {
-  if (opts.card || opts.project || !session) return { consumer: consumerName(opts), filter: { project: opts.project, card: opts.card } };
-  const claim = readState().claims.find((c) => sameSession(session, c.session));
+  if (opts.card || !session) return { consumer: consumerName(opts), filter: { project: opts.project, card: opts.card } };
   const consumer = opts.as || sessionConsumer(session);
+  if (opts.project) {
+    // A lead waiting on its project from a session: what other live sessions own is theirs. It
+    // takes over the project cursor once, so it does not hear again what that wait delivered.
+    const mine = readCursor(consumer);
+    const merged = furthest(mine, readCursor(opts.project));
+    if (JSON.stringify(merged) !== JSON.stringify(mine)) writeCursor(consumer, merged);
+    return { consumer, filter: { session, project: opts.project } };
+  }
+  const claim = readState().claims.find((c) => sameSession(session, c.session));
   // A session that used to wait on its project starts where that wait stopped, so moving to its
   // own cursor does not bring back news it has already handled.
   if (claim && !Object.keys(readCursor(consumer)).length) {
