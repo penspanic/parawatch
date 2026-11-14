@@ -18,6 +18,7 @@ parawatch relay join <code> ~/agent-sync/parawatch --device pc
 - **The desktop app keeps the folder in step while it runs.** On a machine without the app (a build box), run `parawatch relay run`, as a service if it should always run. Only one runs at a time: `relay run` refuses while the app keeps the folder, and the app leaves it to a `relay run` that is already going.
 - **Moving from Syncthing:** run `relay setup` or `relay join` with the folder you already share. The first run takes what is on the relay, then sends up the rest. Then stop Syncthing for that folder, so two carriers do not both move it.
 - **Files over 200 MB stay on their machine** (a long screen recording, say). `parawatch sync` shows how the relay is doing, as it does for other carriers.
+- **A phone can join too**, through the web app: see [On a phone](phone.md).
 
 ## Running a server
 
