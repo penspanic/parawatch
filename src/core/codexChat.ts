@@ -131,6 +131,7 @@ export function readChatLines(head: unknown[], tail: unknown[], file = ""): Chat
   const items = new Map<string, ChatItem>();
   let started = -1;
   let ended = -1;
+  let turnAt: string | undefined;
   let structured = false;
   const fallback: ChatItem[] = [];
 
@@ -147,7 +148,10 @@ export function readChatLines(head: unknown[], tail: unknown[], file = ""): Chat
       return;
     }
     if (r.type === "event_msg") {
-      if (p.type === "task_started") started = i;
+      if (p.type === "task_started") {
+        started = i;
+        turnAt = at;
+      }
       else if (p.type === "task_complete") ended = i;
       else if (p.type === "turn_aborted") {
         ended = i;
@@ -181,6 +185,7 @@ export function readChatLines(head: unknown[], tail: unknown[], file = ""): Chat
     ...(firstUser ? { title: firstUser.text.split("\n")[0]!.slice(0, 80) } : {}),
     settings,
     working: started > ended,
+    ...(started > ended && turnAt ? { turnStarted: turnAt } : {}),
     items: all.slice(-MAX_ITEMS),
     earlier: Math.max(0, all.length - MAX_ITEMS),
   };
@@ -224,7 +229,7 @@ export function findCodex(env: NodeJS.ProcessEnv = process.env, platform: NodeJS
   const dirs = [
     ...(env.PATH ?? "").split(path.delimiter),
     ...(platform === "win32"
-      ? [env.APPDATA && path.join(env.APPDATA, "npm"), env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, "Programs", "codex")]
+      ? [env.APPDATA && path.join(env.APPDATA, "npm"), env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, "Programs", "OpenAI", "Codex", "bin"), env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, "Programs", "codex")]
       : ["/opt/homebrew/bin", "/usr/local/bin", path.join(home, ".local", "bin"), path.join(home, ".npm-global", "bin"), path.join(home, ".volta", "bin"), path.join(home, ".bun", "bin")]),
   ].filter((d): d is string => !!d);
   for (const d of dirs) {

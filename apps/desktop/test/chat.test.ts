@@ -65,6 +65,18 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("chats in the app", () => {
+  it("keeps watching a conversation while this window or another machine still has it open", () => {
+    const c = chats();
+    c.openChat("019a-1");
+    c.openChat("019a-1", "remote");
+    c.closeChat("019a-1");
+    expect(c.isOpen("019a-1")).toBe(false);
+    expect(c.isOpen("019a-1", "remote")).toBe(true);
+    c.closeChat("019a-1", "remote");
+    expect(c.isOpen("019a-1", "remote")).toBe(false);
+    c.dispose();
+  });
+
   it("opens a Codex run's log as a conversation that can take a message", () => {
     const c = chats();
     const s = c.openChat("019a-1");
@@ -124,6 +136,25 @@ describe("chats in the app", () => {
     child.emit("close", 130);
     expect(pushed.at(-1)).toMatchObject({ sending: false });
     expect(pushed.at(-1)!.error).toBeUndefined();
+    c.dispose();
+  });
+
+  it("a stopped codex that ended without saying so in the log does not leave the session working", () => {
+    const c = chats();
+    c.openChat("019a-1");
+    c.send("019a-1", "go");
+    fs.appendFileSync(file, line({ timestamp: "2026-11-14T03:01:00.000Z", type: "event_msg", payload: { type: "task_started" } }));
+    expect(c.state("019a-1").view?.working).toBe(true);
+    c.stop("019a-1");
+    // on Windows the process just ends, and the log never gets its task_complete
+    child.emit("close", 1);
+    const s = c.state("019a-1");
+    expect(s.view?.working).toBe(false);
+    expect(s.view?.items.at(-1)).toMatchObject({ kind: "note", text: "Stopped" });
+    expect(s.blocked).toBeUndefined();
+    // a new turn in the log counts again
+    fs.appendFileSync(file, line({ timestamp: "2026-11-14T03:02:00.000Z", type: "event_msg", payload: { type: "task_started" } }));
+    expect(c.state("019a-1").view?.working).toBe(true);
     c.dispose();
   });
 

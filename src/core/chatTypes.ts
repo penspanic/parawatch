@@ -31,6 +31,8 @@ export interface ChatView {
   settings: ChatSettings;
   /** a turn has started and not finished */
   working: boolean;
+  /** when that unfinished turn started, as the log says */
+  turnStarted?: string;
   items: ChatItem[];
   /** older items left out */
   earlier: number;
@@ -46,5 +48,9 @@ export interface ChatState {
   /** what Codex started last while answering it */
   live?: string;
   error?: string;
+  /** the machine the session runs on, when it is not this one */
+  remote?: string;
+  /** nothing to show yet, and why: the other machine has not answered */
+  waiting?: string;
 }
 

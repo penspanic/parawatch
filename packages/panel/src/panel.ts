@@ -1629,9 +1629,9 @@ export class Panel {
     return !root.device || !!root.remote;
   }
 
-  /** A Codex run on this machine opens as a conversation here, when the host can run codex. */
+  /** A Codex run opens as a conversation here, when the host can show one; another machine's through that machine. */
   private canChat(r: Run): boolean {
-    return r.runtime === "codex" && !r.device && !!this.backend.chat;
+    return r.runtime === "codex" && !!this.backend.chat;
   }
 
   private linkable(r: Run): boolean {
@@ -1645,7 +1645,7 @@ export class Panel {
   }
 
   private openHint(r: Run): string {
-    if (this.canChat(r)) return "Open this Codex conversation here: read it and send it messages";
+    if (this.canChat(r)) return r.device ? `Open this Codex conversation from ${r.device}: read it and send it messages` : "Open this Codex conversation here: read it and send it messages";
     const root = this.rootOf(r);
     const where = root.device ? `on ${root.device}, through Remote Control` : "in the Claude app";
     return root === r ? `Open this session ${where}` : `Open ${root.title}, the session it works under, ${where}`;

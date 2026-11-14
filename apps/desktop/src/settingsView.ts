@@ -119,6 +119,10 @@ export class SettingsView {
         this.row(about, "network", `Shared as ${a.sync.device}`, a.sync.text, (c) => {
           if (a.sync?.warn) c.parentElement?.classList.add("is-warn");
         });
+      if (a.sync)
+        this.row(about, "message-square", "Messages from other machines", "Lets them send to Codex sessions here, which run without asking", (c) =>
+          this.toggle(c, p.remoteChat, (v) => this.change("remoteChat", v)),
+        );
     }
     const links = el("div", "st-links", undefined, about);
     for (const [label, which] of [

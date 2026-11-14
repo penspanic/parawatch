@@ -16,8 +16,8 @@ import { syncGithub } from "../../../src/core/github.js";
 import { desktopPidPath } from "../../../src/core/integrate.js";
 import { allowedSite, siteForPr } from "../../../src/core/sites.js";
 import { snapshot as takeSnapshot } from "../../../src/core/snapshot.js";
-import { attachmentsDir, deviceName, homeDir } from "../../../src/core/store.js";
-import { syncStatus, touchDevice } from "../../../src/core/sync.js";
+import { attachmentsDir, deviceName, homeDir, sharedDir } from "../../../src/core/store.js";
+import { readDevice, syncStatus, touchDevice } from "../../../src/core/sync.js";
 import type { PwEvent, Snapshot } from "../../../src/core/types.js";
 import { artPng, trayPng, type TrayState } from "./art.js";
 import { logger, logPath } from "./logger.js";
@@ -25,7 +25,10 @@ import { siteIcon } from "./siteIcons.js";
 import { KEEP_CLOSED, SINCE_HOURS, THEMES, validPref, type AboutInfo, type Prefs, type Theme, type UpdateState } from "./prefs.js";
 import { alertFor, agentsWorking, issueUrl, needsYou, newlyStuck, summary } from "./rules.js";
 import { cliState, onCliChange, updateCli } from "./cliUpdate.js";
+import type { ChatState } from "../../../src/core/chatTypes.js";
 import { Chats } from "./chat.js";
+import { ChatHost, REMOTE_OWNER } from "./chatHost.js";
+import { RemoteChats } from "./chatRemote.js";
 import { checkNow, freshestBeforeRestart, installNow, RELEASES_URL, resumeUnfinished, scheduleUpdates, stopUpdates, updateState } from "./updater.js";
 import { clearMarker, installingNotice, interruptedNotice, readMarker, startState, stillInstallingNotice, writeMarker } from "./updateInstall.js";
 
@@ -37,7 +40,7 @@ interface Settings extends Omit<Prefs, "openAtLogin"> {
   bounds?: { x: number; y: number; width: number; height: number };
 }
 
-const DEFAULTS: Settings = { sinceHours: 6, notify: true, theme: "system", keepClosed: 20, checkUpdates: true, serviceIcons: true, updateCli: true };
+const DEFAULTS: Settings = { sinceHours: 6, notify: true, theme: "system", keepClosed: 20, checkUpdates: true, serviceIcons: true, updateCli: true, remoteChat: false };
 const REPO_URL = "https://github.com/penspanic/parawatch";
 
 function settingsPath(): string {
@@ -54,6 +57,7 @@ function loadSettings(): Settings {
     if (typeof s.checkUpdates !== "boolean") s.checkUpdates = DEFAULTS.checkUpdates;
     if (typeof s.serviceIcons !== "boolean") s.serviceIcons = DEFAULTS.serviceIcons;
     if (typeof s.updateCli !== "boolean") s.updateCli = DEFAULTS.updateCli;
+    if (typeof s.remoteChat !== "boolean") s.remoteChat = DEFAULTS.remoteChat;
     return s;
   } catch {
     return { ...DEFAULTS };
@@ -78,12 +82,36 @@ let quitting = false;
 let refreshTimer: NodeJS.Timeout | undefined;
 let debounce: NodeJS.Timeout | undefined;
 let stopFollowing: (() => void) | undefined;
+function pushChat(id: string, state: ChatState): void {
+  if (win && !win.isDestroyed()) win.webContents.send("pw:chat", id, state);
+}
 const chats = new Chats({
-  run: (id) => latest?.runs?.find((r) => r.id === id),
-  push: (id, state) => {
-    if (win && !win.isDestroyed()) win.webContents.send("pw:chat", id, state);
+  run: (id) => latest?.runs?.find((r) => r.id === id && !r.device),
+  push: (id, state, owners) => {
+    if (owners.has("window")) pushChat(id, state);
+    if (owners.has(REMOTE_OWNER)) chatHost?.pushed(id, state);
   },
 });
+/** Codex sessions of other machines open in this window */
+const remoteChats = new RemoteChats({ push: pushChat, version: (d) => readDevice(d)?.version });
+/** this machine's Codex sessions open on other machines; set while a shared folder is */
+let chatHost: ChatHost | undefined;
+let chatHostTimer: NodeJS.Timeout | undefined;
+
+/** Answer for this machine's Codex sessions while it shares a folder with others. */
+function hostChats(): void {
+  const tick = () => {
+    if (!sharedDir()) return;
+    try {
+      chatHost ??= new ChatHost({ chats, allowSend: () => settings.remoteChat });
+      chatHost.tick();
+    } catch (err) {
+      logger.warn("answering other machines' chats failed:", err instanceof Error ? err.message : String(err));
+    }
+  };
+  tick();
+  chatHostTimer = setInterval(tick, 1500);
+}
 /** stuck pull requests and jobs already reported; the first look only learns them */
 const stuck = new Set<string>();
 let stuckPrimed = false;
@@ -546,6 +574,7 @@ function prefs(): Prefs {
     checkUpdates: settings.checkUpdates,
     serviceIcons: settings.serviceIcons,
     updateCli: settings.updateCli,
+    remoteChat: settings.remoteChat,
   };
 }
 
@@ -764,10 +793,14 @@ function registerIpc(): void {
     }
     return `${MEDIA_SCHEME}://media/${encodeURIComponent(p)}`;
   });
-  ipcMain.handle("pw:chat-open", (_e, id: string) => chats.openChat(String(id)));
-  ipcMain.handle("pw:chat-close", (_e, id: string) => chats.closeChat(String(id)));
-  ipcMain.handle("pw:chat-send", (_e, id: string, text: string) => chats.send(String(id), String(text)));
-  ipcMain.handle("pw:chat-stop", (_e, id: string) => chats.stop(String(id)));
+  // a session of another machine is read and answered there (chatRemote.ts); one here, here
+  ipcMain.handle("pw:chat-open", (_e, id: string) => {
+    const r = latest?.runs?.find((x) => x.id === String(id));
+    return r?.device ? remoteChats.openChat(r) : chats.openChat(String(id));
+  });
+  ipcMain.handle("pw:chat-close", (_e, id: string) => (remoteChats.has(String(id)) ? remoteChats.closeChat(String(id)) : chats.closeChat(String(id))));
+  ipcMain.handle("pw:chat-send", (_e, id: string, text: string) => (remoteChats.has(String(id)) ? remoteChats.send(String(id), String(text)) : chats.send(String(id), String(text))));
+  ipcMain.handle("pw:chat-stop", (_e, id: string) => (remoteChats.has(String(id)) ? remoteChats.stop(String(id)) : chats.stop(String(id))));
   ipcMain.handle("pw:save-attachment", async (_e, data: ArrayBuffer, ext: string) => {
     const dir = attachmentsDir();
     await fs.promises.mkdir(dir, { recursive: true });
@@ -815,6 +848,9 @@ if (!app.requestSingleInstanceLock()) {
   });
   app.on("will-quit", () => {
     stopFollowing?.();
+    remoteChats.dispose();
+    if (chatHostTimer) clearInterval(chatHostTimer);
+    chatHost?.dispose();
     chats.dispose();
     stopUpdates();
     if (githubTimer) clearInterval(githubTimer);
@@ -862,6 +898,7 @@ if (!app.requestSingleInstanceLock()) {
     refresh();
     stopFollowing = followEvents(onEvent);
     watchGithub();
+    hostChats();
     scheduleUpdates(settings.checkUpdates, onUpdate);
     onCliChange(sendAbout);
     setTimeout(() => keepCliInStep("the app is newer"), 20_000);
