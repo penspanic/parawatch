@@ -18,6 +18,7 @@ import { allowedSite, siteForPr } from "../../../src/core/sites.js";
 import { snapshot as takeSnapshot } from "../../../src/core/snapshot.js";
 import { attachmentsDir, deviceName, homeDir, sharedDir } from "../../../src/core/store.js";
 import { readDevice, syncStatus, touchDevice } from "../../../src/core/sync.js";
+import { RelayMirror, relayConfig, takeMirrorLock } from "../../../src/core/relay.js";
 import type { PwEvent, Snapshot } from "../../../src/core/types.js";
 import { artPng, trayPng, type TrayState } from "./art.js";
 import { logger, logPath } from "./logger.js";
@@ -97,6 +98,33 @@ const remoteChats = new RemoteChats({ push: pushChat, version: (d) => readDevice
 /** this machine's Codex sessions open on other machines; set while a shared folder is */
 let chatHost: ChatHost | undefined;
 let chatHostTimer: NodeJS.Timeout | undefined;
+
+/** the relay mirror, while this machine shares its folder through a relay */
+let relayMirror: { mirror: RelayMirror; unlock: () => void; key: string } | undefined;
+let relayTimer: NodeJS.Timeout | undefined;
+
+/** Keep the shared folder in step with the relay while the app runs, when one is set up. */
+function keepRelay(): void {
+  const check = () => {
+    const c = relayConfig();
+    const dir = sharedDir();
+    const key = c && dir ? `${c.url} ${c.space} ${dir}` : "";
+    if (relayMirror && relayMirror.key !== key) {
+      relayMirror.mirror.stop();
+      relayMirror.unlock();
+      relayMirror = undefined;
+    }
+    if (relayMirror || !c || !dir) return;
+    const unlock = takeMirrorLock();
+    if (!unlock) return; // `parawatch relay run` has it
+    const mirror = new RelayMirror({ dir, config: c, log: (l) => logger.warn(l) });
+    relayMirror = { mirror, unlock, key };
+    logger.info(`keeping ${dir} in step with ${c.url}`);
+    void mirror.run().catch((err) => logger.warn("relay stopped:", err instanceof Error ? err.message : String(err)));
+  };
+  check();
+  relayTimer = setInterval(check, 30_000);
+}
 
 /** Answer for this machine's Codex sessions while it shares a folder with others. */
 function hostChats(): void {
@@ -849,6 +877,9 @@ if (!app.requestSingleInstanceLock()) {
   app.on("will-quit", () => {
     stopFollowing?.();
     remoteChats.dispose();
+    if (relayTimer) clearInterval(relayTimer);
+    relayMirror?.mirror.stop();
+    relayMirror?.unlock();
     if (chatHostTimer) clearInterval(chatHostTimer);
     chatHost?.dispose();
     chats.dispose();
@@ -899,6 +930,7 @@ if (!app.requestSingleInstanceLock()) {
     stopFollowing = followEvents(onEvent);
     watchGithub();
     hostChats();
+    keepRelay();
     scheduleUpdates(settings.checkUpdates, onUpdate);
     onCliChange(sendAbout);
     setTimeout(() => keepCliInStep("the app is newer"), 20_000);

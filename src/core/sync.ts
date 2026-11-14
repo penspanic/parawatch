@@ -28,6 +28,7 @@ import {
   writeConfig,
 } from "./store.js";
 import { syncthingAdapter } from "./syncthing.js";
+import { relayAdapter } from "./relay.js";
 
 // ------------------------------------------------------------------ devices
 
@@ -281,6 +282,7 @@ function adapters(): Map<string, SyncAdapter> {
   registry ??= new Map<string, SyncAdapter>([
     [folderAdapter.name, folderAdapter],
     [syncthingAdapter.name, syncthingAdapter],
+    [relayAdapter.name, relayAdapter],
   ]);
   return registry;
 }

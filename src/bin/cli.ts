@@ -35,10 +35,12 @@ import { githubConfig, readCache, resolvePrRef, syncGithub, prViews } from "../c
 import { recordPrompt, type PromptHookInput } from "../core/prompts.js";
 import { callingSubagent } from "../adapters/claudeCode.js";
 import { digest, digestText, localDate } from "../core/digest.js";
-import { everywhere, readEvents } from "../core/store.js";
+import { everywhere, readConfig, readEvents, sharedDir, writeConfig } from "../core/store.js";
 import { followEvents } from "../core/follow.js";
 import { adapterNames, setRoot, setupSync, syncAdapter, syncStatus, touchDevice } from "../core/sync.js";
 import { syncText } from "../core/format.js";
+import { RelayClient, RelayMirror, joinCode, newKey, readJoinCode, relayConfig, takeMirrorLock, type RelayConfig } from "../core/relay.js";
+import { createRelayServer } from "../relay/server.js";
 import { collectRuns, shareRunsDue } from "../core/runs.js";
 import { askRows, cardDetail, cardLine, cardRows, inboxLine, prRows, runsTree, view } from "../core/format.js";
 import { hookContext, notify, removeInstructions, writeInstructions } from "../core/integrate.js";
@@ -682,6 +684,108 @@ sync
   .action((name: string, folder: string | undefined) => {
     const d = setRoot(name, folder, VERSION);
     process.stdout.write(Object.entries(d.roots ?? {}).map(([k, v]) => `${k}  ${v}`).join("\n") + (d.roots ? "\n" : "No named folders.\n"));
+  });
+
+// ------------------------------------------------------------------ the relay
+
+const relay = program.command("relay").description("keep the shared folder in step through a parawatch relay server instead of a sync tool");
+
+/** Point this machine's shared folder at a relay, keeping what config.json already has. */
+function useRelay(folder: string, device: string | undefined, c: RelayConfig): ReturnType<typeof setupSync> {
+  const r = setupSync({ dir: folder, device, adapter: "relay", version: VERSION });
+  const cfg = readConfig();
+  writeConfig({ ...cfg, sync: { ...(cfg.sync ?? {}), adapter: "relay", relay: c } });
+  return r;
+}
+
+relay
+  .command("setup <url> <folder>")
+  .description("make a space on a relay and share this machine's folder through it; prints the code for your other machines")
+  .option("-d, --device <name>", "this machine's name in the folder (a-z, 0-9, -); defaults to the host name")
+  .option("--invite <invite>", "the relay's invite (or set PARAWATCH_RELAY_INVITE)")
+  .action(async (url: string, folder: string, o) => {
+    const invite = o.invite ?? process.env.PARAWATCH_RELAY_INVITE;
+    if (!invite) throw new UserError("the relay needs its invite to make a space: pass --invite or set PARAWATCH_RELAY_INVITE");
+    const base = url.replace(/\/+$/, "");
+    const made = await RelayClient.createSpace(base, invite);
+    const c: RelayConfig = { url: base, space: made.space, token: made.token, key: newKey() };
+    const r = useRelay(folder, o.device, c);
+    process.stdout.write(
+      [
+        `This machine shares ${r.dir} as "${r.device}" through ${base}.`,
+        "On each of your other machines, run:",
+        "",
+        `  parawatch relay join <code> <folder> --device <its name>`,
+        "",
+        "with this code. It opens your space and its key: keep it to your own machines.",
+        "",
+        joinCode(c),
+        "",
+        "The folder is kept in step while the app runs, or while `parawatch relay run` does.",
+      ].join("\n") + "\n",
+    );
+  });
+
+relay
+  .command("join <code> <folder>")
+  .description("share this machine's folder through the relay another machine set up")
+  .option("-d, --device <name>", "this machine's name in the folder (a-z, 0-9, -); defaults to the host name")
+  .action(async (code: string, folder: string, o) => {
+    const c = readJoinCode(code);
+    await new RelayClient(c).changes(0);
+    const r = useRelay(folder, o.device, c);
+    process.stdout.write(`This machine shares ${r.dir} as "${r.device}" through ${c.url}. The folder is kept in step while the app runs, or while \`parawatch relay run\` does.\n`);
+  });
+
+relay
+  .command("code")
+  .description("print the code that lets another of your machines join (it holds the space key)")
+  .action(() => {
+    const c = relayConfig();
+    if (!c) throw new UserError("this machine does not use a relay");
+    process.stdout.write(joinCode(c) + "\n");
+  });
+
+relay
+  .command("run")
+  .description("keep the shared folder in step with the relay until stopped (the app does this while it runs)")
+  .option("--once", "bring it up to date once and stop")
+  .action(async (o) => {
+    const c = relayConfig();
+    const dir = sharedDir();
+    if (!c || !dir) throw new UserError("this machine does not use a relay: run `parawatch relay setup` or `parawatch relay join` first");
+    const unlock = takeMirrorLock();
+    if (!unlock) throw new UserError("another parawatch (the app, or another `relay run`) already keeps this folder in step");
+    const m = new RelayMirror({ dir, config: c, log: (l) => process.stderr.write(l + "\n") });
+    try {
+      if (o.once) {
+        const r = await m.once();
+        process.stdout.write(`brought down ${r.pulled}, sent up ${r.pushed}\n`);
+        return;
+      }
+      const stop = () => m.stop();
+      process.once("SIGINT", stop);
+      process.once("SIGTERM", stop);
+      process.stderr.write(`keeping ${dir} in step with ${c.url}; stop with Ctrl-C\n`);
+      await m.run();
+    } finally {
+      unlock();
+    }
+  });
+
+relay
+  .command("serve")
+  .description("run a relay server (for your own server; machines reach it over HTTPS through a proxy in front)")
+  .option("--port <n>", "port to listen on", "8787")
+  .option("--host <host>", "address to listen on", "127.0.0.1")
+  .option("--data <folder>", "where spaces are kept", "~/.parawatch-relay")
+  .action((o) => {
+    const invite = process.env.PARAWATCH_RELAY_INVITE;
+    const data = o.data.startsWith("~") ? o.data.replace(/^~/, process.env.HOME ?? process.env.USERPROFILE ?? "") : o.data;
+    const server = createRelayServer({ dataDir: data, invite, log: (l) => process.stdout.write(`${new Date().toISOString()} ${l}\n`) });
+    server.listen(Number(o.port), o.host, () => {
+      process.stdout.write(`relay on http://${o.host}:${o.port}, spaces in ${data}${invite ? "" : " (no PARAWATCH_RELAY_INVITE: no new spaces can be made)"}\n`);
+    });
   });
 
 program

@@ -46,6 +46,8 @@ parawatch sync setup ~/agent-sync/parawatch --device pc  --adapter syncthing
 
 Cards, answers and the list of running sessions then show on every machine, each marked with where it came from. Agent logs stay on the machine that wrote them. The details are in [More than one machine](docs/sync.md).
 
+Or run a [relay](docs/relay.md) of your own, a small server that carries the folder sealed end to end, so the server cannot read your cards or sessions: `parawatch relay setup <url> <folder>` on the first machine, `parawatch relay join <code> <folder>` on the others.
+
 ## How an answer gets back
 
 <picture>
@@ -133,6 +135,8 @@ This writes a short block that tells the agents in that project to say what they
 | [Pull requests](docs/pull-requests.md) | What is read from GitHub, and its settings |
 | [Observed agents](docs/observed-agents.md) | Which logs are read, run states, adding a runtime |
 | [More than one machine](docs/sync.md) | Cards and answers across machines through a synced folder |
+| [The relay](docs/relay.md) | Your own server that carries the shared folder, sealed end to end |
+| [The shared folder](docs/protocol.md) | The files machines exchange, for anyone writing a client |
 | [Storage](docs/storage.md) | Where everything is kept, notifications |
 | [Installing, updating, removing](docs/install.md) | The three parts in detail, updates, `parawatch doctor`, uninstalling |
 | [Building on it](docs/integrations.md) | `status --json`, `watch`, the panel package |

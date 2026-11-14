@@ -1,6 +1,6 @@
 # More than one machine
 
-Agents on a second machine (a desktop PC, a build box) can ask and be answered like the ones on your laptop. Parawatch does not move files between machines itself: point it at a folder that something else keeps in step, and each machine writes only its own log there.
+Agents on a second machine (a desktop PC, a build box) can ask and be answered like the ones on your laptop. Parawatch does not move files between machines itself: point it at a folder that something else keeps in step, and each machine writes only its own log there. Or run a [relay](relay.md), a small server of your own that carries the folder sealed end to end. What the folder holds is in [The shared folder](protocol.md).
 
 ```sh
 # on each machine, once, with its own name
@@ -29,5 +29,6 @@ The shared folder holds `events/`, `devices/` (each machine's paths, version and
 |---|---|
 | `syncthing` | Asks the local Syncthing through its REST API (address and API key from its `config.xml`; `PARAWATCH_SYNCTHING_KEY` or `"sync": { "syncthing": { "url", "home" } }` override): connected devices, when the folder was last in step, files on the way, errors. |
 | `folder` | Anything else that keeps a folder in step (a cloud drive, a network share): the other machines' last writes and conflict copies. |
+| `relay` | A [parawatch relay](relay.md), which carries the folder itself, sealed end to end: whether the server answers, when the folder was last in step, files still on their way. Set up with `parawatch relay setup` or `relay join`, not `sync setup`. |
 
 An adapter is one object with a `status()` method (`src/core/sync.ts`, `registerAdapter`). Another tool, such as a git checkout or a small server, fits the same shape.
