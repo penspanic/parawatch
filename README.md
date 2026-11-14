@@ -46,7 +46,7 @@ parawatch sync setup ~/agent-sync/parawatch --device pc  --adapter syncthing
 
 Cards, answers and the list of running sessions then show on every machine, each marked with where it came from. Agent logs stay on the machine that wrote them. The details are in [More than one machine](docs/sync.md).
 
-Or run a [relay](docs/relay.md) of your own, a small server that carries the folder sealed end to end, so the server cannot read your cards or sessions: `parawatch relay setup <url> <folder>` on the first machine, `parawatch relay join <code> <folder>` on the others.
+Or run a [relay](docs/relay.md) of your own, a small server that carries the folder sealed end to end, so the server cannot read your cards or sessions: `parawatch relay setup <url> <folder>` on the first machine, `parawatch relay join <code> <folder>` on the others. With a relay, a phone can answer cards too: [On a phone](docs/phone.md).
 
 ## How an answer gets back
 

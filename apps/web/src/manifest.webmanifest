@@ -1,0 +1,11 @@
+{
+  "name": "Parawatch",
+  "short_name": "Parawatch",
+  "description": "What your agents are doing, and the cards that need you.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f3f4f6",
+  "theme_color": "#f3f4f6",
+  "icons": [{ "src": "icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }]
+}

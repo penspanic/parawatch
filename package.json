@@ -39,7 +39,7 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/bin/cli.ts",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit && npm run typecheck -w @parawatch/panel -w @parawatch/desktop",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit && npm run typecheck -w @parawatch/panel -w @parawatch/desktop -w @parawatch/web",
     "prepublishOnly": "npm run build && npm test",
     "demo": "tsx scripts/demo.ts"
   },
