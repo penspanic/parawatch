@@ -102,6 +102,12 @@ class Api {
   }
 }
 
+/** The log format this app writes (core/types.ts STORE_FORMAT). */
+const STORE_FORMAT = 2;
+
+/** The phone's name is taken in the folder: nothing is written until another is picked. */
+export class NameTaken extends Error {}
+
 const dec = new TextDecoder();
 const enc = new TextEncoder();
 
@@ -121,6 +127,9 @@ export class Space {
   private abort?: AbortController;
   private listenersFns = new Set<() => void>();
   private deviceWritten = 0;
+  private started = false;
+  /** sends of the own log, one after another */
+  private sending: Promise<void> = Promise.resolve();
   error?: string;
   lastOk?: number;
 
@@ -144,7 +153,22 @@ export class Space {
     return `events/${this.device}.jsonl`;
   }
 
+  /** Take the own log another tab of this app wrote meanwhile, when it is ours plus more. */
+  private adoptStored(): void {
+    try {
+      const stored = JSON.parse(this.o.store.getItem(this.key) ?? "") as Saved;
+      if (stored?.v === 1 && stored.own.length > this.saved.own.length && stored.own.startsWith(this.saved.own)) {
+        this.saved.own = stored.own;
+        this.saved.ownPending = this.saved.ownPending || stored.ownPending;
+        this.text.set(this.ownPath(), this.saved.own);
+      }
+    } catch {
+      // nothing stored yet
+    }
+  }
+
   private persist(): void {
+    this.adoptStored();
     try {
       this.o.store.setItem(this.key, JSON.stringify(this.saved));
     } catch {
@@ -230,6 +254,9 @@ export class Space {
       const rel = this.relOf(c.name);
       if (c.deleted) {
         if (rel && this.text.delete(rel)) any = true;
+        // listener files come and go with every wait; forget them
+        delete this.saved.paths[c.name];
+        if (rel) this.nameOf.delete(rel);
         continue;
       }
       fresh.add(c.name);
@@ -249,9 +276,9 @@ export class Space {
     for (const [rel, n] of this.nameOf) {
       const c = this.server.get(n);
       if (!c || c.deleted || !this.wanted(rel) || probe.includes(n)) continue;
-      // the phone's own log is read back only when it has none (a fresh install)
+      // the phone's own log is read back only when it has none (a fresh install), until it is
       if (rel === own) {
-        if (!this.saved.own && fresh.has(n)) reads.push(n);
+        if (!this.saved.own) reads.push(n);
         continue;
       }
       if (fresh.has(n) || !this.text.has(rel)) reads.push(n);
@@ -264,6 +291,13 @@ export class Space {
     return any;
   }
 
+  /** The server holds a log of this phone that it has not read back yet: writing now would replace it. */
+  private ownUnread(): boolean {
+    const n = this.nameOf.get(this.ownPath());
+    const c = n ? this.server.get(n) : undefined;
+    return !!c && !c.deleted && !this.saved.own;
+  }
+
   /** Read everything once: the whole list of the server, then the files that matter. */
   async start(): Promise<void> {
     this.keys = await keysOf(this.o.config.key);
@@ -274,9 +308,14 @@ export class Space {
     // files read before are read again: their text is not kept between openings
     for (const [n, rel] of Object.entries(this.saved.paths)) if (rel) this.nameOf.set(rel, n);
     await this.apply(changes);
+    if (this.ownUnread()) throw new Error("Could not read this phone's earlier answers; trying again");
+    // a name another machine or browser writes under: writing here would overwrite its files
+    const there = this.deviceFile(this.device);
+    if (there && there.host !== this.saved.host) throw new NameTaken(`"${this.device}" is already the name of ${there.platform === "web" ? "another browser" : "a machine"} in this folder; pick another`);
     this.saved.cursor = head;
     this.lastOk = this.now();
     this.error = undefined;
+    this.started = true;
     this.persist();
     await this.flush();
     await this.writeDevice();
@@ -290,6 +329,10 @@ export class Space {
     const live = () => this.gen === gen;
     while (live()) {
       try {
+        if (!this.started) {
+          await this.start();
+          continue;
+        }
         const abort = (this.abort = new AbortController());
         const { head, changes } = await this.api.changes(this.saved.cursor, WAIT_S, abort.signal);
         if (!live()) break;
@@ -305,6 +348,10 @@ export class Space {
       } catch (err) {
         if (!live()) break;
         this.error = err instanceof Error ? err.message : String(err);
+        if (err instanceof NameTaken) {
+          this.changed();
+          break;
+        }
         this.changed();
         await new Promise((r) => setTimeout(r, 5000));
       }
@@ -331,25 +378,54 @@ export class Space {
     this.saved.paths[n] = rel;
   }
 
-  /** Send the own log if it has not reached the server. */
-  private async flush(): Promise<void> {
-    if (!this.saved.ownPending) return;
-    await this.putFile(this.ownPath(), this.saved.own);
-    this.saved.ownPending = false;
-    this.persist();
+  /** Send the own log if it has not reached the server, one send at a time. */
+  private flush(): Promise<void> {
+    const next = this.sending.then(async () => {
+      if (!this.saved.ownPending || !this.started) return;
+      const text = this.saved.own;
+      await this.putFile(this.ownPath(), text);
+      // a later event went in meanwhile: it is sent by the next flush
+      if (this.saved.own === text) this.saved.ownPending = false;
+      this.persist();
+    });
+    this.sending = next.catch(() => {});
+    return next;
   }
 
-  /** Append one event to this phone's log and send it. */
+  /** When an event about this card may be stamped: after everything already said about it. */
+  private stamp(card: unknown): string {
+    let ts = new Date(this.now()).toISOString();
+    if (typeof card !== "string") return ts;
+    for (const e of this.events()) {
+      const about = e.type === "card.open" ? e.card.id : "card" in e ? (e as { card: unknown }).card : undefined;
+      // a phone clock behind the machines' would sort the answer before the card
+      if (about === card && e.ts >= ts) ts = new Date(Date.parse(e.ts) + 1).toISOString();
+    }
+    return ts;
+  }
+
+  /**
+   * Append one event to this phone's log and send it. When the relay cannot be reached it stays
+   * here and goes out with the next round; the answer counts as given.
+   */
   async append(body: Record<string, unknown> & { type: string }): Promise<void> {
+    if (!this.started || this.ownUnread()) throw new Error("Still reading this phone's earlier answers; try again in a moment");
+    if (this.events().some((e) => typeof e.v === "number" && e.v > STORE_FORMAT)) throw new Error("A newer Parawatch wrote to this folder; reload this page to update it");
+    this.adoptStored();
     const own = parseEventLines(this.saved.own);
     const seq = (own[own.length - 1]?.seq ?? 0) + 1;
-    const ev = { v: 2, seq, ts: new Date(this.now()).toISOString(), ...body };
+    const ev = { v: STORE_FORMAT, seq, ts: this.stamp(body.card), ...body };
     this.saved.own += JSON.stringify(ev) + "\n";
     this.saved.ownPending = true;
     this.text.set(this.ownPath(), this.saved.own);
     this.persist();
     this.changed();
-    await this.flush();
+    try {
+      await this.flush();
+    } catch (err) {
+      this.error = `Not sent yet: ${err instanceof Error ? err.message : String(err)}`;
+      this.changed();
+    }
   }
 
   // ---------------------------------------------------------------- reading

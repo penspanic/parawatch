@@ -10,7 +10,7 @@ import { fold } from "../../../src/core/state.js";
 import { createRelayServer } from "../../../src/relay/server.js";
 import { phoneBackend } from "../src/backend";
 import { keysOf, open, readJoinCode, seal, sealedName } from "../src/seal";
-import { Space, type Store } from "../src/space";
+import { NameTaken, Space, type Store } from "../src/space";
 
 let root: string;
 let server: http.Server;
@@ -151,11 +151,46 @@ describe("a phone on the relay", () => {
     await mac.once();
     expect(parseEventLines(fs.readFileSync(path.join(dir, "events/phone.jsonl"), "utf8")).map((e) => e.seq)).toEqual([1, 2]);
 
-    // a fresh install of the phone reads its own log back instead of starting over
+    // a fresh install cannot tell itself from a second browser, so it takes another name
     const fresh = new Space({ config: c, device: "phone", version: "test", store: memoryStore() });
-    await fresh.start();
-    await fresh.append({ type: "run.hide", run: "s1" });
+    await expect(fresh.start()).rejects.toThrow(NameTaken);
+  });
+
+  it("writes nothing under a name another browser or machine uses", async () => {
+    const { c, dir, mac } = await folder();
+    const first = new Space({ config: c, device: "phone", version: "test", store: memoryStore() });
+    await first.start();
+    await first.append({ type: "card.answer", card: "mac-c1", by: "human", choice: 1 });
+    // Safari and the home screen app keep apart: the second one is another browser
+    const second = new Space({ config: c, device: "phone", version: "test", store: memoryStore() });
+    await expect(second.start()).rejects.toThrow(NameTaken);
+    await expect(second.append({ type: "card.answer", card: "mac-c1", by: "human", choice: 2 })).rejects.toThrow(/Still reading/);
+    const machine = new Space({ config: c, device: "mac", version: "test", store: memoryStore() });
+    await expect(machine.start()).rejects.toThrow(/a machine/);
     await mac.once();
-    expect(parseEventLines(fs.readFileSync(path.join(dir, "events/phone.jsonl"), "utf8")).map((e) => e.seq)).toEqual([1, 2, 3]);
+    expect(JSON.parse(fs.readFileSync(path.join(dir, "devices/mac.json"), "utf8")).platform).toBe("darwin");
+    expect(parseEventLines(fs.readFileSync(path.join(dir, "events/phone.jsonl"), "utf8")).map((e) => (e as { choice?: number }).choice)).toEqual([1]);
+  });
+
+  it("sends answers given at once in order, stamps them after the card, and forgets listeners that left", async () => {
+    const { c, dir, mac } = await folder();
+    // a phone clock an hour behind the machines
+    const phone = new Space({ config: c, device: "phone", version: "test", store: memoryStore(), now: () => Date.now() - 3600_000 });
+    await phone.start();
+    await Promise.all([1, 2, 3].map((n) => phone.append({ type: "card.comment", card: "mac-c1", by: "human", text: `n${n}` })));
+    await mac.once();
+    const events = parseEventLines(fs.readFileSync(path.join(dir, "events/phone.jsonl"), "utf8"), "phone");
+    expect(events.map((e) => e.seq)).toEqual([1, 2, 3]);
+    const state = fold([...parseEventLines(fs.readFileSync(path.join(dir, "events/mac.jsonl"), "utf8"), "mac"), ...events].sort((a, b) => a.ts.localeCompare(b.ts)));
+    expect(state.cards.get("mac-c1")?.comments.map((x) => x.text)).toEqual(["n1", "n2", "n3"]);
+    expect(phone.snapshot().listeners).toHaveLength(1);
+    fs.rmSync(path.join(dir, "listeners/mac-42.json"));
+    await mac.once();
+    const loop = phone.run();
+    for (let i = 0; i < 100 && phone.snapshot().listeners?.length; i++) await new Promise((r) => setTimeout(r, 30));
+    phone.stop();
+    await loop;
+    expect(phone.snapshot().listeners).toEqual([]);
   });
 });
+

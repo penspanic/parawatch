@@ -5,7 +5,7 @@
 What it does:
 
 - **Shows what the machines show:** the cards that need you, the agents by project with the last hour of activity, and who waits on what.
-- **Answers cards:** pick an option, write a note, mark done, or dismiss. The answer reaches the waiting agent like one given on a machine.
+- **Answers cards:** pick an option, write a note, mark done, or dismiss. The answer reaches the waiting agent like one given on a machine. Without a connection it is kept and sent when the relay can be reached.
 - **Hides runs**, until they do something new.
 - **Opens a Claude session** through its Remote Control link, when the session has one.
 - **Shows pictures cards carry** when they are in the shared folder (a picture pasted into an answer is); files elsewhere on a machine show by name.
@@ -23,6 +23,8 @@ parawatch relay code
 Open the app on the phone, paste the code and give the phone a name (`phone`). The code holds the key to your folder: it is kept on the phone only (in the browser's storage for the site) and never sent to the server. A link `https://<app>/#join=<code>` fills it in; the part after `#` is not sent anywhere either. "Unpair this phone" removes it.
 
 On an iPhone, add the page to the home screen (Share, Add to Home Screen) and pair from there: the home screen app keeps its own storage, apart from Safari.
+
+**Each browser needs a name of its own.** The phone writes its answers to one file under its name, so two browsers under one name would overwrite each other. Pairing refuses a name another machine or browser already uses, Safari and the home screen app counting as two; after unpairing or reinstalling, pair under a new name (`phone-2`).
 
 ## How it reads the folder
 

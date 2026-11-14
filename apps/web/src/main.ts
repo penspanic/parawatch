@@ -127,10 +127,8 @@ let current: { space: Space; panel: Panel; paired: Paired } | undefined;
 async function connect(paired: Paired, fresh: boolean): Promise<void> {
   const space = new Space({ config: paired.config, device: paired.device, version: __VERSION__, store: localStorage });
   if (fresh) {
+    // checks the name before writing anything
     await space.start();
-    const taken = space.deviceFile(paired.device);
-    // another machine already writes under this name
-    if (taken && taken.platform !== "web") throw new Error(`"${paired.device}" is already the name of a machine in this folder; pick another`);
     localStorage.setItem(PAIRED, JSON.stringify(paired));
   }
   $("pair").hidden = true;
@@ -150,14 +148,8 @@ async function connect(paired: Paired, fresh: boolean): Promise<void> {
   });
   current = { space, panel, paired };
   space.onChange(() => panel.update(space.snapshot(), space.error));
-  if (!fresh) {
-    try {
-      await space.start();
-    } catch (e) {
-      panel.update(undefined, (e as Error).message);
-    }
-  }
   panel.update(space.snapshot(), space.error);
+  // reads everything first (again, until it can), then follows the relay
   void space.run();
 }
 

@@ -89,13 +89,13 @@ $RELAY_DOMAIN {
 $APP_DOMAIN {
 	encode gzip
 	root * /var/www/parawatch-web
+	# small files under fixed names: always ask, so a new version never mixes with the old
 	header {
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "no-referrer"
+		Cache-Control "no-cache"
 	}
-	@fresh path / /index.html /sw.js /manifest.webmanifest
-	header @fresh Cache-Control "no-cache"
 	file_server
 }
 CADDY
