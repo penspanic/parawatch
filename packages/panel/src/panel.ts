@@ -3,6 +3,7 @@ import { serviceName, siteForPr, siteForRun } from "../../../src/core/sites.js";
 import { ago, clean, groupRuns, OTHER, type FoldNode, type Group, type RunNode } from "./tree";
 import type { Backend, Card, Listener, PrView, Reply, Run, Snapshot } from "./types";
 import { openViewer } from "./viewer";
+import { ChatPane } from "./chat";
 
 /** What the panel needs from its host (the desktop app, or the harness page). */
 export interface PanelHost {
@@ -208,6 +209,9 @@ export class Panel {
   /** projects whose quiet sessions the human unfolded on the board */
   private boardOpen = new Set<string>();
   private sizer = new ResizeObserver(() => this.layout());
+  /** the Codex conversation shown in place of the board and the feed, while one is open */
+  private chat?: ChatPane;
+  private chatDrafts = new Map<string, string>();
 
   constructor(
     private root: HTMLElement,
@@ -258,6 +262,7 @@ export class Panel {
   }
 
   private setView(v: "board" | "feed"): void {
+    this.closeChat();
     this.mode = v;
     saveView(v);
     this.layout();
@@ -271,6 +276,7 @@ export class Panel {
 
   /** Bring one card into view, opening any folded section it sits in. */
   focusCard(id: string): void {
+    this.closeChat();
     if (!this.split && this.mode === "board") this.setView("feed");
     const box = this.cardsEl.querySelector<HTMLElement>(`[data-card-id="${CSS.escape(id)}"]`);
     if (!box) return;
@@ -1410,16 +1416,16 @@ export class Panel {
     const row = el("div", `pw-br pw-mark-${r.mark}`);
     row.dataset.mark = r.mark;
     el("span", "pw-board-dot", undefined, row).title = MARK_HINT[r.mark];
-    const open = r.run && this.canOpen(r.run);
+    const open = r.run && this.linkable(r.run);
     const name = el(open ? "a" : "span", "pw-br-title", r.title, row);
     if (r.run && !open) name.title = `${r.title}${r.run.device ? `: runs on ${r.run.device}, with no Remote Control link to open it from here` : ""}`;
     if (r.run && open) {
-      const id = r.run.id;
+      const run = r.run;
       (name as HTMLAnchorElement).href = "#";
-      name.title = `${r.title}${r.run.task ? ` (${r.run.task})` : ""}. ${this.openHint(r.run)}`;
+      name.title = `${r.title}${run.task ? ` (${run.task})` : ""}. ${this.openHint(run)}`;
       name.onclick = (e) => {
         e.preventDefault();
-        void this.backend.goto(id).catch((err) => this.host.notice(err instanceof Error ? err.message : String(err)));
+        this.activate(run);
       };
     }
     if (r.subs) el("span", "pw-br-subs", `+${r.subs}`, row).title = `${r.subs} subagent${r.subs === 1 ? "" : "s"} or job${r.subs === 1 ? "" : "s"} under it still going`;
@@ -1448,6 +1454,35 @@ export class Panel {
   }
 
   /** Show the feed (when the board stands alone) and go to a section of it. */
+  /** Show a Codex run as a conversation, in place of the board and the feed. */
+  openChat(r: Run): void {
+    if (!this.backend.chat) return;
+    if (this.chat?.run.id === r.id) return;
+    this.chat?.dispose();
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const pane = new ChatPane(
+      r,
+      this.backend.chat,
+      { renderMarkdown: (md, e) => this.host.renderMarkdown(md, e), icon: (e, n) => this.host.icon(e, n), notice: (m) => this.host.notice(m), open: (t) => this.backend.open(t) },
+      () => {
+        this.closeChat();
+        if (opener?.isConnected) opener.focus();
+      },
+      this.chatDrafts,
+    );
+    this.chat = pane;
+    this.head.after(pane.root);
+    this.root.classList.add("pw-chatting");
+    pane.start();
+  }
+
+  closeChat(): void {
+    if (!this.chat) return;
+    this.chat.dispose();
+    this.chat = undefined;
+    this.root.classList.remove("pw-chatting");
+  }
+
   private feedJump(selector: string): void {
     if (!this.split && this.mode === "board") this.setView("feed");
     this.reveal(selector, "start");
@@ -1594,7 +1629,23 @@ export class Panel {
     return !root.device || !!root.remote;
   }
 
+  /** A Codex run on this machine opens as a conversation here, when the host can run codex. */
+  private canChat(r: Run): boolean {
+    return r.runtime === "codex" && !r.device && !!this.backend.chat;
+  }
+
+  private linkable(r: Run): boolean {
+    return this.canChat(r) || this.canOpen(r);
+  }
+
+  /** What a click on a run's name does: a Codex conversation here, or its Claude session. */
+  private activate(r: Run): void {
+    if (this.canChat(r)) return this.openChat(r);
+    void this.backend.goto(r.id).catch((err) => this.host.notice(err instanceof Error ? err.message : String(err)));
+  }
+
   private openHint(r: Run): string {
+    if (this.canChat(r)) return "Open this Codex conversation here: read it and send it messages";
     const root = this.rootOf(r);
     const where = root.device ? `on ${root.device}, through Remote Control` : "in the Claude app";
     return root === r ? `Open this session ${where}` : `Open ${root.title}, the session it works under, ${where}`;
@@ -1666,13 +1717,12 @@ export class Panel {
     mark.title = `${service ? `${service} ${r.kind}` : r.kind === "declared" ? "declared job" : `${r.runtime} ${r.kind}`}${r.role === "lead" ? " (lead)" : ""} · ${STATE_LABEL[r.state]}`;
     const text = el("div", "pw-run-text", undefined, who);
     const title = el("span", "pw-run-title", r.title, text);
-    if (this.canOpen(r)) {
+    if (this.linkable(r)) {
       title.classList.add("is-link");
       title.title = this.openHint(r);
       title.setAttribute("role", "link");
       title.tabIndex = 0;
-      const go = () =>
-        void this.backend.goto(r.id).catch((err) => this.host.notice(err instanceof Error ? err.message : String(err)));
+      const go = () => this.activate(r);
       title.onclick = go;
       title.onkeydown = (e) => {
         if (e.key === "Enter") go();

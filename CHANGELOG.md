@@ -4,6 +4,7 @@
 
 - Fix: a session running on another machine could not be opened from this one, and on Windows no Claude app session could be opened at all. Parawatch only looked for the Claude app's sessions in the folder of the installer build, while the Microsoft Store build keeps them elsewhere; it now looks in both. When a session has Remote Control on, parawatch passes its link to the other machines, so clicking it there opens it on claude.ai. A subagent opens the session it works under. A session on another machine without Remote Control is no longer shown as a link, and its tooltip names the machine it runs on. The machine running the session needs this version to pass the link on.
 - On Windows, `goto` opens links through the system handler, so a link with `&` in it is no longer cut short.
+- The app opens Codex sessions and `codex exec` jobs as conversations. Click one on this machine to read what was asked, what Codex answered, the commands it ran (with their output) and the files it changed (with the diff), as Codex writes them. Type below to send it the next message: it runs `codex exec resume` with the sandbox, extra folders and model the session last had, and never waits for an approval, as an `exec` run cannot ask. While Codex answers, the pane shows what it is doing, with a button to stop it. A session that is open in the Codex app or a terminal, or that Codex is already working on, takes no message until it is free. Set `PARAWATCH_CODEX_BIN` when the app cannot find `codex`.
 
 ## 0.3.14 (2026-11-13)
 

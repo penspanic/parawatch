@@ -1,6 +1,7 @@
 // The only bridge between the page and the app: a small, typed API on window.parawatch.
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { AboutInfo, Prefs, UpdateState } from "./prefs";
+import type { ChatState } from "../../../src/core/codexChat.js";
 
 type Listener<T> = (value: T) => void;
 
@@ -37,6 +38,15 @@ const api = {
   targetMenu: (target: string) => ipcRenderer.invoke("pw:target-menu", target),
   saveAttachment: (data: ArrayBuffer, ext: string) => ipcRenderer.invoke("pw:save-attachment", data, ext),
   droppedPath: (file: File) => webUtils.getPathForFile(file) || undefined,
+  chatOpen: (id: string) => ipcRenderer.invoke("pw:chat-open", id) as Promise<ChatState>,
+  chatClose: (id: string) => ipcRenderer.invoke("pw:chat-close", id) as Promise<void>,
+  chatSend: (id: string, text: string) => ipcRenderer.invoke("pw:chat-send", id, text) as Promise<void>,
+  chatStop: (id: string) => ipcRenderer.invoke("pw:chat-stop", id) as Promise<void>,
+  onChat: (fn: (id: string, state: ChatState) => void) => {
+    const handler = (_e: unknown, id: string, state: ChatState) => fn(id, state);
+    ipcRenderer.on("pw:chat", handler);
+    return () => ipcRenderer.removeListener("pw:chat", handler);
+  },
   onSnapshot: (fn: Listener<unknown>) => on("pw:snapshot", fn),
   onError: (fn: Listener<string | null>) => on("pw:error", fn),
   onFocusCard: (fn: Listener<string>) => on("pw:focus-card", fn),
