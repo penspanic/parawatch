@@ -278,3 +278,34 @@ describe("board and feed", () => {
   });
 });
 
+describe("opening a session", () => {
+  const links = () => Object.fromEntries([...root.querySelectorAll(".pw-run-title")].map((t) => [t.textContent, t.classList.contains("is-link")]));
+
+  it("links a session here, one elsewhere only with a Remote Control link, and a subagent through its session", () => {
+    mount(
+      snapshot({
+        runs: [
+          run({ id: "here", title: "Here" }),
+          run({ id: "sub", title: "Its subagent", kind: "subagent", parent: "here" }),
+          run({ id: "pc", title: "Spill Director", device: "winpc", remote: "https://claude.ai/code/session_01ABC" }),
+          run({ id: "pc-sub", title: "206 bottle shop", kind: "subagent", parent: "pc", device: "winpc" }),
+          run({ id: "pc-bare", title: "No remote", device: "winpc" }),
+          run({ id: "job", title: "Bench", kind: "declared", runtime: "declared" }),
+        ],
+      }),
+    );
+    expect(links()).toEqual({ Here: true, "Its subagent": true, "Spill Director": true, "206 bottle shop": true, "No remote": false, Bench: false });
+    const sub = [...root.querySelectorAll<HTMLElement>(".pw-run-title")].find((t) => t.textContent === "206 bottle shop")!;
+    expect(sub.title).toBe("Open Spill Director, the session it works under, on winpc, through Remote Control");
+    sub.click();
+    expect(backend.goto).toHaveBeenCalledWith("pc-sub");
+  });
+
+  it("the board links the same way", () => {
+    window.localStorage.setItem("parawatch:view", "board");
+    mount(snapshot({ runs: [run({ id: "pc", title: "Spill Director", device: "winpc", remote: "https://claude.ai/code/session_01ABC" }), run({ id: "pc-bare", title: "No remote", device: "winpc" })] }));
+    const titles = Object.fromEntries([...root.querySelectorAll(".pw-board .pw-br-title")].map((t) => [t.textContent, t.tagName]));
+    expect(titles).toEqual({ "Spill Director": "A", "No remote": "SPAN" });
+  });
+});
+

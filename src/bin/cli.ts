@@ -187,7 +187,8 @@ program
   .option("--copy", "also put a line about the card on the clipboard, to paste into that session")
   .option("--print", "print the link instead of opening it")
   .action((target: string, o) => {
-    const g = resolveGoto(target, readState());
+    const state = readState();
+    const g = resolveGoto(target, state, collectRuns(state, { sinceHours: 24, includeEnded: true }));
     if (o.copy && g.card) {
       const line = cardContextLine(g.card);
       try {
@@ -196,12 +197,15 @@ program
         process.stderr.write(`parawatch: could not copy to the clipboard; the line is: ${line}\n`);
       }
     }
+    if (!g.url && g.device) throw new UserError(`${g.name} runs on ${g.device}. Open it there, or turn on Remote Control for it in the Claude app to open it from here.`);
     if (!g.url) throw new UserError(`${g.name} is not a Claude desktop session. In a terminal: claude --resume ${g.session}`);
     if (o.print) {
       process.stdout.write(g.url + "\n");
       return;
     }
-    execFileSync("open", [g.url]);
+    // cmd start would cut the link at its &
+    if (process.platform === "win32") execFileSync("rundll32", ["url.dll,FileProtocolHandler", g.url]);
+    else execFileSync(process.platform === "darwin" ? "open" : "xdg-open", [g.url]);
     process.stdout.write(`Opened ${g.name}${g.desktop?.archived ? " (archived)" : ""}\n`);
   });
 

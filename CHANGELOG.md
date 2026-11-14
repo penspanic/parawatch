@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Fix: a session running on another machine could not be opened from this one, and on Windows no Claude app session could be opened at all. Parawatch only looked for the Claude app's sessions in the folder of the installer build, while the Microsoft Store build keeps them elsewhere; it now looks in both. When a session has Remote Control on, parawatch passes its link to the other machines, so clicking it there opens it on claude.ai. A subagent opens the session it works under. A session on another machine without Remote Control is no longer shown as a link, and its tooltip names the machine it runs on. The machine running the session needs this version to pass the link on.
+- On Windows, `goto` opens links through the system handler, so a link with `&` in it is no longer cut short.
+
 ## 0.3.14 (2026-11-13)
 
 - Fix: the app could update twice in a row. Once an update was downloaded, it stopped looking, so a release that came out later was only found after the restart. It now keeps looking while an update is ready, and looks once more right before Restart to Update; when something newer is out, it downloads that and then restarts into it.

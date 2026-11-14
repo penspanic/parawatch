@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { scanAll } from "../adapters/index.js";
 import { ACTIVITY_MINUTES, activeMinutes } from "../adapters/jsonl.js";
-import { archivedSessions } from "./desktop.js";
+import { archivedSessions, withRemote } from "./desktop.js";
 import { canonicalPath, insidePath, namesPath, samePath } from "./paths.js";
 import { applyPrompts } from "./prompts.js";
 import type { State } from "./state.js";
@@ -398,7 +398,7 @@ export function collectRuns(state: State, q: RunQuery, now = Date.now()): Run[] 
   const sinceMs = now - q.sinceHours * 3_600_000;
   // a log file can be touched (title records, snapshots) long after its last real activity
   const recent = (r: Run) => !r.lastActivity || Date.parse(r.lastActivity) >= sinceMs;
-  let runs = applyPrompts(endArchived(attribute(scanAll({ sinceMs, now }, q.runtimes), state), archivedSessions())).filter(recent);
+  let runs = withRemote(applyPrompts(endArchived(attribute(scanAll({ sinceMs, now }, q.runtimes), state), archivedSessions())).filter(recent));
   // a narrower reading (one runtime) would hide the rest from the other machines
   if (!q.runtimes) shareRuns(runs, now);
   runs.push(...otherRuns(state, now).filter(recent));

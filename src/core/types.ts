@@ -348,6 +348,8 @@ export interface Run {
   scheduled?: boolean;
   /** older runs of the same scheduled task folded into this row */
   repeats?: number;
+  /** its Remote Control link (claude.ai), which opens from any machine; read where the session runs */
+  remote?: string;
   /** when the human (or parent) last wrote to this run */
   lastPromptAt?: string;
   /** pull requests this run opened, as seen in its log */

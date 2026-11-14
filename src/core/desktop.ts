@@ -4,17 +4,32 @@ import path from "node:path";
 import { parsePrRef } from "./github.js";
 import { UserError } from "./errors.js";
 import { sessionTitle, type State } from "./state.js";
-import type { Card } from "./types.js";
+import type { Card, Run } from "./types.js";
 
 /**
  * Where the Claude desktop app keeps its Code sessions: one JSON file per session, named
- * `local_<id>.json`, holding the CLI session id the app runs (`cliSessionId`).
+ * `local_<id>.json`, holding the CLI session id the app runs (`cliSessionId`). On Windows the
+ * Store build keeps them under `%LOCALAPPDATA%\Claude-Data\claude_<package>`, the installer build
+ * under `%APPDATA%\Claude`.
  */
-export function desktopSessionsDir(): string {
-  return (
-    process.env.PARAWATCH_CLAUDE_DESKTOP_DIR ||
-    path.join(os.homedir(), "Library", "Application Support", "Claude", "claude-code-sessions")
-  );
+export function desktopSessionsDirs(): string[] {
+  const env = process.env.PARAWATCH_CLAUDE_DESKTOP_DIR;
+  if (env) return [env];
+  const home = os.homedir();
+  if (process.platform === "win32") {
+    const roaming = process.env.APPDATA || path.join(home, "AppData", "Roaming");
+    const local = process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");
+    const out = [path.join(roaming, "Claude", "claude-code-sessions")];
+    const data = path.join(local, "Claude-Data");
+    try {
+      for (const e of fs.readdirSync(data, { withFileTypes: true })) if (e.isDirectory() && /^claude_/i.test(e.name)) out.push(path.join(data, e.name, "claude-code-sessions"));
+    } catch {
+      // no Store build here
+    }
+    return out;
+  }
+  if (process.platform === "darwin") return [path.join(home, "Library", "Application Support", "Claude", "claude-code-sessions")];
+  return [path.join(process.env.XDG_CONFIG_HOME || path.join(home, ".config"), "Claude", "claude-code-sessions")];
 }
 
 export interface DesktopSession {
@@ -25,6 +40,8 @@ export interface DesktopSession {
   cwd?: string;
   archived: boolean;
   lastActivityAt: number;
+  /** its Remote Control session (`session_…`), when it has one: openable from any machine */
+  remote?: string;
 }
 
 function* sessionFiles(dir: string, depth = 0): Generator<string> {
@@ -50,9 +67,9 @@ interface Read {
 const readCache = new Map<string, Read>();
 
 /** Every desktop app session in the folder, read once per change of its file. */
-function desktopSessions(dir: string): (DesktopSession & { ids: string[] })[] {
+function desktopSessions(dirs: string | string[]): (DesktopSession & { ids: string[] })[] {
   const out: (DesktopSession & { ids: string[] })[] = [];
-  for (const file of sessionFiles(dir)) {
+  for (const file of [dirs].flat().flatMap((d) => [...sessionFiles(d)])) {
     let mtimeMs: number;
     try {
       mtimeMs = fs.statSync(file).mtimeMs;
@@ -86,11 +103,14 @@ function readSessionFile(file: string): (DesktopSession & { ids: string[] }) | u
     cwd: typeof d.cwd === "string" ? d.cwd : undefined,
     archived: d.isArchived === true,
     lastActivityAt: typeof d.lastActivityAt === "number" ? d.lastActivityAt : 0,
+    remote: Array.isArray(d.bridgeSessionIds) ? d.bridgeSessionIds.find((x): x is string => typeof x === "string" && REMOTE_ID.test(x)) : undefined,
   };
 }
 
 /** The desktop app session running a CLI session (full id or a prefix of 6+ characters). */
-export function findDesktopSession(cliSession: string, dir = desktopSessionsDir()): DesktopSession | undefined {
+const REMOTE_ID = /^session_[A-Za-z0-9]+$/;
+
+export function findDesktopSession(cliSession: string, dir: string | string[] = desktopSessionsDirs()): DesktopSession | undefined {
   if (cliSession.length < 6) return undefined;
   let best: DesktopSession | undefined;
   for (const { ids, ...s } of desktopSessions(dir)) {
@@ -106,7 +126,7 @@ export function findDesktopSession(cliSession: string, dir = desktopSessionsDir(
  * (full or a prefix of 6+ characters). Such a session never takes another turn, however its log
  * ends. A CLI session that a live desktop session also runs is not archived.
  */
-export function archivedSessions(dir = desktopSessionsDir()): (session: string | undefined) => boolean {
+export function archivedSessions(dir: string | string[] = desktopSessionsDirs()): (session: string | undefined) => boolean {
   const archived = new Set<string>();
   const live = new Set<string>();
   for (const s of desktopSessions(dir)) for (const id of s.ids) (s.archived ? archived : live).add(id);
@@ -124,11 +144,31 @@ export function desktopSessionUrl(s: DesktopSession): string {
   return `claude://code/continue?session=${encodeURIComponent(s.id)}&source=parawatch`;
 }
 
+/** A Remote Control session on claude.ai, which opens from any machine signed in to the account. */
+export function remoteSessionUrl(id: string): string {
+  return `https://claude.ai/code/${encodeURIComponent(id)}`;
+}
+
+/** Give each Claude Code session of this machine its Remote Control link, when it has one. */
+export function withRemote(runs: Run[], dir: string | string[] = desktopSessionsDirs()): Run[] {
+  const sessions = runs.filter((r) => r.runtime === "claude-code" && r.kind === "session" && !r.device);
+  if (!sessions.length) return runs;
+  const remote = new Map<string, string>();
+  for (const s of desktopSessions(dir)) if (s.remote && !s.archived) for (const id of s.ids) remote.set(id, s.remote);
+  for (const r of sessions) {
+    const id = remote.get(r.id);
+    if (id) r.remote = remoteSessionUrl(id);
+  }
+  return runs;
+}
+
 export interface GotoTarget {
   /** the name to show: the claimed title, else the app's title, else the id */
   name: string;
   session: string;
   card?: Card;
+  /** the machine the session runs on, when not this one */
+  device?: string;
   /** set when the session lives in the Claude desktop app */
   desktop?: DesktopSession;
   url?: string;
@@ -153,15 +193,21 @@ function prSession(target: string, state: State): string | undefined {
 }
 
 /** Where `goto` leads for a card id, a pull request, or a session id (prefix). */
-export function resolveGoto(target: string, state: State): GotoTarget {
+export function resolveGoto(target: string, state: State, runs: Run[] = []): GotoTarget {
   const card = state.cards.get(target);
-  const session = card ? card.session : (prSession(target, state) ?? target);
+  let session = card ? card.session : (prSession(target, state) ?? target);
   if (!session) {
     throw new UserError(`card ${target} does not say which session opened it (set one with: parawatch edit ${target} --session <id>)`);
   }
-  const desktop = findDesktopSession(session);
-  const name = sessionTitle(state.claims, session) ?? desktop?.title ?? session.slice(0, 8);
-  return { name, session, card, desktop, url: desktop ? desktopSessionUrl(desktop) : undefined };
+  // a subagent has no window of its own: open the session it works under
+  const byId = new Map(runs.map((r) => [r.id, r]));
+  let run = runs.find((r) => r.id === session || (session!.length >= 6 && r.id.startsWith(session!)));
+  for (let i = 0; run?.parent && byId.has(run.parent) && i < 8; i++) run = byId.get(run.parent);
+  if (run) session = run.id;
+  const desktop = run?.device ? undefined : findDesktopSession(session);
+  const name = sessionTitle(state.claims, session) ?? run?.title ?? desktop?.title ?? session.slice(0, 8);
+  const url = desktop ? desktopSessionUrl(desktop) : run?.remote;
+  return { name, session, card, desktop, device: run?.device, url };
 }
 
 /** A line to paste into the session so it knows which card the human means. */

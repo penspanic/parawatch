@@ -5,7 +5,8 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { beforeEach, describe, expect, it } from "vitest";
 import { answerCard, claimSession, closeCard, commentCard, editCard, openCard, readInbox, storedPath, UserError, waitInbox } from "../src/core/ops.js";
-import { desktopSessionUrl, findDesktopSession } from "../src/core/desktop.js";
+import { desktopSessionsDirs, desktopSessionUrl, findDesktopSession, resolveGoto, withRemote } from "../src/core/desktop.js";
+import type { Run } from "../src/core/types.js";
 import { recentlyClosed, snapshot } from "../src/core/snapshot.js";
 import { fold } from "../src/core/state.js";
 import { readEvents } from "../src/core/store.js";
@@ -228,5 +229,46 @@ describe("desktop sessions", () => {
     expect(s.id).toBe("local_live");
     expect(desktopSessionUrl(s)).toBe("claude://code/continue?session=local_live&source=parawatch");
     expect(findDesktopSession("nothere", dir)).toBeUndefined();
+  });
+
+  it("reads a session's Remote Control id, from any of several folders", () => {
+    const a = fs.mkdtempSync(path.join(os.tmpdir(), "parawatch-desk-a-"));
+    const b = fs.mkdtempSync(path.join(os.tmpdir(), "parawatch-desk-b-"));
+    fs.writeFileSync(path.join(b, "local_pc.json"), JSON.stringify({ sessionId: "local_pc", cliSessionId: "c004f2a7-1", bridgeSessionIds: ["session_01ABC", "not one"] }));
+    expect(findDesktopSession("c004f2a7", [a, b])).toMatchObject({ id: "local_pc", remote: "session_01ABC" });
+    const runs = withRemote([{ id: "c004f2a7-1", runtime: "claude-code", kind: "session", title: "Director", state: "idle" } as Run], [a, b]);
+    expect(runs[0]!.remote).toBe("https://claude.ai/code/session_01ABC");
+  });
+
+  it("finds the Windows Store build's folder", () => {
+    const local = fs.mkdtempSync(path.join(os.tmpdir(), "parawatch-local-"));
+    fs.mkdirSync(path.join(local, "Claude-Data", "claude_pzs8sxrjxfjjc", "claude-code-sessions"), { recursive: true });
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    const saved = { dir: process.env.PARAWATCH_CLAUDE_DESKTOP_DIR, local: process.env.LOCALAPPDATA, roaming: process.env.APPDATA };
+    try {
+      delete process.env.PARAWATCH_CLAUDE_DESKTOP_DIR;
+      process.env.LOCALAPPDATA = local;
+      process.env.APPDATA = path.join(local, "roaming");
+      Object.defineProperty(process, "platform", { value: "win32" });
+      expect(desktopSessionsDirs()).toEqual([path.join(local, "roaming", "Claude", "claude-code-sessions"), path.join(local, "Claude-Data", "claude_pzs8sxrjxfjjc", "claude-code-sessions")]);
+    } finally {
+      Object.defineProperty(process, "platform", platform);
+      for (const [k, v] of [["PARAWATCH_CLAUDE_DESKTOP_DIR", saved.dir], ["LOCALAPPDATA", saved.local], ["APPDATA", saved.roaming]] as const) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  });
+
+  it("goto opens a subagent's session, and a session on another machine by its Remote Control link", () => {
+    const state = fold([]);
+    const run = (r: Partial<Run> & Pick<Run, "id">) => ({ runtime: "claude-code", kind: "session", title: r.id, state: "idle", ...r }) as Run;
+    const runs = [
+      run({ id: "pc-lead-0001", title: "Spill Director", device: "winpc", remote: "https://claude.ai/code/session_01ABC" }),
+      run({ id: "agent-206", kind: "subagent", parent: "pc-lead-0001", title: "206 bottle shop", device: "winpc" }),
+      run({ id: "pc-other-0002", title: "No remote", device: "winpc" }),
+    ];
+    expect(resolveGoto("agent-206", state, runs)).toMatchObject({ session: "pc-lead-0001", name: "Spill Director", device: "winpc", url: "https://claude.ai/code/session_01ABC" });
+    expect(resolveGoto("pc-other-0002", state, runs)).toMatchObject({ device: "winpc", url: undefined });
   });
 });
