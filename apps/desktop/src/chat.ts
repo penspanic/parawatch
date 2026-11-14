@@ -6,12 +6,14 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import { cannotSend, findCodex, liveLine, logOpenBy, readChat, resumeArgs, type ChatState } from "../../../src/core/codexChat.js";
+import type { ChatView } from "../../../src/core/chatTypes.js";
 import type { Run } from "../../../src/core/types.js";
 
 export interface ChatDeps {
   /** the run behind an id, from the latest snapshot */
   run(id: string): Run | undefined;
-  push(id: string, state: ChatState): void;
+  /** the conversation changed; `owners` are who has it open (this window, other machines) */
+  push(id: string, state: ChatState, owners: ReadonlySet<string>): void;
   spawn?: typeof spawn;
   codex?: () => string | undefined;
   openBy?: (file: string) => number[] | undefined;
@@ -23,6 +25,7 @@ interface Open {
   poll?: NodeJS.Timeout;
   timer?: NodeJS.Timeout;
   mtime: number;
+  owners: Set<string>;
 }
 
 interface Sending {
@@ -35,6 +38,11 @@ export class Chats {
   private open = new Map<string, Open>();
   private sending = new Map<string, Sending>();
   private errors = new Map<string, string>();
+  /**
+   * Turns a codex started here left unfinished in the log: a stopped codex on Windows ends at once,
+   * without writing that the turn ended. Once its process is gone the turn is over, whatever the log says.
+   */
+  private cut = new Map<string, { turn: string; stopped: boolean }>();
   constructor(private deps: ChatDeps) {}
 
   private fileOf(id: string): string {
@@ -51,7 +59,7 @@ export class Chats {
     const o = this.open.get(id);
     const file = o?.file ?? this.fileOf(id);
     const s = this.sending.get(id);
-    const view = readChat(file);
+    const view = this.withCut(id, readChat(file));
     // this app has the log open itself, to watch it (kqueue on macOS keeps a descriptor)
     const mine = [process.pid, ...(s?.child.pid ? [s.child.pid] : [])];
     const blocked = s ? undefined : cannotSend(view, (this.deps.openBy ?? logOpenBy)(file), mine);
@@ -59,10 +67,13 @@ export class Chats {
     return { view, ...(blocked ? { blocked } : {}), sending: !!s, ...(s?.live ? { live: s.live } : {}), ...(error ? { error } : {}) };
   }
 
-  openChat(id: string): ChatState {
-    if (!this.open.has(id)) {
+  /** Start watching a conversation for `owner`; it is watched while anyone has it open. */
+  openChat(id: string, owner = "window"): ChatState {
+    const had = this.open.get(id);
+    if (had) had.owners.add(owner);
+    else {
       const file = this.fileOf(id);
-      const o: Open = { file, mtime: 0 };
+      const o: Open = { file, mtime: 0, owners: new Set([owner]) };
       try {
         o.watcher = fs.watch(file, () => this.changed(id));
       } catch {
@@ -82,9 +93,11 @@ export class Chats {
     return this.state(id);
   }
 
-  closeChat(id: string): void {
+  closeChat(id: string, owner = "window"): void {
     const o = this.open.get(id);
     if (!o) return;
+    o.owners.delete(owner);
+    if (o.owners.size) return;
     o.watcher?.close();
     if (o.poll) clearInterval(o.poll);
     if (o.timer) clearTimeout(o.timer);
@@ -105,9 +118,9 @@ export class Chats {
     if (!o) return;
     try {
       o.mtime = fs.statSync(o.file).mtimeMs;
-      this.deps.push(id, this.state(id));
+      this.deps.push(id, this.state(id), o.owners);
     } catch (err) {
-      this.deps.push(id, { sending: this.sending.has(id), error: (err as Error).message });
+      this.deps.push(id, { sending: this.sending.has(id), error: (err as Error).message }, o.owners);
     }
   }
 
@@ -145,6 +158,12 @@ export class Chats {
     const done = (code: number | null, err?: Error) => {
       if (this.sending.get(id) !== s) return;
       this.sending.delete(id);
+      try {
+        const v = readChat(this.open.get(id)?.file ?? this.fileOf(id));
+        if (v.working && v.turnStarted) this.cut.set(id, { turn: v.turnStarted, stopped: !!s.stopped });
+      } catch {
+        // the log went away; nothing to correct
+      }
       if (err) this.errors.set(id, `Could not run codex: ${err.message}`);
       else if (code !== 0 && !s.stopped) this.errors.set(id, lastLines(stderr) || `codex stopped with exit code ${code}`);
       this.emit(id);
@@ -153,6 +172,13 @@ export class Chats {
     child.on("close", (code) => done(code));
     child.stdin?.end(message);
     this.emit(id);
+  }
+
+  private withCut(id: string, view: ChatView): ChatView {
+    const c = this.cut.get(id);
+    if (!c || !view.working || view.turnStarted !== c.turn) return view;
+    const items = c.stopped ? [...view.items, { kind: "note" as const, id: `stopped-${c.turn}`, text: "Stopped", tone: "info" as const }] : view.items;
+    return { ...view, working: false, turnStarted: undefined, items };
   }
 
   stop(id: string): void {
@@ -166,9 +192,14 @@ export class Chats {
     }, 5000).unref?.();
   }
 
+  /** Whether `owner` has this conversation open. */
+  isOpen(id: string, owner = "window"): boolean {
+    return !!this.open.get(id)?.owners.has(owner);
+  }
+
   /** Stop watching everything; messages being answered keep running to the end. */
   dispose(): void {
-    for (const id of [...this.open.keys()]) this.closeChat(id);
+    for (const [id, o] of [...this.open]) for (const w of [...o.owners]) this.closeChat(id, w);
   }
 }
 

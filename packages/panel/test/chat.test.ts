@@ -69,13 +69,14 @@ beforeEach(() => {
 });
 
 describe("Codex conversations in the panel", () => {
-  it("a Codex run here opens as a conversation; one on another machine, or with no chat in the host, does not", async () => {
+  it("a Codex run opens as a conversation, here or from another machine; with no chat in the host it does not", async () => {
     mount([
       run({ id: "lead", title: "Lead" }),
       run({ id: "x1", title: "Icons job", runtime: "codex", kind: "exec", parent: "lead" }),
       run({ id: "x2", title: "PC job", runtime: "codex", kind: "exec", device: "winpc" }),
     ]);
-    expect(title("PC job").classList.contains("is-link")).toBe(false);
+    expect(title("PC job").classList.contains("is-link")).toBe(true);
+    expect(title("PC job").title).toContain("from winpc");
     title("Icons job").click();
     await flush();
     expect(goto).not.toHaveBeenCalled();
@@ -88,6 +89,19 @@ describe("Codex conversations in the panel", () => {
     root = document.getElementById("panel")!;
     mount([run({ id: "x1", title: "Icons job", runtime: "codex", kind: "exec" })], false);
     expect(title("Icons job").classList.contains("is-link")).toBe(false);
+  });
+
+  it("waits for the other machine, then names it where the conversation runs", async () => {
+    const pc = run({ id: "x2", title: "PC job", runtime: "codex", kind: "exec", device: "winpc" });
+    chat.open.mockResolvedValueOnce({ sending: false, remote: "winpc", waiting: "Waiting for winpc.", blocked: "Waiting for winpc." });
+    const p = mount([pc]);
+    p.openChat(pc);
+    await flush();
+    expect(root.querySelector(".pw-chat-list")?.textContent).toBe("Waiting for winpc.");
+    expect(root.querySelector(".pw-chat-sub")?.textContent).toContain("on winpc");
+    expect((root.querySelector(".pw-chat-input") as HTMLTextAreaElement | null)?.disabled).toBe(true);
+    push("x2", state({ remote: "winpc" }));
+    expect(root.querySelector(".pw-chat-note")?.textContent).toMatch(/Runs on winpc without asking/);
   });
 
   it("shows messages, folds a run of steps with its failures counted, and opens a step's output", async () => {

@@ -173,7 +173,8 @@ export class ChatPane {
           : st.sandbox === "read-only"
             ? "read only"
             : (st.sandbox ?? "");
-    return [st.model, st.effort, sandbox].filter(Boolean).join(" · ") + ". Runs without asking, as the session did.";
+    const on = this.state?.remote ? ` on ${this.state.remote}` : "";
+    return [st.model, st.effort, sandbox].filter(Boolean).join(" · ") + `. Runs${on} without asking, as the session did.`;
   }
 
   private renderHead(): void {
@@ -189,7 +190,8 @@ export class ChatPane {
     const v = this.state?.view;
     const where = v?.settings.cwd ? home(v.settings.cwd) : this.run.cwd ? home(this.run.cwd) : "";
     const origin = v?.origin === "exec" ? "codex exec" : v?.origin === "app" ? "Codex app" : v?.origin === "cli" ? "Codex CLI" : "Codex";
-    el("div", "pw-chat-sub", [origin, where].filter(Boolean).join(" · "), text);
+    const machine = this.state?.remote ?? this.run.device;
+    el("div", "pw-chat-sub", [origin, machine ? `on ${machine}` : "", where].filter(Boolean).join(" · "), text);
     const copy = el("button", "pw-icon-btn clickable-icon", undefined, h);
     this.host.icon(copy, "terminal");
     copy.title = "Copy the command that opens this session in a terminal";
@@ -208,6 +210,7 @@ export class ChatPane {
     this.list.replaceChildren();
     if (!v) {
       if (this.state?.error) el("div", "pw-chat-empty is-error", this.state.error, this.list);
+      else if (this.state?.waiting) el("div", "pw-chat-empty", this.state.waiting, this.list);
       return;
     }
     if (v.earlier) el("div", "pw-chat-earlier", `${v.earlier} earlier step${v.earlier === 1 ? "" : "s"} not shown`, this.list);

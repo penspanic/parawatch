@@ -19,6 +19,8 @@ export interface Prefs {
   serviceIcons: boolean;
   /** bring the command line to the app's version with the npm that installed it */
   updateCli: boolean;
+  /** let other machines send messages to this machine's Codex sessions, not only show them */
+  remoteChat: boolean;
 }
 
 /** Where the command line stands against the app, for the settings screen. */
@@ -82,6 +84,7 @@ export function validPref<K extends keyof Prefs>(key: K, value: unknown): value 
     case "checkUpdates":
     case "serviceIcons":
     case "updateCli":
+    case "remoteChat":
       return typeof value === "boolean";
     case "sinceHours":
       return SINCE_HOURS.includes(value as number);

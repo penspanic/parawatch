@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- A Codex session on another machine opens as a conversation too. The log and `codex` stay on that machine: its Parawatch app reads the session and writes the conversation to the shared folder, and a message typed here waits in the shared folder until that machine sends it to Codex and shows the answer, a few seconds later, as the sync tool moves the files. Both machines need this version, and the app has to be running on the machine with the session. Other machines can look at a session without asking; to send it messages, turn on "Messages from other machines" in the settings of the machine it runs on (off by default), since a message runs there without asking, as the session did. A message that takes more than two minutes to get there is not sent.
+- Fix: on Windows, stopping a Codex answer left the conversation "working" for good, so it took no more messages. A stopped codex on Windows ends without writing that its turn ended; once the process is gone, the turn now counts as over and the conversation shows that it was stopped.
+- The app finds `codex` where the Codex installer for Windows puts it.
+
 ## 0.3.15 (2026-11-14)
 
 - Fix: a session running on another machine could not be opened from this one, and on Windows no Claude app session could be opened at all. Parawatch only looked for the Claude app's sessions in the folder of the installer build, while the Microsoft Store build keeps them elsewhere; it now looks in both. When a session has Remote Control on, parawatch passes its link to the other machines, so clicking it there opens it on claude.ai. A subagent opens the session it works under. A session on another machine without Remote Control is no longer shown as a link, and its tooltip names the machine it runs on. The machine running the session needs this version to pass the link on.
