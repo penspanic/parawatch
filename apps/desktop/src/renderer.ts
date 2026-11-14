@@ -62,6 +62,13 @@ const backend: Backend = {
   droppedPath: (file: File) => api.droppedPath(file),
   siteIcon: (site: string) => call(api.siteIcon(site)).catch(() => undefined),
   targetMenu: (target: string) => void call(api.targetMenu(target)).catch((err) => toast(plain(err).message)),
+  chat: {
+    open: (run: string) => call(api.chatOpen(run)),
+    close: (run: string) => void api.chatClose(run).catch(() => {}),
+    send: (run: string, text: string) => call(api.chatSend(run, text)),
+    stop: (run: string) => call(api.chatStop(run)),
+    onUpdate: (fn) => api.onChat(fn),
+  },
 };
 
 /** The settings button at the end of the status row. */

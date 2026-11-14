@@ -2,7 +2,7 @@
 // `parawatch status --json` snapshot. Answers are logged instead of sent.
 import { Panel } from "../src/panel";
 import { setIcon } from "../src/icons";
-import type { Backend, Card, Reply, Snapshot } from "../src/types";
+import type { Backend, Card, ChatItem, ChatState, Reply, Snapshot } from "../src/types";
 
 const now = Date.now();
 const at = (min: number) => new Date(now - min * 60_000).toISOString();
@@ -302,6 +302,65 @@ async function load(): Promise<Snapshot> {
   };
 }
 
+/** A Codex conversation for the chat pane; a message sent here gets a canned answer. */
+const chatItems: ChatItem[] = [
+  { kind: "user", id: "u1", text: "Generate only the TODO icons in Assets/Icons. Keep the 24px grid and the stroke width of the existing set.", at: at(9) },
+  { kind: "agent", id: "a1", text: "I'll list the icons marked TODO first, then draw them to match the existing set.", commentary: true, at: at(9) },
+  { kind: "command", id: "c1", command: "rg -l TODO Assets/Icons", output: "Assets/Icons/bell.svg\nAssets/Icons/map.svg\nAssets/Icons/shield.svg", exit: 0, status: "completed", at: at(8) },
+  { kind: "command", id: "c2", command: "cat Assets/Icons/README.md", output: "24px grid, 2px stroke, round caps.", exit: 0, status: "completed", at: at(8) },
+  { kind: "command", id: "c3", command: "swift test --filter IconTests", output: "error: no such module 'IconKit'", exit: 1, status: "failed", at: at(7) },
+  { kind: "image", id: "i1", path: "/Users/me/game/Assets/Icons/preview.png", at: at(6) },
+  {
+    kind: "files",
+    id: "f1",
+    files: [
+      { path: "/Users/me/game/Assets/Icons/bell.svg", change: "update", diff: "@@ -1,3 +1,3 @@\n-<!-- TODO -->\n+<path d=\"M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9\"/>" },
+      { path: "/Users/me/game/Assets/Icons/map.svg", change: "add", diff: "@@ -0,0 +1,2 @@\n+<svg viewBox=\"0 0 24 24\">\n+</svg>" },
+    ],
+    at: at(5),
+  },
+  { kind: "agent", id: "a2", text: "Done: **bell**, **map** and **shield** are drawn on the 24px grid.\n\n- `swift test` fails before my change too (`IconKit` is missing), so I did not run the icon tests.\n- Preview: `Assets/Icons/preview.png`.", at: at(4) },
+];
+let chatSending = false;
+let chatListener: ((run: string, s: ChatState) => void) | undefined;
+const chatState = (): ChatState => ({
+  view: {
+    id: "019a-x1",
+    file: "/Users/me/.codex/sessions/rollout-x1.jsonl",
+    origin: "exec",
+    title: chatItems[0]!.kind === "user" ? (chatItems[0] as { text: string }).text.slice(0, 80) : "x1",
+    settings: { cwd: "/Users/me/game", model: "gpt-6.1-sol", effort: "low", sandbox: "workspace-write", network: false, roots: [], approval: "never" },
+    working: false,
+    items: [...chatItems],
+    earlier: 0,
+  },
+  sending: chatSending,
+  ...(chatSending ? { live: "Running rg -n stroke Assets/Icons" } : {}),
+});
+const chat: NonNullable<Backend["chat"]> = {
+  open: async (run) => {
+    log(`chat open ${run}`);
+    return chatState();
+  },
+  close: (run) => log(`chat close ${run}`),
+  send: async (run, text) => {
+    log(`chat send ${run}: ${text}`);
+    chatItems.push({ kind: "user", id: `u${chatItems.length}`, text, at: new Date().toISOString() });
+    chatSending = true;
+    chatListener?.(run, chatState());
+    setTimeout(() => {
+      chatSending = false;
+      chatItems.push({ kind: "agent", id: `a${chatItems.length}`, text: `Got it: ${text}`, at: new Date().toISOString() });
+      chatListener?.(run, chatState());
+    }, 1500);
+  },
+  stop: async (run) => log(`chat stop ${run}`),
+  onUpdate: (fn) => {
+    chatListener = fn;
+    return () => (chatListener = undefined);
+  },
+};
+
 const backend: Backend = {
   snapshot: load,
   async answer(card: string, reply: Reply) {
@@ -334,6 +393,7 @@ const backend: Backend = {
     if (i >= 0) fakeRuns.splice(i, 1);
   },
   open: (t) => log(`open ${t}`),
+  chat,
   mediaUrl: async (f) => media[f],
   saveAttachment: async (_d, ext) => `/tmp/pasted.${ext}`,
   droppedPath: (f) => `/Users/me/Desktop/${f.name}`,

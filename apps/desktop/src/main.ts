@@ -25,6 +25,7 @@ import { siteIcon } from "./siteIcons.js";
 import { KEEP_CLOSED, SINCE_HOURS, THEMES, validPref, type AboutInfo, type Prefs, type Theme, type UpdateState } from "./prefs.js";
 import { alertFor, agentsWorking, issueUrl, needsYou, newlyStuck, summary } from "./rules.js";
 import { cliState, onCliChange, updateCli } from "./cliUpdate.js";
+import { Chats } from "./chat.js";
 import { checkNow, freshestBeforeRestart, installNow, RELEASES_URL, resumeUnfinished, scheduleUpdates, stopUpdates, updateState } from "./updater.js";
 import { clearMarker, installingNotice, interruptedNotice, readMarker, startState, stillInstallingNotice, writeMarker } from "./updateInstall.js";
 
@@ -77,6 +78,12 @@ let quitting = false;
 let refreshTimer: NodeJS.Timeout | undefined;
 let debounce: NodeJS.Timeout | undefined;
 let stopFollowing: (() => void) | undefined;
+const chats = new Chats({
+  run: (id) => latest?.runs?.find((r) => r.id === id),
+  push: (id, state) => {
+    if (win && !win.isDestroyed()) win.webContents.send("pw:chat", id, state);
+  },
+});
 /** stuck pull requests and jobs already reported; the first look only learns them */
 const stuck = new Set<string>();
 let stuckPrimed = false;
@@ -757,6 +764,10 @@ function registerIpc(): void {
     }
     return `${MEDIA_SCHEME}://media/${encodeURIComponent(p)}`;
   });
+  ipcMain.handle("pw:chat-open", (_e, id: string) => chats.openChat(String(id)));
+  ipcMain.handle("pw:chat-close", (_e, id: string) => chats.closeChat(String(id)));
+  ipcMain.handle("pw:chat-send", (_e, id: string, text: string) => chats.send(String(id), String(text)));
+  ipcMain.handle("pw:chat-stop", (_e, id: string) => chats.stop(String(id)));
   ipcMain.handle("pw:save-attachment", async (_e, data: ArrayBuffer, ext: string) => {
     const dir = attachmentsDir();
     await fs.promises.mkdir(dir, { recursive: true });
@@ -804,6 +815,7 @@ if (!app.requestSingleInstanceLock()) {
   });
   app.on("will-quit", () => {
     stopFollowing?.();
+    chats.dispose();
     stopUpdates();
     if (githubTimer) clearInterval(githubTimer);
     try {

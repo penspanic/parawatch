@@ -1,6 +1,8 @@
 // Shapes shared with the CLI come straight from its source; the rest is the panel's own.
 import type { Card, Snapshot } from "../../../src/core/types.js";
+import type { ChatState } from "../../../src/core/chatTypes.js";
 
+export type { ChatItem, ChatSettings, ChatState, ChatView } from "../../../src/core/chatTypes.js";
 export type { Answer, Card, CardKind, Comment, Listener, PrView, Project, Run, RunState, Snapshot } from "../../../src/core/types.js";
 
 /** One line of `parawatch watch`. */
@@ -43,4 +45,17 @@ export interface Backend {
   targetMenu?(target: string): void;
   /** The site's own icon (its favicon) as a URL the panel can put in <img>, if the host fetches them. */
   siteIcon?(site: string): Promise<string | undefined>;
+  /** Codex conversations: read one and send it messages. Hosts that cannot run codex leave it out. */
+  chat?: ChatBackend;
+}
+
+export interface ChatBackend {
+  /** Start watching a Codex run's log; resolves to the conversation as it is now. */
+  open(run: string): Promise<ChatState>;
+  close(run: string): void;
+  /** Send a message to the session; what Codex does arrives through onUpdate. */
+  send(run: string, text: string): Promise<void>;
+  /** Interrupt the message being answered. */
+  stop(run: string): Promise<void>;
+  onUpdate(fn: (run: string, state: ChatState) => void): () => void;
 }
