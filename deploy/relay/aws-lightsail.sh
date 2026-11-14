@@ -24,10 +24,14 @@ if ! aws lightsail get-instance --instance-name "$NAME" >/dev/null 2>&1; then
   zone=$(aws lightsail get-regions --include-availability-zones --query "regions[?name=='$REGION'].availabilityZones[0].zoneName | [0]" --output text)
   userdata=$(mktemp)
   trap 'rm -f "$userdata"' EXIT
+  # Lightsail puts its own lines first and runs the result with sh, so the launch script only
+  # writes setup.sh out and hands it to bash
   {
-    echo "#!/bin/bash"
-    printf 'export RELAY_DOMAIN=%q RELAY_INVITE=%q\n' "$RELAY_DOMAIN" "$(cat "$INVITE_FILE")"
+    echo "#!/bin/sh"
+    echo "cat > /root/parawatch-relay-setup.sh <<'PARAWATCH_SETUP'"
     cat "$HERE/setup.sh"
+    echo "PARAWATCH_SETUP"
+    printf 'RELAY_DOMAIN=%s RELAY_INVITE=%s bash /root/parawatch-relay-setup.sh\n' "$RELAY_DOMAIN" "$(cat "$INVITE_FILE")"
   } > "$userdata"
   echo "making $NAME ($bundle in $zone)"
   aws lightsail create-instances --instance-names "$NAME" --availability-zone "$zone" --blueprint-id ubuntu_24_04 --bundle-id "$bundle" --user-data "file://$userdata" >/dev/null
