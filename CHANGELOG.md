@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fix: `deploy/relay/aws-lightsail.sh` made an instance that never set itself up. Lightsail puts its own lines in front of the launch script and runs it with `sh`, which stopped at the first bash-only line. The launch script now only writes `setup.sh` out and runs it with bash.
+
 ## 0.3.16 (2026-11-14)
 
 - The relay: a small server of your own that carries the shared folder between machines in place of Syncthing or a cloud drive. A machine seals every file, its path included, with a key the server never sees, and the server stores and hands out the sealed files. A change reaches the other machines in about a second, and no machine needs a port open. `parawatch relay setup <url> <folder>` makes a space and prints a code for the other machines, `parawatch relay join <code> <folder>` adds one, and the desktop app keeps the folder in step while it runs (`parawatch relay run` where there is no app). `parawatch relay serve` runs the server; `deploy/relay/` sets one up on Amazon Lightsail with HTTPS. See [The relay](docs/relay.md).
