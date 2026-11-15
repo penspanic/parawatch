@@ -254,6 +254,56 @@ describe("pull requests", () => {
     expect(third.events.map((e) => e.type === "pr.change" && e.change)).toEqual(["ci_failed"]);
   });
 
+  it("a PR linked since the last reading reports a CI that ended before it was first seen", () => {
+    const key = new Set([pr().key]);
+    const green = nextCache({ fetchedAt: ts(0), prs: [], since: {} }, [pr({ ci: "SUCCESS" })], ["github.com"], ts(10), key);
+    expect(green.events.map((e) => e.type === "pr.change" && e.change)).toEqual(["ci_passed"]);
+    const red = nextCache({ fetchedAt: ts(0), prs: [], since: {} }, [pr({ ci: "FAILURE" })], ["github.com"], ts(10), key);
+    expect(red.events.map((e) => e.type === "pr.change" && e.change)).toEqual(["ci_failed"]);
+    // already merged: only that
+    const merged = nextCache({ fetchedAt: ts(0), prs: [], since: {} }, [pr({ ci: "SUCCESS", state: "merged" })], ["github.com"], ts(10), key);
+    expect(merged.events.map((e) => e.type === "pr.change" && e.change)).toEqual(["merged"]);
+    // still running, or not newly linked: nothing yet
+    expect(nextCache({ fetchedAt: ts(0), prs: [], since: {} }, [pr({ ci: "PENDING" })], ["github.com"], ts(10), key).events).toEqual([]);
+    expect(nextCache({ fetchedAt: ts(0), prs: [], since: {} }, [pr({ ci: "SUCCESS" })], ["github.com"], ts(10)).events).toEqual([]);
+  });
+
+  it("reads the newest linked PRs by number, and not again once they are finished", async () => {
+    // more links than one reading asks for, the oldest first
+    for (let n = 1; n <= 90; n++) linkPr({ pr: parsePrRef(`acme/api#${n}`)!, session: "sess-123456", project: "api" });
+    let asked: number[] = [];
+    const gh: GhRunner = async (args) => {
+      if (args[0] === "auth") return JSON.stringify({ hosts: { "github.com": [{ state: "success" }] } });
+      const query = args.find((a) => a.startsWith("query="))!;
+      asked = [...query.matchAll(/p(\d+): repository\(owner: "acme", name: "api"\) \{ pullRequest\(number: (\d+)\)/g)].map((m) => Number(m[2]));
+      const data: Record<string, unknown> = { viewer: { login: "me" }, mine: { nodes: [] }, asked: { nodes: [] } };
+      asked.forEach((n, i) => {
+        // the even ones are merged
+        data[`p${i}`] = {
+          pullRequest: {
+            number: n, title: `PR ${n}`, url: `https://github.com/acme/api/pull/${n}`, state: n % 2 ? "OPEN" : "MERGED", isDraft: false,
+            mergeable: "MERGEABLE", updatedAt: ts(0), author: { login: "me" }, repository: { nameWithOwner: "acme/api" },
+            reviewRequests: { nodes: [] }, latestReviews: { nodes: [] }, comments: { totalCount: 0 },
+            commits: { nodes: [{ commit: { statusCheckRollup: { state: "SUCCESS" } } }] }, mergeQueueEntry: null, autoMergeRequest: null,
+          },
+        };
+      });
+      return JSON.stringify({ data });
+    };
+    await syncGithub({ state: fold(readEvents()), gh, force: true });
+    expect(asked).toHaveLength(80);
+    expect(asked[0]).toBe(90);
+    expect(asked).not.toContain(1);
+    // links made before the first reading report nothing
+    expect(readEvents().filter((e) => e.type === "pr.change")).toEqual([]);
+    expect(readCache().finished).toContain("github.com/acme/api#90");
+    await syncGithub({ state: fold(readEvents()), gh, force: true });
+    // the merged ones are left out, so the oldest links get read now
+    expect(asked).not.toContain(90);
+    expect(asked).toContain(89);
+    expect(asked).toContain(1);
+  });
+
   it("news on a linked PR reaches the owning project's wait; other PRs stay out", () => {
     const ref = parsePrRef("acme/api#88")!;
     claimSession({ session: "sess-123456", project: "api", task: "ABC-101" });
