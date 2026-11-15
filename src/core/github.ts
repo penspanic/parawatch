@@ -135,6 +135,8 @@ export interface GithubCache {
   prs: PrStatus[];
   /** what each PR waits on and since when */
   since: Record<string, { waitingOn: string; since: string }>;
+  /** linked PRs seen merged or closed: not asked for again */
+  finished?: string[];
 }
 
 export function cachePath(): string {
@@ -374,6 +376,12 @@ export function waitingOn(p: PrStatus): { what: string; who?: string[] } {
   return { what: "merge", who: author };
 }
 
+/** A reading of a PR from before anything happened to it: open, CI running, its reviews and comments as now. */
+function unseen(p: PrStatus): PrStatus {
+  // a PR already finished reports only that, not the CI it had
+  return { ...p, state: "open", ci: p.state === "open" ? "PENDING" : p.ci, mergeable: p.state === "open" ? undefined : p.mergeable, queue: p.queue };
+}
+
 const REVIEW_CHANGE: Record<string, PrChange> = { APPROVED: "approved", CHANGES_REQUESTED: "changes_requested", COMMENTED: "review", DISMISSED: "review" };
 
 /** The events between two readings of the same PR. */
@@ -395,13 +403,24 @@ export function changesBetween(old: PrStatus, now: PrStatus): { change: PrChange
   return out;
 }
 
-/** Next cache and the events it implies, given the previous cache and a fresh reading. */
-export function nextCache(prev: GithubCache, fresh: PrStatus[], hosts: string[], at: string): { cache: GithubCache; events: EventBody[] } {
+/**
+ * Next cache and the events it implies, given the previous cache and a fresh reading. `newlyLinked`
+ * names PRs a session linked since the previous reading: one first seen with its CI already done,
+ * or already merged or closed, reports that, since no earlier reading can show it changing (a CI
+ * of a minute ends before the first reading).
+ */
+export function nextCache(
+  prev: GithubCache,
+  fresh: PrStatus[],
+  hosts: string[],
+  at: string,
+  newlyLinked: ReadonlySet<string> = new Set(),
+): { cache: GithubCache; events: EventBody[] } {
   const old = new Map(prev.prs.map((p) => [p.key, p]));
   const events: EventBody[] = [];
   const since: GithubCache["since"] = {};
   for (const p of fresh) {
-    const was = old.get(p.key);
+    const was = old.get(p.key) ?? (newlyLinked.has(p.key) ? unseen(p) : undefined);
     if (was) {
       for (const c of changesBetween(was, p)) {
         events.push({ type: "pr.change", pr: prRef(p.host, p.repo, p.number, p.url), change: c.change, title: p.title, by: c.by, source: "github" });
@@ -509,9 +528,12 @@ export async function syncGithub(opts: SyncOptions): Promise<GithubCache> {
       });
     }
     failedHere = 0;
-    // PRs linked to sessions, and ones seen before, are read by number so merges and closes show
+    // PRs linked to sessions, and ones seen before, are read by number so merges and closes show.
+    // The newest links first, leaving out the ones already seen finished: the number read is capped.
     const extra = new Map<string, PrRef>();
-    for (const l of opts.state.prLinks.values()) extra.set(l.pr.key, l.pr);
+    const finished = new Set(prev.finished ?? []);
+    const links = [...opts.state.prLinks.values()].reverse().sort((a, b) => b.at.localeCompare(a.at));
+    for (const l of links) if (!finished.has(l.pr.key)) extra.set(l.pr.key, l.pr);
     const cutoff = new Date(Date.now() - cfg.maxAgeDays * 86_400_000).toISOString();
     for (const p of prev.prs) if (p.state === "open" && p.updatedAt >= cutoff) extra.set(p.key, prRef(p.host, p.repo, p.number, p.url));
     const fresh: PrStatus[] = [];
@@ -533,7 +555,11 @@ export async function syncGithub(opts: SyncOptions): Promise<GithubCache> {
     return withLock(() => {
       const latest = readCache();
       if (latest.fetchedAt && latest.fetchedAt > started) return latest; // someone else was faster
-      const { cache, events } = nextCache(latest, fresh, hosts, started);
+      // a first reading of everything reports nothing; after that, links made since the last reading are new
+      const newly = new Set(latest.fetchedAt ? links.filter((l) => l.at > latest.fetchedAt!).map((l) => l.pr.key) : []);
+      const { cache, events } = nextCache(latest, fresh, hosts, started, newly);
+      const done = new Set([...(latest.finished ?? []), ...fresh.filter((p) => p.state !== "open").map((p) => p.key)]);
+      cache.finished = [...done].filter((k) => opts.state.prLinks.has(k));
       if (errors.length) cache.error = errors.join("; ");
       appendLocked((log) => dropReported(events, log, latest.fetchedAt));
       writeCache(cache);
