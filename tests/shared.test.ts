@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { addProject, editCard, answerCard, claimSession, closeCard, hideRun, unhideRun, listeners, openCard, prEvent, readInbox, readState, startListening, startRun, endRun, waitInbox, linkPr } from "../src/core/ops.js";
 import { snapshot } from "../src/core/snapshot.js";
 import { collectRuns, otherRuns, shareRuns, SHARED_RUNS_GONE_MS } from "../src/core/runs.js";
@@ -195,6 +195,34 @@ describe("two machines", () => {
     on("mac", () => answerCard("pc-c1", { comment: "on second thought, B" }));
     carry("mac", "pc");
     expect(on("pc", () => readInbox("spill", { project: "spill" }, true)).map((i) => i.comment)).toEqual(["on second thought, B"]);
+  });
+
+  it("an answer in the same millisecond as the card, or from a clock behind, still counts", () => {
+    // the merge orders by time, then by machine: "mac" sorts before "pc"
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(Date.UTC(2026, 10, 15, 9, 0, 0));
+      on("pc", () => openCard({ kind: "decide", project: "spill", title: "Same moment?", options: ["A", "B"] }));
+      both();
+      on("mac", () => answerCard("pc-c1", { choice: 1 }));
+      // the mac's clock is a second behind the pc's
+      on("pc", () => openCard({ kind: "decide", project: "spill", title: "Clock behind?", options: ["A"] }));
+      both();
+      vi.setSystemTime(Date.UTC(2026, 10, 15, 8, 59, 59));
+      on("mac", () => answerCard("pc-c2", { choice: 1 }));
+      on("mac", () => answerCard("pc-c2", { comment: "and later" }));
+      both();
+      for (const m of machines) {
+        const cards = on(m, () => readState().cards);
+        expect(cards.get("pc-c1")!.answers.map((a) => a.choice)).toEqual([1]);
+        expect(cards.get("pc-c2")!.answers.map((a) => a.choice ?? a.comment)).toEqual([1, "and later"]);
+      }
+      // each log stays in its own order
+      const mac = on("mac", () => readEvents().filter((e) => e.dev === "mac"));
+      expect(mac.map((e) => e.ts)).toEqual([...mac.map((e) => e.ts)].sort());
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("a wait on one machine wakes when the answer arrives from the other", async () => {
