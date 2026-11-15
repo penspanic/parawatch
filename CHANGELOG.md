@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.18 (2026-11-15)
 
 - Fix: a long Codex job showed no model or effort. Codex writes them once a turn, and in a log of many megabytes the last one often sits between the start and the end that parawatch reads; it now finds the last one, once per log and then only in what the log adds.
 
