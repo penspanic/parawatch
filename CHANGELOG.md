@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fix: a long Codex job showed no model or effort. Codex writes them once a turn, and in a log of many megabytes the last one often sits between the start and the end that parawatch reads; it now finds the last one, once per log and then only in what the log adds.
+
 ## 0.3.17 (2026-11-15)
 
 - Parawatch on a phone: `apps/web` is the panel as a web app that reads your machines' shared folder through a relay. It shows the cards and agents, answers and dismisses cards, hides runs and opens Claude sessions through their Remote Control links. Pair it with the code `parawatch relay code` prints; the key stays on the phone. `deploy/relay/setup.sh` serves it next to the relay with `APP_DOMAIN`. See [On a phone](docs/phone.md).

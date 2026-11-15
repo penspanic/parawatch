@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { Run } from "../core/types.js";
 import { applyStall } from "./claudeCode.js";
-import { isObj, logActivity, oneLine, readHeadLines, readHeadText, readTailLines, str, textValues } from "./jsonl.js";
+import { isObj, lastLineWith, logActivity, oneLine, readHeadLines, readHeadText, readTailLines, str, textValues } from "./jsonl.js";
 import type { Adapter, ScanOptions } from "./index.js";
 
 const HEAD_BYTES = 128 * 1024;
@@ -86,6 +86,20 @@ export function codexSettings(lines: unknown[]): Pick<Run, "model" | "effort" | 
   const approval = str(tc.approval_policy);
   const options = [sandbox ? (SANDBOXES[sandbox] ?? sandbox) : undefined, approval ? (APPROVALS[approval] ?? approval) : undefined].filter((x): x is string => !!x);
   return { model: str(tc.model), effort: str(tc.effort) ?? str(tc.reasoning_effort) ?? (isObj(tc.collaboration_mode) && isObj(tc.collaboration_mode.settings) ? str(tc.collaboration_mode.settings.reasoning_effort) : undefined), options: options.length ? options : undefined };
+}
+
+/** What the last turn ran with, per log: a long log is searched once, then only where it grew. */
+const middle = new Map<string, { size: number; settings: Pick<Run, "model" | "effort" | "options"> }>();
+
+/** The settings of a log whose last `turn_context` sits between its head and tail. */
+export function settingsInMiddle(file: string): Pick<Run, "model" | "effort" | "options"> {
+  const size = fs.statSync(file).size;
+  const known = middle.get(file);
+  if (known && known.size === size) return known.settings;
+  const found = lastLineWith(file, '"type":"turn_context"', known && known.size < size ? Math.max(0, known.size - 64) : 0);
+  const settings = found ? codexSettings([found]) : (known?.settings ?? {});
+  middle.set(file, { size, settings });
+  return settings;
 }
 
 export function readCodexLog(head: unknown[], tail: unknown[], rawHead?: () => string): Omit<Run, "source"> {
@@ -179,6 +193,7 @@ export const codex: Adapter = {
         try {
           if (fs.statSync(file).mtimeMs < opts.sinceMs) continue;
           const run: Run = { ...readCodexLog(readHeadLines(file, HEAD_BYTES), readTailLines(file, TAIL_BYTES), () => readHeadText(file, RAW_HEAD_BYTES)), source: file };
+          if (!run.model) Object.assign(run, settingsInMiddle(file));
           run.activity = logActivity(file, opts.now);
           applyStall(run, undefined, opts.now);
           runs.push(run);

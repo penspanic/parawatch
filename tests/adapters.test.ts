@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { applyStall, claudeCode, newestMtime, readClaudeTail } from "../src/adapters/claudeCode.js";
-import { parentFromCwd, promptFromRaw, readCodexLog } from "../src/adapters/codex.js";
+import { parentFromCwd, promptFromRaw, readCodexLog, settingsInMiddle } from "../src/adapters/codex.js";
 import { activeMinutes, timestampsIn, textValues } from "../src/adapters/jsonl.js";
 import { settingsFull, settingsLine, shortModel } from "../src/core/model.js";
 
@@ -215,6 +215,21 @@ describe("what a run runs with", () => {
     // no effort set: left out, not guessed
     expect(readCodexLog([meta, turn("gpt-5.6-luna", null, "read-only")], []).effort).toBeUndefined();
     expect(readCodexLog([meta], []).model).toBeUndefined();
+  });
+
+  it("finds a Codex turn's settings in the middle of a long log, and a newer turn as it grows", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pw-codex-mid-"));
+    const file = path.join(dir, "rollout.jsonl");
+    const filler = (kb: number) => Array.from({ length: kb }, (_, i) => JSON.stringify({ type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: `${i} ${"x".repeat(1000)}` }] } })).join("\n") + "\n";
+    const turn = (model: string, effort: string) => JSON.stringify({ type: "turn_context", payload: { model, approval_policy: "never", sandbox_policy: { type: "workspace-write" }, collaboration_mode: { settings: { reasoning_effort: effort } } } }) + "\n";
+    fs.writeFileSync(file, JSON.stringify({ type: "session_meta", payload: { id: "01a1-z" } }) + "\n" + filler(300) + turn("gpt-6.1-sol", "high") + filler(1500));
+    expect(settingsInMiddle(file)).toEqual({ model: "gpt-6.1-sol", effort: "high", options: ["writes in its folders", "never asks"] });
+    fs.appendFileSync(file, filler(400) + turn("gpt-6.1-sol", "xhigh") + filler(600));
+    expect(settingsInMiddle(file).effort).toBe("xhigh");
+    // grown with no new turn: still the last one
+    fs.appendFileSync(file, filler(50));
+    expect(settingsInMiddle(file).effort).toBe("xhigh");
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 
   it("reads short on a row and in full in a tooltip", () => {

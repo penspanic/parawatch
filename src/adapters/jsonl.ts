@@ -142,3 +142,67 @@ export function logActivity(file: string, now: number): number[] {
   seen.set(file, entry);
   return activeMinutes(entry.times, now);
 }
+
+/**
+ * The last line holding `marker` in the part of a file after byte `from`, parsed, searching back
+ * from the end a megabyte at a time. For a record written once a turn that can sit anywhere in a
+ * log of many megabytes, between what the head and tail readings cover.
+ */
+export function lastLineWith(file: string, marker: string, from = 0, maxLine = 4 * 1024 * 1024): unknown | undefined {
+  const size = fs.statSync(file).size;
+  const needle = Buffer.from(marker);
+  const CHUNK = 1024 * 1024;
+  const fd = fs.openSync(file, "r");
+  try {
+    let end = size;
+    while (end > from) {
+      const start = Math.max(from, end - CHUNK);
+      // overlap by the marker's length, so one cut in two is still found
+      const len = Math.min(size, end + needle.length) - start;
+      const buf = Buffer.alloc(len);
+      const n = fs.readSync(fd, buf, 0, len, start);
+      const at = buf.subarray(0, n).lastIndexOf(needle);
+      if (at >= 0) return lineAt(fd, size, start + at, maxLine);
+      end = start;
+    }
+    return undefined;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/** The whole line around a byte position, parsed; undefined when it is too long or not JSON. */
+function lineAt(fd: number, size: number, pos: number, maxLine: number): unknown | undefined {
+  const STEP = 64 * 1024;
+  let lineStart = pos;
+  while (lineStart > 0 && pos - lineStart < maxLine) {
+    const from = Math.max(0, lineStart - STEP);
+    const buf = Buffer.alloc(lineStart - from);
+    fs.readSync(fd, buf, 0, buf.length, from);
+    const nl = buf.lastIndexOf(10);
+    if (nl >= 0) {
+      lineStart = from + nl + 1;
+      break;
+    }
+    lineStart = from;
+  }
+  let lineEnd = pos;
+  while (lineEnd < size && lineEnd - lineStart < maxLine) {
+    const buf = Buffer.alloc(Math.min(STEP, size - lineEnd));
+    fs.readSync(fd, buf, 0, buf.length, lineEnd);
+    const nl = buf.indexOf(10);
+    if (nl >= 0) {
+      lineEnd += nl;
+      break;
+    }
+    lineEnd += buf.length;
+  }
+  if (lineEnd - lineStart >= maxLine) return undefined;
+  const buf = Buffer.alloc(lineEnd - lineStart);
+  fs.readSync(fd, buf, 0, buf.length, lineStart);
+  try {
+    return JSON.parse(buf.toString("utf8"));
+  } catch {
+    return undefined;
+  }
+}
