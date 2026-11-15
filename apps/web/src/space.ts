@@ -8,7 +8,7 @@
  * the machines' names (`events/<device>.jsonl`, ...); the names themselves are found by opening the
  * small files once (a device file is a few hundred bytes), which also finds the listener files.
  */
-import { mergeLogs, parseEventLines } from "../../../src/core/log.js";
+import { mergeLogs, parseEventLines, stampFor } from "../../../src/core/log.js";
 import { fold, type State } from "../../../src/core/state.js";
 import type { Card, Listener, PwEvent, Run, Snapshot } from "../../../src/core/types.js";
 import { keysOf, open, seal, sealedName, type Keys, type RelayConfig } from "./seal";
@@ -392,16 +392,9 @@ export class Space {
     return next;
   }
 
-  /** When an event about this card may be stamped: after everything already said about it. */
+  /** When this phone may stamp its next event: see `stampFor` (a phone clock is often behind the machines'). */
   private stamp(card: unknown): string {
-    let ts = new Date(this.now()).toISOString();
-    if (typeof card !== "string") return ts;
-    for (const e of this.events()) {
-      const about = e.type === "card.open" ? e.card.id : "card" in e ? (e as { card: unknown }).card : undefined;
-      // a phone clock behind the machines' would sort the answer before the card
-      if (about === card && e.ts >= ts) ts = new Date(Date.parse(e.ts) + 1).toISOString();
-    }
-    return ts;
+    return new Date(stampFor(this.events(), (e) => e.dev === this.device, card, this.now())).toISOString();
   }
 
   /**

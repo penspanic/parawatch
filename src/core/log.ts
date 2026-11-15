@@ -40,3 +40,27 @@ export function parseEventLines(text: string, device?: string): PwEvent[] {
   }
   return out;
 }
+
+/** The card an event is about, if any. */
+function cardOf(e: PwEvent): string | undefined {
+  if (e.type === "card.open") return e.card.id;
+  const c = (e as { card?: unknown }).card;
+  return typeof c === "string" ? c : undefined;
+}
+
+/**
+ * When a writer may stamp its next event: now, but never before its own last event (each log
+ * stays in order) and, for an event about a card, after everything already said about that card.
+ * Logs merge by time and then by machine name, so an answer stamped in the same millisecond as the
+ * card on another machine, or by a clock running behind, would sort before the card and be lost.
+ */
+export function stampFor(events: PwEvent[], own: (e: PwEvent) => boolean, card: unknown, now: number): number {
+  let t = now;
+  for (const e of events) {
+    const at = Date.parse(e.ts);
+    if (!Number.isFinite(at)) continue;
+    if (own(e) && at > t) t = at;
+    if (typeof card === "string" && cardOf(e) === card && at >= t) t = at + 1;
+  }
+  return t;
+}

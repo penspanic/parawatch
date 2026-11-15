@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { UserError } from "./errors.js";
-import { mergeLogs, parseEventLines } from "./log.js";
+import { mergeLogs, parseEventLines, stampFor } from "./log.js";
 import { STORE_FORMAT, type EventBody, type PwEvent } from "./types.js";
 
 export { mergeLogs, parseEventLines };
@@ -249,9 +249,13 @@ export function appendLocked(build: (events: PwEvent[]) => EventBody[]): PwEvent
   const own = sharedDir() ? events.filter((e) => e.dev === me) : events;
   let seq = 0;
   for (const e of own) if (e.seq > seq) seq = e.seq;
-  const ts = new Date().toISOString();
+  const mine = new Set(own);
+  let last = 0;
   const v = writeFormat();
-  const out = build(events).map((body) => ({ v, seq: ++seq, ts, ...body }) as PwEvent);
+  const out = build(events).map((body) => {
+    last = stampFor(events, (e) => mine.has(e), (body as { card?: unknown }).card, Math.max(Date.now(), last));
+    return { v, seq: ++seq, ts: new Date(last).toISOString(), ...body } as PwEvent;
+  });
   if (out.length) {
     ensureDir(path.dirname(eventsPath()));
     fs.appendFileSync(eventsPath(), out.map((e) => JSON.stringify(e) + "\n").join(""));
