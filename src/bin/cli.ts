@@ -24,6 +24,7 @@ import {
   findCard,
   readInbox,
   readState,
+  sameSession,
   removeProject,
   startListening,
   startRun,
@@ -416,10 +417,19 @@ program
     // a subagent runs with its session's id; its claim is its own, not a new name for the session
     if (!session && process.env.CLAUDE_CODE_SESSION_ID === id) id = callingSubagent(id, /\bparawatch\b.*\bclaim\b/) ?? id;
     if (o.kind !== undefined && o.kind !== "scheduled") throw new UserError("--kind can only be 'scheduled'");
+    // a lead that says done stops leading: say so, since it may only have finished one task
+    const before = o.done?.trim() ? readState() : undefined;
+    const ledBefore = before ? leadOf(before, endedSessions(before))(o.project?.trim() || before.claims.find((x) => sameSession(x.session, id))?.project) : undefined;
     const c = claimSession({ session: id, project: o.project, task: o.task, role: o.role, title: o.title, kind: o.kind, done: o.done });
     // a new lead: earlier leads of the project step down, and it takes what no session got
     const handed = o.role === "lead" && !c.done ? makeLead(c.project, id).handed : [];
     process.stdout.write(`${id.slice(0, 8)} → ${c.project}${c.task ? ` / ${c.task}` : ""}${c.role ? ` (${c.role})` : ""}${c.done ? " · done" : ""}${handed.length ? `; handed ${handed.join(", ")}` : ""}\n`);
+    if (c.done && ledBefore && sameSession(ledBefore, id)) {
+      process.stdout.write(
+        `This session no longer leads ${c.project}: what no session owns there now waits in parawatch until a session claims --role lead.\n` +
+          `If it goes on working, claim its next work instead of --done: parawatch claim -p ${c.project} -t <task> --role lead\n`,
+      );
+    }
   });
 
 // ------------------------------------------------------------------ pull requests

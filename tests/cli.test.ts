@@ -133,6 +133,21 @@ describe("cli: sessions, leads and hand-overs", () => {
     expect(ok(["claim", "-p", "demo", "--role", "lead", "--title", "Director"], { session: lead })).toContain("handed c1");
   });
 
+  it("a lead that claims done is told it no longer leads; a worker that does is not", () => {
+    ok(["claim", "-p", "demo", "--role", "lead", "--title", "Director"], { session: lead });
+    ok(["claim", "-p", "demo", "-t", "T1", "--title", "Worker"], { session: worker });
+    expect(ok(["claim", "--done", "T1 merged"], { session: worker })).toBe(`${worker.slice(0, 8)} → demo / T1 · done\n`);
+    ok(["claim", "-p", "demo", "-t", "250", "--role", "lead"], { session: lead });
+    const out = ok(["claim", "--done", "250 checked"], { session: lead });
+    expect(out).toContain("This session no longer leads demo");
+    expect(out).toContain("parawatch claim -p demo -t <task> --role lead");
+    ok(["ask", "-p", "demo", "Loose?", "-o", "a"]);
+    ok(["answer", "c1", "--choice", "1"]);
+    expect(ok(["status"])).toContain("pick a lead: parawatch lead demo <session>");
+    // done again, no longer the lead: nothing more to say
+    expect(ok(["claim", "--done", "really done"], { session: lead })).toBe(`${lead.slice(0, 8)} → demo / 250 (lead) · done\n`);
+  });
+
   it("hand gives a card, or a pull request named by owner/repo#n or URL, to another session", () => {
     ok(["claim", "-p", "demo", "--title", "Worker"], { session: worker });
     ok(["ask", "-p", "demo", "Mine?", "-o", "a"], { session: worker });
