@@ -83,6 +83,11 @@ export interface Reading {
   pendingOutputs?: string[];
   /** the log ends on a tool call with no result yet */
   pendingTool?: boolean;
+  /** what the last answer ran with */
+  model?: string;
+  effort?: string;
+  fast?: boolean;
+  permissionMode?: string;
 }
 
 interface Job {
@@ -255,7 +260,16 @@ export function readClaudeTail(recs: unknown[], kind: "session" | "subagent"): R
       // the human wrote (a pasted block, a command's output): whatever the last wrap-up asked is answered
       wrapUp = undefined;
     }
+    if (str(r.permissionMode)) out.permissionMode = str(r.permissionMode);
     if (r.type === "assistant") {
+      const msg = isObj(r.message) ? r.message : {};
+      const model = str(msg.model);
+      // a message Claude Code makes up itself (an interrupt, an error) names no real model
+      if (model && !model.startsWith("<")) {
+        out.model = model;
+        out.effort = str(r.effort);
+        out.fast = isObj(msg.usage) && msg.usage.speed === "fast" ? true : undefined;
+      }
       const w = blocks(r).find((b) => b.type === "tool_use" && WRAP_UP.test(String(b.name)));
       if (w) wrapUp = { ...(w.input ?? {}), at: ts };
     }
@@ -423,6 +437,14 @@ export const claudeCode: Adapter = {
   },
 };
 
+const PERMISSION_MODES: Record<string, string> = { acceptEdits: "accepts edits", plan: "plan mode", bypassPermissions: "bypasses permissions", dontAsk: "never asks", auto: "auto mode" };
+
+/** The model, effort and options a Claude Code run's last answer ran with. */
+function claudeSettings(t: Reading): Pick<Run, "model" | "effort" | "options"> {
+  const options = [t.fast ? "fast" : undefined, t.permissionMode ? PERMISSION_MODES[t.permissionMode] : undefined].filter((x): x is string => !!x);
+  return { model: t.model, effort: t.effort, options: options.length ? options : undefined };
+}
+
 function readSession(file: string, now: number): Run {
   const id = path.basename(file, ".jsonl");
   const base: Run = { id, runtime: "claude-code", kind: "session", title: id.slice(0, 8), state: "unknown", source: file };
@@ -447,6 +469,7 @@ function readSession(file: string, now: number): Run {
       prompt: head.prompt ? oneLine(head.prompt, 400) : undefined,
       activity: logActivity(file, now),
       pendingTool: tail.pendingTool,
+      ...claudeSettings(tail),
     };
     applyStall(run, tail.pendingTimeoutMs, now, newestMtime(tail.pendingOutputs));
     // in the log a permission prompt and a long command look the same; the hook can tell them apart
@@ -472,7 +495,8 @@ function readSubagent(file: string, now: number): Run {
       touched: work.touched.length ? work.touched : undefined,
       createdPrs: work.createdPrs.length ? work.createdPrs : undefined,
       title: str(meta.description) || (head.prompt ? oneLine(head.prompt, 60) : base.title),
-      model: str(meta.model),
+      ...claudeSettings(tail),
+      model: tail.model ?? str(meta.model),
       cwd: tail.cwd || head.cwd,
       startedAt: head.startedAt,
       lastActivity: tail.lastActivity,

@@ -1,4 +1,5 @@
 import { boardModel, MARKS, type BoardRow, type Mark } from "./board";
+import { settingsFull, settingsLine } from "../../../src/core/model.js";
 import { serviceName, siteForPr, siteForRun } from "../../../src/core/sites.js";
 import { ago, clean, groupRuns, OTHER, type FoldNode, type Group, type RunNode } from "./tree";
 import type { Backend, Card, Listener, PrView, Reply, Run, Snapshot } from "./types";
@@ -1751,6 +1752,8 @@ export class Panel {
     else if (r.asks) sub.classList.add(r.asks.blocked ? "is-blocked" : "is-asking");
     el("span", "pw-run-age", ago(r.lastActivity, now), sub);
     if (r.device) el("span", "pw-run-device", `on ${r.device}`, sub);
+    const settings = settingsLine(r);
+    if (settings) el("span", "pw-run-model", settings, sub).title = settingsFull(r) ?? "";
     if (what || r.state === "stalled") el("span", "pw-run-action", r.state === "stalled" ? `stalled${what ? ` · ${what}` : ""}` : what, sub);
     const lane = this.lane(r, at, now);
     row.appendChild(lane);
@@ -1764,7 +1767,8 @@ export class Panel {
     row.title = [
       `${r.title}`,
       `${STATE_LABEL[r.state]}${r.lastActivity ? `, last activity ${new Date(r.lastActivity).toLocaleTimeString()}` : ""}`,
-      `${r.runtime} ${r.kind}${r.model ? ` (${r.model})` : ""} · ${r.id}${r.device ? ` · on ${r.device}` : ""}`,
+      `${r.runtime} ${r.kind} · ${r.id}${r.device ? ` · on ${r.device}` : ""}`,
+      settingsFull(r) ?? "",
       r.cwd ?? "",
       clean(r.action),
     ]

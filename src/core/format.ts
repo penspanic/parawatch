@@ -1,3 +1,4 @@
+import { settingsLine } from "./model.js";
 import type { InboxItem } from "./ops.js";
 import type { SyncStatus } from "./sync.js";
 import type { Card, PrView, Run } from "./types.js";
@@ -393,7 +394,7 @@ export function runsTree(runs: Run[], v: View = PLAIN, now = Date.now(), indent 
       const age = paint(v, ago(r.lastActivity, now).padStart(4), "dim");
       const dev = devW ? "  " + paint(v, pad(fit(r.device ?? "", devW), devW), "cyan") : "";
       const src = (r.projectSource && SOURCE_NOTE[r.projectSource]) || "";
-      const wide = v.wide ? "  " + paint(v, pad(fit(`${r.kind === "subagent" ? r.model ?? "subagent" : r.runtime} ${r.id.slice(0, 8)}${src ? " " + src : ""}`, wideW - 2), wideW - 2), "dim") : "";
+      const wide = v.wide ? "  " + paint(v, pad(fit(`${r.runtime} ${r.id.slice(0, 8)}${settingsLine(r) ? " " + settingsLine(r) : ""}${src ? " " + src : ""}`, wideW - 2), wideW - 2), "dim") : "";
       const restW = v.width - nameW - 2 - 4 - devCol - wideW - 2;
       const whatPaint: Paint[] = r.error || r.state === "stalled" || r.state === "failed" || r.asks?.blocked ? ["red"] : r.asks ? ["yellow"] : ended ? ["dim"] : [];
       const what = restW >= 8 ? "  " + paint(v, fit(whatText(r), restW), ...whatPaint) : "";

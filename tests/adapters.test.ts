@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { applyStall, claudeCode, newestMtime, readClaudeTail } from "../src/adapters/claudeCode.js";
 import { parentFromCwd, promptFromRaw, readCodexLog } from "../src/adapters/codex.js";
 import { activeMinutes, timestampsIn, textValues } from "../src/adapters/jsonl.js";
+import { settingsFull, settingsLine, shortModel } from "../src/core/model.js";
 
 const ts = (m: number) => new Date(Date.UTC(2026, 10, 7, 1, m)).toISOString();
 
@@ -181,6 +182,50 @@ describe("background jobs", () => {
       expect(scan(Date.parse(ts(3)) + 5 * 60_000).state).toBe("working");
       delete process.env.PARAWATCH_CLAUDE_DIR;
     });
+  });
+});
+
+describe("what a run runs with", () => {
+  it("a Claude Code log gives the last answer's model, effort, fast mode and permission mode", () => {
+    const r = readClaudeTail(
+      [
+        { ...user(0, "go"), permissionMode: "bypassPermissions" },
+        { ...assistant(1, [{ type: "text", text: "on it" }]), effort: "high", message: { role: "assistant", model: "claude-sonnet-5-5", usage: { speed: "standard" }, content: [] } },
+        { ...assistant(2, [{ type: "text", text: "done" }]), effort: "xhigh", message: { role: "assistant", model: "claude-opus-5-5", usage: { speed: "fast" }, content: [{ type: "text", text: "done" }] } },
+        // made up by Claude Code itself: names no model
+        { ...assistant(3, []), message: { role: "assistant", model: "<synthetic>", content: [] } },
+      ],
+      "session",
+    );
+    expect(r).toMatchObject({ model: "claude-opus-5-5", effort: "xhigh", fast: true, permissionMode: "bypassPermissions" });
+  });
+
+  it("a Codex log gives the last turn's model, effort, sandbox and approvals", () => {
+    const meta = { type: "session_meta", timestamp: ts(0), payload: { id: "01a1-y", originator: "codex_exec" } };
+    const turn = (model: string, effort: string | null, sandbox: string) => ({
+      type: "turn_context",
+      timestamp: ts(1),
+      payload: { model, approval_policy: "never", sandbox_policy: { type: sandbox }, collaboration_mode: { settings: { model, reasoning_effort: effort } } },
+    });
+    expect(readCodexLog([meta, turn("gpt-6.1-sol", "high", "workspace-write")], [turn("gpt-6.1-sol", "xhigh", "danger-full-access")])).toMatchObject({
+      model: "gpt-6.1-sol",
+      effort: "xhigh",
+      options: ["full access", "never asks"],
+    });
+    // no effort set: left out, not guessed
+    expect(readCodexLog([meta, turn("gpt-5.6-luna", null, "read-only")], []).effort).toBeUndefined();
+    expect(readCodexLog([meta], []).model).toBeUndefined();
+  });
+
+  it("reads short on a row and in full in a tooltip", () => {
+    expect(shortModel("claude-opus-5-5")).toBe("opus 5.5");
+    expect(shortModel("claude-haiku-5-5-20260101")).toBe("haiku 5.5");
+    expect(shortModel("claude-sonnet-5-5[1m]")).toBe("sonnet 5.5 1M");
+    expect(shortModel("gpt-6.1-sol")).toBe("gpt-6.1-sol");
+    const r = { model: "claude-opus-5-5", effort: "high", options: ["fast", "bypasses permissions"] };
+    expect(settingsLine(r)).toBe("opus 5.5 high fast");
+    expect(settingsFull(r)).toBe("claude-opus-5-5 · effort high · fast · bypasses permissions");
+    expect(settingsLine({})).toBeUndefined();
   });
 });
 

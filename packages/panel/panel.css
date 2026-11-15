@@ -580,6 +580,12 @@
 .pw-run-device::before {
   content: "· ";
 }
+.pw-run-model {
+  flex: none;
+}
+.pw-run-model::before {
+  content: "· ";
+}
 .pw-run-action {
   overflow: hidden;
   text-overflow: ellipsis;

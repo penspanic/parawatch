@@ -73,6 +73,21 @@ export function promptFromRaw(raw: string): string | undefined {
   return undefined;
 }
 
+const SANDBOXES: Record<string, string> = { "read-only": "read-only", "workspace-write": "writes in its folders", "danger-full-access": "full access" };
+const APPROVALS: Record<string, string> = { never: "never asks", "on-request": "asks when it wants to", "on-failure": "asks on failure", untrusted: "asks before most commands" };
+
+/** The model, effort and options of the last turn, from Codex's `turn_context` lines. */
+export function codexSettings(lines: unknown[]): Pick<Run, "model" | "effort" | "options"> {
+  let tc: Record<string, unknown> | undefined;
+  for (const r of lines) if (isObj(r) && r.type === "turn_context" && isObj(r.payload)) tc = r.payload;
+  if (!tc) return {};
+  const sp = tc.sandbox_policy;
+  const sandbox = typeof sp === "string" ? sp : isObj(sp) ? str(sp.type) : undefined;
+  const approval = str(tc.approval_policy);
+  const options = [sandbox ? (SANDBOXES[sandbox] ?? sandbox) : undefined, approval ? (APPROVALS[approval] ?? approval) : undefined].filter((x): x is string => !!x);
+  return { model: str(tc.model), effort: str(tc.effort) ?? str(tc.reasoning_effort) ?? (isObj(tc.collaboration_mode) && isObj(tc.collaboration_mode.settings) ? str(tc.collaboration_mode.settings.reasoning_effort) : undefined), options: options.length ? options : undefined };
+}
+
 export function readCodexLog(head: unknown[], tail: unknown[], rawHead?: () => string): Omit<Run, "source"> {
   const meta = head.map(payload).find((p, i) => p && isObj(head[i]) && (head[i] as Record<string, unknown>).type === "session_meta");
   const id = str(meta?.id) ?? str(meta?.session_id) ?? "unknown";
@@ -101,6 +116,8 @@ export function readCodexLog(head: unknown[], tail: unknown[], rawHead?: () => s
     startedAt: str(meta?.timestamp) ?? (isObj(head[0]) ? str((head[0] as Record<string, unknown>).timestamp) : undefined),
     state: "working",
     prompt: prompt ? oneLine(prompt, 400) : undefined,
+    // the last turn's settings: a later turn may change them (`codex exec resume -m ...`)
+    ...codexSettings([...head, ...tail]),
   };
   let lastStart = -1;
   let lastDone = -1;

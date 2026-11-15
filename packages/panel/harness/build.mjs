@@ -6,6 +6,8 @@ import esbuild from "esbuild";
 
 process.chdir(fileURLToPath(new URL("..", import.meta.url)));
 await esbuild.build({
+  // esbuild resolves from the folder node started in, not the one chdir moved to
+  absWorkingDir: process.cwd(),
   entryPoints: ["harness/main.ts"],
   bundle: true,
   format: "iife",
