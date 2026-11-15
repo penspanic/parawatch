@@ -319,7 +319,12 @@ export interface Run {
   role?: string;
   parent?: string;
   cwd?: string;
+  /** the model it runs on, as its runtime names it (`claude-opus-5-5`, `gpt-6.1-sol`) */
   model?: string;
+  /** its reasoning effort (`high`, `xhigh`) */
+  effort?: string;
+  /** what else it runs with, in a few words each: `fast`, `bypasses permissions`, `full access`, `never asks` */
+  options?: string[];
   startedAt?: string;
   lastActivity?: string;
   state: RunState;
