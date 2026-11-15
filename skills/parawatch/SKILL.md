@@ -130,6 +130,7 @@ The session then shows as done, not as idle, and the line goes into the human's 
 - The lead owns the cards for the work it hands out. Workers (subagents, `codex exec` jobs, other sessions you start) report back to the lead instead of opening cards, unless the lead told them to ask the human directly.
 - A session the human started on their own asks the human directly. Its cards and pull requests are its own: answers and news on them go to it, not to the lead. When that work belongs in the lead's queue, the session tells the lead, not the other way round.
 - Tell workers in their brief what to return to you, so the lead can turn it into one clear card.
+- **A lead that finishes one task claims its next work, not `--done`** (`parawatch claim -p <project> -t <next> --role lead`). `--done` ends the session as lead too: from then on what no session owns in the project goes nowhere until a session claims the lead. When you do a worker's task yourself, its brief's rules for workers (such as "do not use parawatch") are not yours.
 - Before ending a session, close cards you handled, end runs you started, and claim `--done`.
 
 ## On more than one machine

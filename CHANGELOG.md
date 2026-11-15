@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Parawatch on a phone: `apps/web` is the panel as a web app that reads your machines' shared folder through a relay. It shows the cards and agents, answers and dismisses cards, hides runs and opens Claude sessions through their Remote Control links. Pair it with the code `parawatch relay code` prints; the key stays on the phone. `deploy/relay/setup.sh` serves it next to the relay with `APP_DOMAIN`. See [On a phone](docs/phone.md).
+- A lead that claims `--done` is told that it no longer leads the project, and how to go on leading if it keeps working: what no session owns there then waits in parawatch until a session claims the lead. The skill says a lead that finishes one task claims its next work instead. A director that did a worker's task itself took the brief's "do not use parawatch" as its own and claimed done, and the project's answers reached no one for hours.
 - Fix: `deploy/relay/aws-lightsail.sh` made an instance that never set itself up. Lightsail puts its own lines in front of the launch script and runs it with `sh`, which stopped at the first bash-only line. The launch script now only writes `setup.sh` out and runs it with bash.
 
 ## 0.3.16 (2026-11-14)
