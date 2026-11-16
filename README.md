@@ -1,5 +1,10 @@
 # parawatch
 
+<p>
+  <a href="README.md"><img src="https://img.shields.io/badge/English-0969da?style=flat-square" alt="English"></a>
+  <a href="README.ko.md"><img src="https://img.shields.io/badge/%ED%95%9C%EA%B5%AD%EC%96%B4-555555?style=flat-square" alt="한국어"></a>
+</p>
+
 For people who run many Claude Code and Codex sessions, often on more than one machine.
 
 With that many sessions it gets hard to tell which one was which, whether each is still going well, and which ones asked you something that has since scrolled out of sight. parawatch puts all of them on one board.
