@@ -149,6 +149,17 @@ export function remoteSessionUrl(id: string): string {
   return `https://claude.ai/code/${encodeURIComponent(id)}`;
 }
 
+/**
+ * The same Remote Control session, opened in the Claude desktop app instead of a browser: the app
+ * takes `claude://claude.ai/code/<session>` and shows that session. Undefined for a link that is
+ * not a claude.ai code session.
+ */
+export function inAppUrl(url: string): string | undefined {
+  const u = URL.parse(url);
+  if (!u || u.protocol !== "https:" || u.host !== "claude.ai" || !/^\/code\/session_[A-Za-z0-9]+$/.test(u.pathname)) return undefined;
+  return `claude://claude.ai${u.pathname}`;
+}
+
 /** Give each Claude Code session of this machine its Remote Control link, when it has one. */
 export function withRemote(runs: Run[], dir: string | string[] = desktopSessionsDirs()): Run[] {
   const sessions = runs.filter((r) => r.runtime === "claude-code" && r.kind === "session" && !r.device);

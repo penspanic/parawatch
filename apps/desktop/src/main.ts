@@ -10,7 +10,7 @@ import { pathToFileURL } from "node:url";
 import { app, autoUpdater as squirrel, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, Notification, protocol, shell, systemPreferences, Tray } from "electron";
 import { readClient, recordClient, versionSkew } from "../../../src/core/clients.js";
 import { answerCard, dismissCard, hideRun, makeLead, readState, UserError } from "../../../src/core/ops.js";
-import { cardContextLine, resolveGoto } from "../../../src/core/desktop.js";
+import { cardContextLine, inAppUrl, resolveGoto } from "../../../src/core/desktop.js";
 import { followEvents } from "../../../src/core/follow.js";
 import { syncGithub } from "../../../src/core/github.js";
 import { desktopPidPath } from "../../../src/core/integrate.js";
@@ -802,7 +802,9 @@ function registerIpc(): void {
       clipboard.writeText(`claude --resume ${g.session}`);
       throw new UserError(`${g.name} is not a Claude desktop session. The command to resume it in a terminal is on your clipboard.`);
     }
-    await shell.openExternal(g.url);
+    // a session on another machine opens in the Claude app when it is installed, not in a browser
+    const inApp = g.desktop ? undefined : inAppUrl(g.url);
+    await shell.openExternal(inApp && app.getApplicationNameForProtocol("claude://") ? inApp : g.url);
     return `Opened ${g.name}`;
   });
   ipcMain.handle("pw:open", async (_e, target: string) => {

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A session on another machine opens in the Claude desktop app instead of a browser, when the app is installed: its Remote Control link (`https://claude.ai/code/session_…`) is opened as `claude://claude.ai/code/session_…`, which the app shows like a session of its own. The desktop app does this for rows, lanes and cards, and `parawatch goto` on macOS (falling back to the browser when the Claude app is not there). `goto --print` still prints the web link, and the phone app opens the web link.
+
 ## 0.3.20 (2026-11-16)
 
 - Fix: a card asked on another machine did not open its session when clicked, even when that session has a Remote Control link, as its row in the agents list does. It now opens the same way and puts a line about the card on the clipboard; a session there with no link stays plain text.

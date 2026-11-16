@@ -50,7 +50,7 @@ import { recordClient, runningDesktop, versionSkew } from "../core/clients.js";
 import { doctor, doctorText } from "../core/doctor.js";
 import { checkUpdate, updateLine } from "../core/update.js";
 import { packageVersion } from "../core/version.js";
-import { cardContextLine, resolveGoto } from "../core/desktop.js";
+import { cardContextLine, inAppUrl, resolveGoto } from "../core/desktop.js";
 import { snapshot } from "../core/snapshot.js";
 import { SCHEMA_VERSION, type Card } from "../core/types.js";
 
@@ -206,9 +206,18 @@ program
       process.stdout.write(g.url + "\n");
       return;
     }
-    // cmd start would cut the link at its &
-    if (process.platform === "win32") execFileSync("rundll32", ["url.dll,FileProtocolHandler", g.url]);
-    else execFileSync(process.platform === "darwin" ? "open" : "xdg-open", [g.url]);
+    // a session on another machine opens in the Claude app when macOS has it, else in a browser
+    const inApp = process.platform === "darwin" && !g.desktop ? inAppUrl(g.url) : undefined;
+    if (inApp) {
+      try {
+        execFileSync("open", [inApp], { stdio: "ignore" });
+      } catch {
+        execFileSync("open", [g.url]);
+      }
+    } else if (process.platform === "win32") {
+      // cmd start would cut the link at its &
+      execFileSync("rundll32", ["url.dll,FileProtocolHandler", g.url]);
+    } else execFileSync(process.platform === "darwin" ? "open" : "xdg-open", [g.url]);
     process.stdout.write(`Opened ${g.name}${g.desktop?.archived ? " (archived)" : ""}\n`);
   });
 
