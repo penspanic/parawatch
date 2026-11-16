@@ -3,7 +3,7 @@
  * waiting, a dock or taskbar badge, and system notifications. It reads and writes the same event
  * store as the CLI, through the CLI's own code, so it needs nothing else installed.
  */
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -30,8 +30,8 @@ import type { ChatState } from "../../../src/core/chatTypes.js";
 import { Chats } from "./chat.js";
 import { ChatHost, REMOTE_OWNER } from "./chatHost.js";
 import { RemoteChats } from "./chatRemote.js";
-import { checkNow, freshestBeforeRestart, installNow, RELEASES_URL, resumeUnfinished, scheduleUpdates, stopUpdates, updateState } from "./updater.js";
-import { clearMarker, installingNotice, interruptedNotice, readMarker, startState, stillInstallingNotice, writeMarker } from "./updateInstall.js";
+import { checkNow, freshestBeforeRestart, installNow, preparedForInstall, RELEASES_URL, resumeUnfinished, scheduleUpdates, stopUpdates, updateState } from "./updater.js";
+import { clearMarker, installingNotice, interruptedNotice, notPreparedNotice, readMarker, shipItRunning, startState, stillInstallingNotice, writeMarker } from "./updateInstall.js";
 
 const MEDIA_SCHEME = "pwfile";
 const MAX_MEDIA_BYTES = 200 * 1024 * 1024;
@@ -43,6 +43,8 @@ interface Settings extends Omit<Prefs, "openAtLogin"> {
 
 const DEFAULTS: Settings = { sinceHours: 6, notify: true, theme: "system", keepClosed: 20, checkUpdates: true, serviceIcons: true, updateCli: true, remoteChat: false };
 const REPO_URL = "https://github.com/penspanic/parawatch";
+/** builder.json's appId */
+const APP_ID = "io.github.penspanic.parawatch";
 
 function settingsPath(): string {
   return path.join(app.getPath("userData"), "settings.json");
@@ -350,6 +352,13 @@ async function restartToUpdate(): Promise<void> {
     return;
   }
   restartWhenReady = false;
+  // the check above hands the file to Squirrel again; quitting before it is unpacked fails the install
+  const notReady = await preparedForInstall();
+  if (notReady) {
+    logger.warn(`not quitting to install ${u.version}: ${notReady}`);
+    await notifyAndWait(notPreparedNotice(u.version, notReady));
+    return;
+  }
   writeMarker(app.getPath("userData"), u.version);
   logger.info(`quitting to install ${u.version}`);
   await notifyAndWait(installingNotice(u.version));
@@ -370,7 +379,10 @@ function checkUnfinishedInstall(): boolean {
     clearMarker(dir);
     return false;
   }
-  if (state === "installing") {
+  if (state === "installing" && process.platform === "darwin" && !shipItStillRunning()) {
+    // ShipIt gave up and opened this old version itself
+    logger.warn(`the update to ${marker.version} stopped (ShipIt is not running); staying open`);
+  } else if (state === "installing") {
     logger.info(`started while ${marker.version} is still being installed; quitting so it can finish`);
     void notifyAndWait(stillInstallingNotice(marker.version)).then(() => app.quit());
     return true;
@@ -378,6 +390,16 @@ function checkUnfinishedInstall(): boolean {
   logger.warn(`the update to ${marker.version} never finished (asked ${marker.at}); looking for it again`);
   void resumeUnfinished(marker.version);
   return false;
+}
+
+/** Whether ShipIt is still installing this app's update. Unknown counts as running. */
+function shipItStillRunning(): boolean {
+  try {
+    return shipItRunning(execFileSync("ps", ["-Ao", "command"], { encoding: "utf8", timeout: 3000 }), APP_ID);
+  } catch (err) {
+    logger.warn("could not list processes to look for ShipIt:", err);
+    return true;
+  }
 }
 
 /** The human asked to restart while a newer version was still downloading. */
@@ -898,7 +920,7 @@ if (!app.requestSingleInstanceLock()) {
     nativeTheme.themeSource = settings.theme;
     // Windows shows a notification only for an app id that its Start menu shortcut carries; the
     // installer gives the shortcut builder.json's appId
-    if (process.platform === "win32") app.setAppUserModelId("io.github.penspanic.parawatch");
+    if (process.platform === "win32") app.setAppUserModelId(APP_ID);
     app.setAboutPanelOptions({
       applicationName: "Parawatch",
       applicationVersion: app.getVersion(),

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { clearMarker, INSTALL_WINDOW_MS, installingNotice, interruptedNotice, parseMarker, readMarker, startState, writeMarker } from "../src/updateInstall.js";
+import { clearMarker, INSTALL_WINDOW_MS, installingNotice, interruptedNotice, notPreparedNotice, parseMarker, readMarker, shipItRunning, startState, writeMarker } from "../src/updateInstall.js";
 import { updateLabel } from "../src/rules.js";
 
 const at = "2026-11-10T12:00:00.000Z";
@@ -56,5 +56,25 @@ describe("marker file", () => {
     expect(parseMarker("{")).toBeUndefined();
     expect(parseMarker('{"version":"0.3.3","at":"nope"}')).toBeUndefined();
     expect(parseMarker('{"version":3}')).toBeUndefined();
+  });
+});
+
+describe("shipItRunning", () => {
+  const id = "io.github.penspanic.parawatch";
+  const ours = "/Applications/Parawatch.app/Contents/Frameworks/Squirrel.framework/Resources/ShipIt io.github.penspanic.parawatch.ShipIt /Users/me/Library/Caches/io.github.penspanic.parawatch.ShipIt/ShipItState.plist";
+  const other = "/Applications/Visual Studio Code.app/Contents/Frameworks/Squirrel.framework/Resources/ShipIt com.microsoft.VSCode.ShipIt /Users/me/Library/Caches/com.microsoft.VSCode.ShipIt/ShipItState.plist";
+  it("finds this app's ShipIt", () => {
+    expect(shipItRunning(`COMMAND\n/sbin/launchd\n${ours}\n`, id)).toBe(true);
+  });
+  it("ignores another app's ShipIt and a process that only names the folder", () => {
+    expect(shipItRunning(`COMMAND\n${other}\ntail -f /Users/me/Library/Caches/io.github.penspanic.parawatch.ShipIt/ShipIt_stderr.log\n`, id)).toBe(false);
+  });
+});
+
+describe("notPreparedNotice", () => {
+  it("says the app stays open and why", () => {
+    const n = notPreparedNotice("0.3.19", "the update was still being unpacked");
+    expect(n.title).toBe("0.3.19 could not be installed yet");
+    expect(n.body).toContain("stays open: the update was still being unpacked");
   });
 });

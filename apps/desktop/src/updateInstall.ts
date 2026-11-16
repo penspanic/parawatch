@@ -4,7 +4,9 @@
  * and reopens it. Nothing is on screen meanwhile, and starting the old version again in that time
  * makes ShipIt give up ("App Still Running"). So the app writes a small marker just before it quits
  * and reads it on the next start: a fresh marker means the install is still going (step aside), an
- * old one for a version we do not run means it never finished (offer the restart again).
+ * old one for a version we do not run means it never finished (offer the restart again). On macOS a
+ * fresh marker counts only while ShipIt is still running: when ShipIt gives up, it opens the old
+ * version itself, and that start must stay open instead of stepping aside for an install that is over.
  *
  * No electron imports here, so the logic can be tested on its own.
  */
@@ -49,6 +51,15 @@ export function startState(marker: InstallMarker | undefined, running: string, n
   return now - Date.parse(marker.at) < INSTALL_WINDOW_MS ? "installing" : "interrupted";
 }
 
+/**
+ * Whether ShipIt is still working on this app's update, from `ps -Ao command` output. ShipIt runs
+ * as `.../Squirrel.framework/Resources/ShipIt <app id>.ShipIt <state file>`.
+ */
+export function shipItRunning(psOutput: string, appId: string): boolean {
+  const job = `${appId}.ShipIt`;
+  return psOutput.split("\n").some((line) => /\/ShipIt(\s|$)/.test(line) && line.split(/\s+/).includes(job));
+}
+
 /** The notification shown just before the app quits for an update. */
 export function installingNotice(version: string): { title: string; body: string } {
   return { title: `Installing ${version}`, body: `Parawatch reopens in about 30 seconds. Please do not open it again until then.` };
@@ -57,6 +68,11 @@ export function installingNotice(version: string): { title: string; body: string
 /** Shown when the app is started while an install is still going on, just before it steps aside. */
 export function stillInstallingNotice(version: string): { title: string; body: string } {
   return { title: `Still installing ${version}`, body: "Parawatch reopens by itself when it is done." };
+}
+
+/** Shown when Restart to Update found the update not ready to install, so the app stays open. */
+export function notPreparedNotice(version: string, why: string): { title: string; body: string } {
+  return { title: `${version} could not be installed yet`, body: `Parawatch stays open: ${why}. Restart to Update to try again.` };
 }
 
 /** Shown when an earlier restart to update never finished. */
