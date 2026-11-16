@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { beforeEach, describe, expect, it } from "vitest";
 import { answerCard, claimSession, closeCard, commentCard, editCard, openCard, readInbox, storedPath, UserError, waitInbox } from "../src/core/ops.js";
-import { desktopSessionsDirs, desktopSessionUrl, findDesktopSession, resolveGoto, withRemote } from "../src/core/desktop.js";
+import { desktopSessionsDirs, desktopSessionUrl, findDesktopSession, inAppUrl, resolveGoto, withRemote } from "../src/core/desktop.js";
 import type { Run } from "../src/core/types.js";
 import { recentlyClosed, snapshot } from "../src/core/snapshot.js";
 import { fold } from "../src/core/state.js";
@@ -270,5 +270,18 @@ describe("desktop sessions", () => {
     ];
     expect(resolveGoto("agent-206", state, runs)).toMatchObject({ session: "pc-lead-0001", name: "Spill Director", device: "winpc", url: "https://claude.ai/code/session_01ABC" });
     expect(resolveGoto("pc-other-0002", state, runs)).toMatchObject({ device: "winpc", url: undefined });
+  });
+});
+
+describe("inAppUrl", () => {
+  it("opens a Remote Control session in the Claude app", () => {
+    expect(inAppUrl("https://claude.ai/code/session_01MRK3WpFSD1YjG78pT31JKN")).toBe("claude://claude.ai/code/session_01MRK3WpFSD1YjG78pT31JKN");
+  });
+  it("leaves other links alone", () => {
+    expect(inAppUrl("https://claude.ai/chat/abc")).toBeUndefined();
+    expect(inAppUrl("https://evil.example/code/session_01ABC")).toBeUndefined();
+    expect(inAppUrl("http://claude.ai/code/session_01ABC")).toBeUndefined();
+    expect(inAppUrl("https://claude.ai/code/session_01ABC/../../settings")).toBeUndefined();
+    expect(inAppUrl("claude://code/continue?session=x")).toBeUndefined();
   });
 });
