@@ -301,6 +301,30 @@ describe("opening a session", () => {
     expect(backend.goto).toHaveBeenCalledWith("pc-sub");
   });
 
+  it("a card asked on another machine opens its session there through Remote Control, and only then", async () => {
+    mount(
+      snapshot({
+        devices: { me: "mac", others: ["winpc"] },
+        cards: [
+          card({ id: "winpc-c1", title: "Why the tower falls", dev: "winpc", session: "pc", from: "Spill Director" }),
+          card({ id: "winpc-c2", title: "No link", dev: "winpc", session: "pc-bare", from: "No remote" }),
+        ],
+        runs: [
+          run({ id: "pc", title: "Spill Director", device: "winpc", remote: "https://claude.ai/code/session_01ABC" }),
+          run({ id: "pc-bare", title: "No remote", device: "winpc" }),
+        ],
+      } as Partial<Snapshot>),
+    );
+    const from = Object.fromEntries([...root.querySelectorAll<HTMLElement>(".pw-from")].map((f) => [f.textContent, f.tagName]));
+    expect(from).toEqual({ "Spill Director on winpc": "A", "No remote on winpc": "SPAN" });
+    const link = [...root.querySelectorAll<HTMLElement>("a.pw-from")][0]!;
+    expect(link.title).toContain("through Remote Control");
+    link.click();
+    expect(backend.goto).toHaveBeenCalledWith("winpc-c1");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(notices.at(-1)).toContain("A line about winpc-c1 is on your clipboard");
+  });
+
   it("the board links the same way", () => {
     window.localStorage.setItem("parawatch:view", "board");
     mount(snapshot({ runs: [run({ id: "pc", title: "Spill Director", device: "winpc", remote: "https://claude.ai/code/session_01ABC" }), run({ id: "pc-bare", title: "No remote", device: "winpc" })] }));
