@@ -461,6 +461,7 @@ function readSession(file: string, now: number): Run {
       touched: work.touched.length ? work.touched : undefined,
       createdPrs: work.createdPrs.length ? work.createdPrs : undefined,
       title: tail.title || (head.prompt ? oneLine(head.prompt, 60) : base.title),
+      name: tail.title || undefined,
       cwd: tail.cwd || head.cwd,
       startedAt: head.startedAt,
       lastActivity: tail.lastActivity,

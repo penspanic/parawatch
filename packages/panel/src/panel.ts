@@ -4,6 +4,7 @@ import { serviceName, siteForPr, siteForRun } from "../../../src/core/sites.js";
 import { ago, clean, groupRuns, OTHER, type FoldNode, type Group, type RunNode } from "./tree";
 import type { Backend, Card, Listener, PrView, Reply, Run, Snapshot } from "./types";
 import { openViewer } from "./viewer";
+import { runLabel, runLabelText, type RunTitles } from "./runTitle";
 import { ChatPane } from "./chat";
 
 /** What the panel needs from its host (the desktop app, or the harness page). */
@@ -194,6 +195,8 @@ export class Panel {
   private mediaUrls = new Map<string, string>();
   /** site icons by site; "" when there is none, so it is not asked for again */
   private siteIcons = new Map<string, string>();
+  /** which of a session's name and its claimed work the lists show */
+  private runTitles: RunTitles = "both";
   private collapsed = loadCollapsed();
   private cardsSig = "";
   private head: HTMLElement;
@@ -363,6 +366,30 @@ export class Panel {
     slot.closest(".pw-run-mark")?.classList.add("has-site");
   }
 
+  /** Show sessions by their own name, by the work they claimed, or both; draws again. */
+  setRunTitles(mode: RunTitles): void {
+    if (mode === this.runTitles) return;
+    this.runTitles = mode;
+    this.cardsSig = "";
+    this.update(undefined, this.error);
+  }
+
+  /** What to call a run in one line of text. */
+  private nameOf(r: Run): string {
+    return runLabelText(r, this.runTitles);
+  }
+
+  /** A run's name into `into`, with its claimed work beside it when both are shown. */
+  private putName(r: Run, into: HTMLElement): void {
+    const l = runLabel(r, this.runTitles);
+    if (!l.work) {
+      into.textContent = l.main;
+      return;
+    }
+    el("span", "pw-name-main", l.main, into);
+    el("span", "pw-name-work", l.work, into);
+  }
+
   /** Forget the icons and draw again, for when the host turns them on or off. */
   resetSiteIcons(): void {
     this.siteIcons.clear();
@@ -472,11 +499,11 @@ export class Panel {
   private signature(): string {
     const cards = this.snapshot?.cards ?? [];
     const s = this.snapshot;
-    const asks = (s?.runs ?? []).filter((r) => r.asks).map((r) => [r.id, r.title, r.asks!.text]);
+    const asks = (s?.runs ?? []).filter((r) => r.asks).map((r) => [r.id, this.nameOf(r), r.asks!.text]);
     const prs = (s?.prs ?? []).map((p) => [p.key, p.waitingOn, p.since, p.stalled, p.sessionTitle, p.title, p.lead, p.unrouted]);
     const ls = (s?.listeners ?? []).map((l) => [l.pid, l.project, l.card]);
     // the lead help lists the project's sessions
-    const leaders = this.helpOpen.size ? (s?.runs ?? []).filter((r) => r.kind === "session").map((r) => [r.id, r.title, r.state, r.project]) : [];
+    const leaders = this.helpOpen.size ? (s?.runs ?? []).filter((r) => r.kind === "session").map((r) => [r.id, this.nameOf(r), r.state, r.project]) : [];
     return JSON.stringify([cards.map((c) => [c.id, c.status, c.kind, c.title, c.since, c.from, c.session, c.answers.length, c.comments.length, c.closedAt, c.lead, c.unrouted]), asks, prs, ls, [...this.busy], [...this.reopened], [...this.helpOpen], leaders]);
   }
 
@@ -807,7 +834,7 @@ export class Panel {
     for (const r of list) {
       const row = el("div", "pw-lead-row", undefined, box);
       this.icon(row, "bot");
-      el("span", "pw-lead-name", r.title || this.shortId(r.id), row);
+      el("span", "pw-lead-name", this.nameOf(r) || this.shortId(r.id), row);
       el("span", "pw-meta", ` · ${STATE_LABEL[r.state]}${r.device ? ` on ${r.device}` : ""}`, row);
       const b = el("button", "pw-lead-pick", "Make lead", row);
       b.title = `Make this session lead ${project}`;
@@ -822,7 +849,7 @@ export class Panel {
           .lead(project, r.id)
           .then(() => {
             this.helpOpen.clear();
-            this.host.notice(`${r.title || this.shortId(r.id)} leads ${project} now`);
+            this.host.notice(`${this.nameOf(r) || this.shortId(r.id)} leads ${project} now`);
           })
           .catch((err) => {
             b.disabled = false;
@@ -1404,7 +1431,7 @@ export class Panel {
         const open = this.boardOpen.has(t.project) || (!!this.boardFilter && !rows.length);
         if (open) for (const r of quiet) box.appendChild(this.boardRow(r, now));
         const more = el("button", "pw-br-more", open ? "Fold the quiet ones" : `+${quiet.length} idle or done`, box);
-        more.title = quiet.map((r) => r.title).join("\n");
+        more.title = quiet.map((r) => (r.run ? this.nameOf(r.run) : r.title)).join("\n");
         more.onclick = () => {
           if (this.boardOpen.has(t.project)) this.boardOpen.delete(t.project);
           else this.boardOpen.add(t.project);
@@ -1421,12 +1448,15 @@ export class Panel {
     row.dataset.mark = r.mark;
     el("span", "pw-board-dot", undefined, row).title = MARK_HINT[r.mark];
     const open = r.run && this.linkable(r.run);
-    const name = el(open ? "a" : "span", "pw-br-title", r.title, row);
-    if (r.run && !open) name.title = `${r.title}${r.run.device ? `: runs on ${r.run.device}, with no Remote Control link to open it from here` : ""}`;
+    const name = el(open ? "a" : "span", "pw-br-title", undefined, row);
+    if (r.run) this.putName(r.run, name);
+    else name.textContent = r.title;
+    const called = r.run ? this.nameOf(r.run) : r.title;
+    if (r.run && !open) name.title = `${called}${r.run.device ? `: runs on ${r.run.device}, with no Remote Control link to open it from here` : ""}`;
     if (r.run && open) {
       const run = r.run;
       (name as HTMLAnchorElement).href = "#";
-      name.title = `${r.title}${run.task ? ` (${run.task})` : ""}. ${this.openHint(run)}`;
+      name.title = `${called}${run.task ? ` (${run.task})` : ""}. ${this.openHint(run)}`;
       name.onclick = (e) => {
         e.preventDefault();
         this.activate(run);
@@ -1556,7 +1586,7 @@ export class Panel {
   private askRow(r: Run, now: number): HTMLElement {
     const row = el("div", `pw-ask${r.asks!.blocked ? " is-blocked" : ""}`);
     const top = el("div", "pw-ask-top", undefined, row);
-    const who = el("a", "pw-ask-who", r.title, top);
+    const who = el("a", "pw-ask-who", this.nameOf(r), top);
     (who as HTMLAnchorElement).href = "#";
     who.title = "Open this session to answer";
     who.onclick = (e) => {
@@ -1652,7 +1682,7 @@ export class Panel {
     if (this.canChat(r)) return r.device ? `Open this Codex conversation from ${r.device}: read it and send it messages` : "Open this Codex conversation here: read it and send it messages";
     const root = this.rootOf(r);
     const where = root.device ? `on ${root.device}, through Remote Control` : "in the Claude app";
-    return root === r ? `Open this session ${where}` : `Open ${root.title}, the session it works under, ${where}`;
+    return root === r ? `Open this session ${where}` : `Open ${runLabel(root, this.runTitles).main}, the session it works under, ${where}`;
   }
 
   /** Open cards this run opened that it may be stopped on (a to-do waits on nothing). */
@@ -1720,7 +1750,8 @@ export class Panel {
     const service = serviceName(r);
     mark.title = `${service ? `${service} ${r.kind}` : r.kind === "declared" ? "declared job" : `${r.runtime} ${r.kind}`}${r.role === "lead" ? " (lead)" : ""} · ${STATE_LABEL[r.state]}`;
     const text = el("div", "pw-run-text", undefined, who);
-    const title = el("span", "pw-run-title", r.title, text);
+    const title = el("span", "pw-run-title", undefined, text);
+    this.putName(r, title);
     if (this.linkable(r)) {
       title.classList.add("is-link");
       title.title = this.openHint(r);
@@ -1768,7 +1799,7 @@ export class Panel {
     hide.onclick = () =>
       void this.backend.hideRun(r.id).then(() => this.host.refresh(), (err) => this.host.notice(err instanceof Error ? err.message : String(err)));
     row.title = [
-      `${r.title}`,
+      r.name && r.work && r.name !== r.work ? `${r.name}\nWorking on: ${r.work}` : this.nameOf(r),
       `${STATE_LABEL[r.state]}${r.lastActivity ? `, last activity ${new Date(r.lastActivity).toLocaleTimeString()}` : ""}`,
       `${r.runtime} ${r.kind} · ${r.id}${r.device ? ` · on ${r.device}` : ""}`,
       settingsFull(r) ?? "",
@@ -1814,7 +1845,7 @@ export class Panel {
     const newest = f.folded.map((r) => r.lastActivity ?? "").sort().pop();
     el("div", "pw-run-sub", ago(newest, now), text);
     el("div", "pw-lane", undefined, row).setAttribute("aria-hidden", "true");
-    row.title = f.folded.map((r) => r.title).join("\n");
+    row.title = f.folded.map((r) => this.nameOf(r)).join("\n");
     row.setAttribute("role", "button");
     row.tabIndex = 0;
     const toggle = () => {

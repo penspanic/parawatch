@@ -1,4 +1,6 @@
 /** The settings the window can show and change, with the values each one may take. */
+import { RUN_TITLES, type RunTitles } from "../../../packages/panel/src/runTitle";
+export { RUN_TITLES, type RunTitles };
 export type Theme = "system" | "light" | "dark";
 export const THEMES: Theme[] = ["system", "light", "dark"];
 /** how far back the agents list reaches, in hours */
@@ -21,6 +23,8 @@ export interface Prefs {
   updateCli: boolean;
   /** let other machines send messages to this machine's Codex sessions, not only show them */
   remoteChat: boolean;
+  /** call a session by its own name, by the work it claimed, or show both */
+  runTitles: RunTitles;
 }
 
 /** Where the command line stands against the app, for the settings screen. */
@@ -90,6 +94,8 @@ export function validPref<K extends keyof Prefs>(key: K, value: unknown): value 
       return SINCE_HOURS.includes(value as number);
     case "keepClosed":
       return KEEP_CLOSED.includes(value as number);
+    case "runTitles":
+      return RUN_TITLES.includes(value as RunTitles);
     default:
       return false;
   }

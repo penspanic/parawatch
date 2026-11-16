@@ -111,7 +111,12 @@ function applyClaim(r: Run, claim: Claim): void {
   r.projectSource = "claim";
   r.task = claim.task ?? r.task;
   r.role = claim.role ?? r.role;
-  if (claim.title) r.title = claim.title;
+  if (claim.title) {
+    // the session keeps its own name beside the work it claimed
+    r.name ??= r.title;
+    r.work = claim.title;
+    r.title = claim.title;
+  }
   if (claim.kind === "scheduled") r.scheduled = true;
   // done until someone writes to the session again
   if (claim.done && claim.at && (!r.lastPromptAt || r.lastPromptAt < claim.at)) {

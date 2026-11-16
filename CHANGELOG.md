@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A session shows its own name and the work it claimed apart: "Spill Director · Model and launch" instead of the work's title alone, which hid which session it was once a lead claimed a task. The name is what the Claude app calls the session (or its log's title); the work is the title of its latest claim. Settings > Agent names picks Both, Session or Work; the phone has the same choice under This phone. A session from a machine on an older version shows its title as before.
+
 ## 0.3.21 (2026-11-16)
 
 - A session on another machine opens in the Claude desktop app instead of a browser, when the app is installed: its Remote Control link (`https://claude.ai/code/session_…`) is opened as `claude://claude.ai/code/session_…`, which the app shows like a session of its own. The desktop app does this for rows, lanes and cards, and `parawatch goto` on macOS (falling back to the browser when the Claude app is not there). `goto --print` still prints the web link, and the phone app opens the web link.

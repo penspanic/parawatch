@@ -144,7 +144,7 @@ const cards: Card[] = [
 const mins = (...spans: [number, number][]) => spans.flatMap(([a, b]) => Array.from({ length: b - a + 1 }, (_, i) => a + i));
 
 const fakeRuns: Snapshot["runs"] = [
-  { id: "lead-game", runtime: "claude-code", kind: "session", title: "Game Director", project: "game", role: "lead", model: "claude-opus-5-5", effort: "high", options: ["bypasses permissions"], state: "working", lastActivity: at(0.1), action: "Bash: Wait for answers", activity: mins([0, 3], [10, 16], [30, 41]) },
+  { id: "lead-game", runtime: "claude-code", kind: "session", title: "Shake round 2 and the glass", name: "Game Director", work: "Shake round 2 and the glass", project: "game", role: "lead", model: "claude-opus-5-5", effort: "high", options: ["bypasses permissions"], state: "working", lastActivity: at(0.1), action: "Bash: Wait for answers", activity: mins([0, 3], [10, 16], [30, 41]) },
   { id: "s139", runtime: "claude-code", kind: "subagent", parent: "lead-game", title: "139 shake round 2", project: "game", model: "claude-sonnet-5-5", effort: "medium", state: "working", lastActivity: at(0.7), action: "Bash: Run the shake test scene", activity: mins([0, 9]) },
   { id: "x1", runtime: "codex", kind: "exec", parent: "lead-game", title: "Generate only the TODO icons", project: "game", model: "gpt-6.1-sol", effort: "xhigh", options: ["full access", "never asks"], state: "working", lastActivity: at(1), action: "exec: swift test", activity: mins([1, 5]) },
   { id: "s137", runtime: "claude-code", kind: "subagent", parent: "lead-game", title: "137 glass tank", project: "game", state: "done", lastActivity: at(8), action: "The tank fills to 60% width and 40% height.", activity: mins([8, 22]) },
@@ -418,6 +418,9 @@ const panel = new Panel(root, backend, {
   notice: (m) => log(`notice: ${m}`),
   refresh: () => void load().then((s) => panel.update(s)),
 });
+// ?titles=name or ?titles=work shows one of a session's name and its work instead of both
+const titles = new URLSearchParams(location.search).get("titles");
+if (titles === "name" || titles === "work") panel.setRunTitles(titles);
 void load().then((s) => panel.update(s));
 // for poking at the panel from the console
 (window as unknown as { panel: Panel }).panel = panel;

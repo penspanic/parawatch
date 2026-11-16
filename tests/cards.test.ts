@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { answerCard, claimSession, closeCard, commentCard, editCard, openCard, readInbox, storedPath, UserError, waitInbox } from "../src/core/ops.js";
 import { desktopSessionsDirs, desktopSessionUrl, findDesktopSession, inAppUrl, resolveGoto, withRemote } from "../src/core/desktop.js";
 import type { Run } from "../src/core/types.js";
+import { attribute } from "../src/core/runs.js";
 import { recentlyClosed, snapshot } from "../src/core/snapshot.js";
 import { fold } from "../src/core/state.js";
 import { readEvents } from "../src/core/store.js";
@@ -283,5 +284,36 @@ describe("inAppUrl", () => {
     expect(inAppUrl("http://claude.ai/code/session_01ABC")).toBeUndefined();
     expect(inAppUrl("https://claude.ai/code/session_01ABC/../../settings")).toBeUndefined();
     expect(inAppUrl("claude://code/continue?session=x")).toBeUndefined();
+  });
+});
+
+describe("a session's name and its work", () => {
+  const session = (over: Partial<Run> = {}): Run => ({ id: "c004f2a7-1", runtime: "claude-code", kind: "session", title: "Spill Director", state: "working", ...over }) as Run;
+  const claim = (title?: string) =>
+    fold([{ v: 2, seq: 1, ts: "2026-11-15T18:21:53.250Z", type: "run.claim", claim: { session: "c004f2a7-1", project: "spill", task: "248", role: "lead", ...(title ? { title } : {}) } }]);
+
+  it("a claim's title is the work; the session keeps its own name beside it", () => {
+    const [r] = attribute([session()], claim("Model and launch of the shooter"));
+    expect(r).toMatchObject({ title: "Model and launch of the shooter", work: "Model and launch of the shooter", name: "Spill Director", task: "248" });
+  });
+
+  it("a claim with no title leaves the name alone and claims no work", () => {
+    const [r] = attribute([session()], claim());
+    expect(r!.title).toBe("Spill Director");
+    expect(r!.work).toBeUndefined();
+  });
+
+  it("the Claude app's name for the session is its name, and what to call it when it claimed no work", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "parawatch-names-"));
+    fs.writeFileSync(path.join(dir, "local_a.json"), JSON.stringify({ sessionId: "local_a", cliSessionId: "c004f2a7-1", title: "Spill Director", isArchived: true }));
+    fs.writeFileSync(path.join(dir, "local_b.json"), JSON.stringify({ sessionId: "local_b", cliSessionId: "c004f2a7-1", title: "Spill Director (live)" }));
+    fs.writeFileSync(path.join(dir, "local_c.json"), JSON.stringify({ sessionId: "local_c", cliSessionId: "other-1", title: "Other" }));
+    const [plain] = withRemote([session({ title: "first prompt…" })], dir);
+    expect(plain).toMatchObject({ name: "Spill Director (live)", title: "Spill Director (live)" });
+    const [working] = withRemote([session({ title: "Fix the camera", work: "Fix the camera", name: "from the log" })], dir);
+    expect(working).toMatchObject({ name: "Spill Director (live)", title: "Fix the camera", work: "Fix the camera" });
+    // a session of another machine is named there
+    const [away] = withRemote([session({ device: "winpc", name: "Director", title: "x" })], dir);
+    expect(away).toMatchObject({ name: "Director", title: "x" });
   });
 });

@@ -3,7 +3,7 @@
  * each with a switch or a segmented choice. Changes apply at once; there is nothing to save.
  */
 import { setIcon } from "@parawatch/panel";
-import { KEEP_CLOSED, SINCE_HOURS, type AboutInfo, type Prefs, type Theme, type UpdateState } from "./prefs";
+import { KEEP_CLOSED, SINCE_HOURS, type AboutInfo, type Prefs, type RunTitles, type Theme, type UpdateState } from "./prefs";
 import { updateLabel } from "./rules";
 
 interface Choice<T> {
@@ -12,6 +12,12 @@ interface Choice<T> {
   icon?: string;
   title?: string;
 }
+
+const RUN_TITLE_CHOICES: Choice<RunTitles>[] = [
+  { value: "both", label: "Both", title: "The session's name, and beside it the work it claimed" },
+  { value: "name", label: "Session", title: "The session's own name, as the Claude app shows it" },
+  { value: "work", label: "Work", title: "The work the session claimed, which changes with each task" },
+];
 
 const THEME_CHOICES: Choice<Theme>[] = [
   { value: "system", label: "Auto", icon: "monitor", title: "Match the system" },
@@ -87,6 +93,7 @@ export class SettingsView {
     this.row(look, "bot", "Show service icons", "Fetched from each service's site", (c) => this.toggle(c, p.serviceIcons, (v) => this.change("serviceIcons", v)));
 
     const lists = this.group();
+    this.row(lists, "tag", "Agent names", "Session name, its current work, or both", (c) => this.segmented(c, RUN_TITLE_CHOICES, p.runTitles, (v) => this.change("runTitles", v)));
     this.row(lists, "activity", "Agents", "Active in the last", (c) =>
       this.segmented(
         c,

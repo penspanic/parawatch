@@ -23,7 +23,7 @@ import type { PwEvent, Snapshot } from "../../../src/core/types.js";
 import { artPng, trayPng, type TrayState } from "./art.js";
 import { logger, logPath } from "./logger.js";
 import { siteIcon } from "./siteIcons.js";
-import { KEEP_CLOSED, SINCE_HOURS, THEMES, validPref, type AboutInfo, type Prefs, type Theme, type UpdateState } from "./prefs.js";
+import { KEEP_CLOSED, RUN_TITLES, SINCE_HOURS, THEMES, validPref, type AboutInfo, type Prefs, type Theme, type UpdateState } from "./prefs.js";
 import { alertFor, agentsWorking, issueUrl, needsYou, newlyStuck, summary } from "./rules.js";
 import { cliState, onCliChange, updateCli } from "./cliUpdate.js";
 import type { ChatState } from "../../../src/core/chatTypes.js";
@@ -41,7 +41,7 @@ interface Settings extends Omit<Prefs, "openAtLogin"> {
   bounds?: { x: number; y: number; width: number; height: number };
 }
 
-const DEFAULTS: Settings = { sinceHours: 6, notify: true, theme: "system", keepClosed: 20, checkUpdates: true, serviceIcons: true, updateCli: true, remoteChat: false };
+const DEFAULTS: Settings = { sinceHours: 6, notify: true, theme: "system", keepClosed: 20, checkUpdates: true, serviceIcons: true, updateCli: true, remoteChat: false, runTitles: "both" };
 const REPO_URL = "https://github.com/penspanic/parawatch";
 /** builder.json's appId */
 const APP_ID = "io.github.penspanic.parawatch";
@@ -61,6 +61,7 @@ function loadSettings(): Settings {
     if (typeof s.serviceIcons !== "boolean") s.serviceIcons = DEFAULTS.serviceIcons;
     if (typeof s.updateCli !== "boolean") s.updateCli = DEFAULTS.updateCli;
     if (typeof s.remoteChat !== "boolean") s.remoteChat = DEFAULTS.remoteChat;
+    if (!RUN_TITLES.includes(s.runTitles)) s.runTitles = DEFAULTS.runTitles;
     return s;
   } catch {
     return { ...DEFAULTS };
@@ -625,6 +626,7 @@ function prefs(): Prefs {
     serviceIcons: settings.serviceIcons,
     updateCli: settings.updateCli,
     remoteChat: settings.remoteChat,
+    runTitles: settings.runTitles,
   };
 }
 
