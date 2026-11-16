@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.19 (2026-11-16)
 
 - Fix: Restart to Update on macOS could fail and leave the app closed. The check made just before the restart hands the downloaded update to Squirrel again, which unpacks it anew; the app quit at once, so ShipIt found the update gone or half unpacked, failed its signature check and gave up. The restart now waits until Squirrel has the update in place, and says so and stays open if it does not get there.
 - Fix: when ShipIt gave up on an update, the old version it opened again closed itself at once, taking the start for one made in the middle of the install. On macOS a start now steps aside only while ShipIt is still running.
