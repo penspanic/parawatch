@@ -4,7 +4,7 @@
  * kept on this phone only and never sent anywhere.
  */
 import { Marked } from "marked";
-import { Panel, setIcon } from "@parawatch/panel";
+import { isRunTitles, Panel, setIcon, type RunTitles } from "@parawatch/panel";
 import { phoneBackend } from "./backend";
 import { readJoinCode, type RelayConfig } from "./seal";
 import { Space } from "./space";
@@ -12,6 +12,17 @@ import { Space } from "./space";
 declare const __VERSION__: string;
 
 const PAIRED = "pw.paired";
+/** which of a session's name and its claimed work the lists show; kept on this phone */
+const RUN_TITLES = "pw.runTitles";
+
+function readRunTitles(): RunTitles {
+  try {
+    const v = localStorage.getItem(RUN_TITLES);
+    return isRunTitles(v) ? v : "both";
+  } catch {
+    return "both";
+  }
+}
 
 interface Paired {
   config: RelayConfig;
@@ -146,6 +157,7 @@ async function connect(paired: Paired, fresh: boolean): Promise<void> {
       b.onclick = () => showAbout();
     },
   });
+  panel.setRunTitles(readRunTitles());
   current = { space, panel, paired };
   space.onChange(() => panel.update(space.snapshot(), space.error));
   panel.update(space.snapshot(), space.error);
@@ -180,6 +192,32 @@ function showAbout(): void {
     el("dt", undefined, k, dl);
     el("dd", undefined, v, dl);
   }
+  const names = el("div", "pa-choice", undefined, box);
+  el("span", "pa-label", "Agent names", names);
+  const seg = el("div", "pa-seg", undefined, names);
+  const choices: [RunTitles, string][] = [
+    ["both", "Both"],
+    ["name", "Session"],
+    ["work", "Work"],
+  ];
+  const draw = () => {
+    seg.replaceChildren();
+    const now = readRunTitles();
+    for (const [value, label] of choices) {
+      const b = el("button", value === now ? "pa-seg-btn is-on" : "pa-seg-btn", label, seg);
+      b.setAttribute("aria-pressed", String(value === now));
+      b.onclick = () => {
+        try {
+          localStorage.setItem(RUN_TITLES, value);
+        } catch {
+          // shown for now only
+        }
+        current?.panel.setRunTitles(value);
+        draw();
+      };
+    }
+  };
+  draw();
   el("p", "pa-text", "Answers, dismissals and hidden runs from here reach your machines like ones given there.", box);
   const forget = el("button", "pa-forget", "Unpair this phone", box);
   forget.onclick = () => {

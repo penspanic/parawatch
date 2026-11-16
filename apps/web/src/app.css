@@ -212,3 +212,33 @@ input:focus {
   left: auto;
   right: 4px;
 }
+/* a choice of a few words, as one row of buttons */
+.pa-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pa-seg {
+  display: flex;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+}
+.pa-seg-btn {
+  flex: 1;
+  font: inherit;
+  font-size: 15px;
+  padding: 10px 6px;
+  border: none;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  cursor: pointer;
+}
+.pa-seg-btn + .pa-seg-btn {
+  border-left: 1px solid var(--background-modifier-border);
+}
+.pa-seg-btn.is-on {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-weight: 600;
+}

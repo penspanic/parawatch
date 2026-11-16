@@ -160,15 +160,32 @@ export function inAppUrl(url: string): string | undefined {
   return `claude://claude.ai${u.pathname}`;
 }
 
-/** Give each Claude Code session of this machine its Remote Control link, when it has one. */
+/**
+ * Give each Claude Code session of this machine its Remote Control link, when it has one, and the
+ * name the Claude app shows for it.
+ */
 export function withRemote(runs: Run[], dir: string | string[] = desktopSessionsDirs()): Run[] {
   const sessions = runs.filter((r) => r.runtime === "claude-code" && r.kind === "session" && !r.device);
   if (!sessions.length) return runs;
   const remote = new Map<string, string>();
-  for (const s of desktopSessions(dir)) if (s.remote && !s.archived) for (const id of s.ids) remote.set(id, s.remote);
+  const names = new Map<string, { title: string; archived: boolean }>();
+  for (const s of desktopSessions(dir)) {
+    for (const id of s.ids) {
+      if (s.remote && !s.archived) remote.set(id, s.remote);
+      // a live desktop session's name wins over an archived one that ran the same CLI session
+      const had = names.get(id);
+      if (s.title?.trim() && (!had || (had.archived && !s.archived))) names.set(id, { title: s.title.trim(), archived: s.archived });
+    }
+  }
   for (const r of sessions) {
     const id = remote.get(r.id);
     if (id) r.remote = remoteSessionUrl(id);
+    const name = names.get(r.id)?.title;
+    if (name) {
+      r.name = name;
+      // with no claim, the app's name is also what to call it
+      if (!r.work) r.title = name;
+    }
   }
   return runs;
 }

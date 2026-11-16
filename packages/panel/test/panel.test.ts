@@ -325,6 +325,27 @@ describe("opening a session", () => {
     expect(notices.at(-1)).toContain("A line about winpc-c1 is on your clipboard");
   });
 
+  it("shows a session's name and the work it claimed, either one, or both", () => {
+    const director = run({ id: "pc", title: "Model and launch", name: "Spill Director", work: "Model and launch", device: "winpc", remote: "https://claude.ai/code/session_01ABC", role: "lead" });
+    const plain = run({ id: "here", title: "Here" });
+    const p = mount(snapshot({ runs: [director, plain] }));
+    const shown = () => [...root.querySelectorAll<HTMLElement>(".pw-run-title")].map((t) => [t.querySelector(".pw-name-main")?.textContent ?? t.textContent, t.querySelector(".pw-name-work")?.textContent]);
+    expect(shown()).toEqual([
+      ["Spill Director", "Model and launch"],
+      ["Here", undefined],
+    ]);
+    p.setRunTitles("name");
+    expect(shown()).toEqual([
+      ["Spill Director", undefined],
+      ["Here", undefined],
+    ]);
+    p.setRunTitles("work");
+    expect(shown()).toEqual([
+      ["Model and launch", undefined],
+      ["Here", undefined],
+    ]);
+  });
+
   it("the board links the same way", () => {
     window.localStorage.setItem("parawatch:view", "board");
     mount(snapshot({ runs: [run({ id: "pc", title: "Spill Director", device: "winpc", remote: "https://claude.ai/code/session_01ABC" }), run({ id: "pc-bare", title: "No remote", device: "winpc" })] }));

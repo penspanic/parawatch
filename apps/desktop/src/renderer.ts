@@ -133,8 +133,12 @@ api.onPrefs((p) => {
   // turning the icons off or on draws the lists again
   if (showIcons !== undefined && showIcons !== p.serviceIcons) panel.resetSiteIcons();
   showIcons = p.serviceIcons;
+  panel.setRunTitles(p.runTitles);
 });
-void api.prefs().then((p) => (showIcons = p.serviceIcons));
+void api.prefs().then((p) => {
+  showIcons = p.serviceIcons;
+  panel.setRunTitles(p.runTitles);
+});
 api.onUpdate((u) => settings.setUpdate(u));
 api.onOpenSettings(() => showSettings(true));
 document.addEventListener("keydown", (e) => {

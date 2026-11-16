@@ -313,7 +313,15 @@ export interface Run {
   id: string;
   runtime: string; // "claude-code" | "codex" | "declared" | ...
   kind: "session" | "subagent" | "exec" | "declared";
+  /** what to call it: the title its claim gives, else its own name, else its first prompt */
   title: string;
+  /**
+   * The session's own name, as the Claude app or its log names it ("Spill Director"), when a claim
+   * gives it another title. Older machines leave it out.
+   */
+  name?: string;
+  /** the title of the work it claimed ("Fix the camera"), which may change with each task */
+  work?: string;
   project?: string;
   task?: string;
   role?: string;
