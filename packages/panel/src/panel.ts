@@ -1008,19 +1008,22 @@ export class Panel {
     const away = this.elsewhere(c);
     if (!c.from && !c.session && !away) return;
     const who = c.from ?? (c.session ? `session ${c.session.slice(0, 8)}` : "");
-    // a session on another machine cannot be opened from here
-    const row = el(c.session && !away ? "a" : "span", "pw-meta pw-from", undefined, head);
+    const run = c.session ? this.snapshot?.runs?.find((r) => r.id === c.session) : undefined;
+    // a session on another machine opens from here only through its Remote Control link
+    const opens = !!c.session && (!away || (!!run && this.canOpen(run)));
+    const row = el(opens ? "a" : "span", "pw-meta pw-from", undefined, head);
     const mark = this.icon(row, away ? "monitor" : "bot");
-    const run = !away && c.session ? this.snapshot?.runs?.find((r) => r.id === c.session) : undefined;
-    if (run) this.siteSlot(mark, siteForRun(run));
+    if (run && !away) this.siteSlot(mark, siteForRun(run));
     const name = [who, away ? `on ${away}` : ""].filter(Boolean).join(" ");
     // the name gives way first when the head is narrow; the whole of it is in the tooltip
     el("span", "pw-from-name", name, row).title = name;
     if (away) row.title = `Asked on ${away}`;
-    if (!c.session || away) return;
+    if (!opens) return;
     const link = row as HTMLAnchorElement;
     link.href = "#";
-    link.title = `Open this session in Claude and copy a line about ${c.id} to paste there`;
+    link.title = away
+      ? `Asked on ${away}. Open this session through Remote Control and copy a line about ${c.id} to paste there`
+      : `Open this session in Claude and copy a line about ${c.id} to paste there`;
     link.onclick = (e) => {
       e.preventDefault();
       e.stopPropagation();
