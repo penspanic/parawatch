@@ -4,7 +4,7 @@
  * own, though a downloaded update is put in place when the app quits. Packaged macOS builds and the
  * Windows installer update this way; development runs and Linux point at the releases page instead.
  */
-import { app } from "electron";
+import { app, autoUpdater as squirrel } from "electron";
 import { autoUpdater, type UpdateInfo } from "electron-updater";
 import { logger } from "./logger.js";
 import type { UpdateState } from "./prefs.js";
@@ -21,6 +21,16 @@ let first: NodeJS.Timeout | undefined;
 let wired = false;
 /** The version an earlier restart failed to install; its next update-downloaded is flagged. */
 let unfinished: string | undefined;
+/**
+ * On macOS, electron-updater's update-downloaded only means its own copy is complete. It then hands
+ * the file to Squirrel, which fetches and unpacks it again, a few seconds for the whole app. Every
+ * check that finds the update does this again, and Squirrel throws away what it had unpacked when it
+ * starts over. Quitting to install meanwhile makes ShipIt install a half-unpacked app, which fails
+ * its signature check, so a restart waits until Squirrel says the update is in place.
+ */
+let squirrelBusy = false;
+let squirrelError: string | undefined;
+const squirrelDone = new Set<() => void>();
 
 function set(next: UpdateState): void {
   state = next;
@@ -56,11 +66,54 @@ function wire(): void {
   autoUpdater.on("download-progress", (p: { percent: number }) => {
     if (state.status !== "ready") set({ ...state, status: "downloading", percent: Math.round(p.percent) });
   });
-  autoUpdater.on("update-downloaded", (i: UpdateInfo) => set({ status: "ready", version: i.version, checkedAt: stamp(), ...(unfinished === i.version ? { interrupted: true } : {}) }));
+  if (process.platform === "darwin") {
+    squirrel.on("update-downloaded", () => settleSquirrel());
+    squirrel.on("error", (err: Error) => settleSquirrel(shortError(err)));
+    squirrel.on("update-not-available", () => settleSquirrel("Squirrel found nothing to install"));
+  }
+  autoUpdater.on("update-downloaded", (i: UpdateInfo) => {
+    // electron-updater hands this file to Squirrel right after saying it is downloaded
+    if (process.platform === "darwin") {
+      squirrelBusy = true;
+      squirrelError = undefined;
+    }
+    set({ status: "ready", version: i.version, checkedAt: stamp(), ...(unfinished === i.version ? { interrupted: true } : {}) });
+  });
   autoUpdater.on("error", (err: Error) => {
     logger.warn("update check failed:", err);
     if (state.status !== "ready") set({ status: "error", error: shortError(err), checkedAt: stamp() });
   });
+}
+
+function settleSquirrel(error?: string): void {
+  squirrelBusy = false;
+  squirrelError = error;
+  if (error) logger.warn(`Squirrel could not take the update: ${error}`);
+  for (const f of squirrelDone) f();
+  squirrelDone.clear();
+}
+
+/**
+ * Wait until Squirrel has the downloaded update in place, so quitting installs it. Resolves with
+ * why it is not, or undefined when it is (and at once outside macOS).
+ */
+export async function preparedForInstall(waitMs = 120_000): Promise<string | undefined> {
+  if (process.platform === "darwin" && squirrelBusy) {
+    logger.info("waiting for Squirrel to unpack the update before quitting");
+    let timeout: NodeJS.Timeout | undefined;
+    let settle: (() => void) | undefined;
+    const done = await Promise.race([
+      new Promise<boolean>((r) => {
+        settle = () => r(true);
+        squirrelDone.add(settle);
+      }),
+      new Promise<boolean>((r) => (timeout = setTimeout(() => r(false), waitMs))),
+    ]);
+    if (timeout) clearTimeout(timeout);
+    if (settle) squirrelDone.delete(settle);
+    if (!done) return "the update was still being unpacked";
+  }
+  return squirrelError;
 }
 
 function shortError(err: Error): string {
