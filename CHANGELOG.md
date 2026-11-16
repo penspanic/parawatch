@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.20 (2026-11-16)
 
 - Fix: a card asked on another machine did not open its session when clicked, even when that session has a Remote Control link, as its row in the agents list does. It now opens the same way and puts a line about the card on the clipboard; a session there with no link stays plain text.
 
