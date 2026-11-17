@@ -903,8 +903,24 @@ a.pw-from:hover {
 .pw-look {
   margin-top: 8px;
   display: flex;
+  align-items: flex-start;
   gap: 6px;
   color: var(--text-muted);
+}
+.pw-look-text {
+  min-width: 0;
+  flex: 1;
+  line-height: 1.5;
+}
+.pw-look-text > :first-child {
+  margin-top: 0;
+}
+.pw-look-text > :last-child {
+  margin-bottom: 0;
+}
+.pw-look-text ol,
+.pw-look-text ul {
+  padding-left: 1.4em;
 }
 .pw-refs {
   display: flex;

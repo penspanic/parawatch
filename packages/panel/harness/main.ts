@@ -1,9 +1,11 @@
 // Renders the panel in a plain browser page with fake cards and, when present, a real
 // `parawatch status --json` snapshot. Answers are logged instead of sent.
+import { Marked } from "marked";
 import { Panel } from "../src/panel";
 import { setIcon } from "../src/icons";
 import type { Backend, Card, ChatItem, ChatState, Reply, Snapshot } from "../src/types";
 
+const markdown = new Marked({ gfm: true, breaks: true });
 const now = Date.now();
 const at = (min: number) => new Date(now - min * 60_000).toISOString();
 
@@ -84,7 +86,10 @@ const cards: Card[] = [
     from: "Spill Director",
     dev: "winpc",
     open: ["/Applications/Game.app", "https://example.com/builds/139"],
-    look: "the tank walls when it is full, at the top right",
+    // ?look=list numbers several points in one line, as agents often do
+    look: new URLSearchParams(location.search).get("look") === "list"
+      ? "1) the tank walls when it is full, at the top right. 2) the glass edge against the dark floor. 3) whether the water line wobbles after a shake."
+      : "the tank walls when it is full, at the top right",
     attach: ["/captures/glass.png"],
     openedAt: at(3),
     status: "open",
@@ -409,10 +414,9 @@ const backend: Backend = {
 
 const root = document.getElementById("panel")!;
 const panel = new Panel(root, backend, {
+  // the desktop app's settings, so the harness shows Markdown as the app does
   renderMarkdown: (md, el) => {
-    const p = document.createElement("p");
-    p.textContent = md;
-    el.appendChild(p);
+    el.innerHTML = markdown.parse(md, { async: false }) as string;
   },
   icon: setIcon,
   notice: (m) => log(`notice: ${m}`),

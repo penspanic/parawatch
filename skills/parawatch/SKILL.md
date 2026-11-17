@@ -52,6 +52,7 @@ A good card:
 - **The body is two or three lines**: what changed, what it affects, what happens if they do not answer. It renders as Markdown.
 - **Write in the human's words**: what they will see or feel in the product, not ticket numbers, metrics, engine terms or internal ids. Put those in an attachment or a link at the end of the body.
 - **Options are exclusive and concrete, and each says what happens if picked.** Recommend one with `-r` when you have a view; say why in the body.
+- **`-l` on a `try` card is one short line: where to look.** Several things to check go in the body as a numbered list, one item per line, so they read as a list in the panel.
 - **Attach evidence** with absolute paths: screenshots, short videos, logs. `--open` takes what they should launch (an `.app`, a file, a URL).
 - **Add `-t <task>`** when the project runs several tasks at once, so the human can tell them apart.
 - **`block` is red and counts as needing them now.** Use it only when your work stops until they act. Errands for later (a bill, a registration, a policy check, a measurement whenever the machine is free) are `todo`; they wait folded in the panel and do not pop up.
