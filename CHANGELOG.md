@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.24 (2026-11-17)
 
 - A pull request that stays in conflict reports it once. GitHub answers "unknown" for a while each time the base branch moves, and parawatch read that as the conflict gone, so every merge to main woke the owner (or the lead) with the same conflict again. A PR that is fixed and then breaks again still reports it.
 - `parawatch pr unlink` stays: a PR someone unlinked is no longer linked again from the log of the session that opened it, so a draft parked for later stops waking anyone until someone links it again.
