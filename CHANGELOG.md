@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.23 (2026-11-17)
 
 - `--open` refuses a command (`&&`, a pipe, `--flags` after the app): parawatch never runs it, and on Windows such a line was stored as a path under the current folder, so every other machine showed it as a file not arrived yet. The error says to put the command in the body as a code block. The skill says the same.
 - A file a card from another machine names outside the shared folder (a script on that PC's own drive) shows as "on winpc", not "not on this machine yet": it never comes here, so the panel no longer suggests waiting for it. File names from a Windows machine are shortened at the last backslash too.
