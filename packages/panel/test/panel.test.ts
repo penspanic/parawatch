@@ -126,6 +126,13 @@ describe("panel", () => {
     await vi.waitFor(() => expect(notices[0]).toContain("Sent to app"));
   });
 
+  it("what to look at goes through Markdown, a one-line numbered list broken into lines", () => {
+    mount(snapshot({ cards: [card({ id: "c1", kind: "try", title: "Try build 139", look: "1) the camera 2) the hand 3) the pocket" })] }));
+    const look = root.querySelector(".pw-look-text");
+    expect(look?.classList.contains("markdown-rendered")).toBe(true);
+    expect(look?.textContent).toBe("1) the camera\n2) the hand\n3) the pocket");
+  });
+
   it("answered cards wait on the agent; those no session gets have their own group and a Help button", async () => {
     const answered = { status: "answered" as const, answers: [{ seq: 2, at: ago(1), by: "human", choice: 1 }], options: ["Yes"] };
     mount(

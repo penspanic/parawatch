@@ -3,6 +3,7 @@
 ## Unreleased
 
 - A session shows its own name and the work it claimed apart: "Spill Director · Model and launch" instead of the work's title alone, which hid which session it was once a lead claimed a task. The name is what the Claude app calls the session (or its log's title); the work is the title of its latest claim. Settings > Agent names picks Both, Session or Work; the phone has the same choice under This phone. A session from a machine on an older version shows its title as before.
+- A card's "look at" line (`try -l`) is shown as Markdown, like the body. A body or look line that numbers several points in one line ("1) … 2) … 3) …") is shown as a list, one point per line. The skill now says to keep `-l` to one line and put several points in the body as a list.
 
 ## 0.3.21 (2026-11-16)
 

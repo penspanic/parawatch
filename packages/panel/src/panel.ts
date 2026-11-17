@@ -6,6 +6,7 @@ import type { Backend, Card, Listener, PrView, Reply, Run, Snapshot } from "./ty
 import { openViewer } from "./viewer";
 import { runLabel, runLabelText, type RunTitles } from "./runTitle";
 import { ChatPane } from "./chat";
+import { splitInlineList } from "./inlineList";
 
 /** What the panel needs from its host (the desktop app, or the harness page). */
 export interface PanelHost {
@@ -931,13 +932,13 @@ export class Panel {
 
   /** What the card says and carries: body, what to look at, things to open, media, comments. */
   private cardDetail(c: Card, box: HTMLElement): void {
-    if (c.body) this.host.renderMarkdown(c.body, el("div", "pw-card-body markdown-rendered", undefined, box));
+    if (c.body) this.host.renderMarkdown(splitInlineList(c.body), el("div", "pw-card-body markdown-rendered", undefined, box));
     if (c.action) this.actionLine(c, box);
     if (c.preview) this.previewBlock(c, box);
     if (c.look) {
       const look = el("div", "pw-look", undefined, box);
       this.icon(look, "eye").title = "Look at";
-      el("span", "pw-look-text", c.look, look);
+      this.host.renderMarkdown(splitInlineList(c.look), el("div", "pw-look-text markdown-rendered", undefined, look));
     }
     const refs = el("div", "pw-refs", undefined, box);
     const away = new Set(c.missing ?? []);
