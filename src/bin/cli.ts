@@ -456,7 +456,7 @@ pr.command("link <pr>")
     process.stdout.write(`${r.repo}#${r.number} → ${session ? session.slice(0, 8) : o.project ?? "no session"}\n`);
   });
 pr.command("unlink <pr>")
-  .description("forget which session owns a pull request")
+  .description("stop news on a pull request you have set aside: it wakes no one until someone links it again")
   .action((ref: string) => unlinkPr(resolvePrRef(ref).key));
 pr.command("list")
   .description("open pull requests you wrote or are asked to review, with what each waits on")

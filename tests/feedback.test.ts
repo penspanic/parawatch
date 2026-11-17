@@ -18,6 +18,7 @@ import {
   inboxScope,
   closeCard,
   linkPr,
+  unlinkPr,
   listeners,
   listenersFor,
   makeLead,
@@ -32,7 +33,7 @@ import {
 import { hookContext } from "../src/core/integrate.js";
 import { attribute, declaredRuns, foldRepeats } from "../src/core/runs.js";
 import { inboxLine } from "../src/core/format.js";
-import { snapshot } from "../src/core/snapshot.js";
+import { linkCreatedPrs, snapshot } from "../src/core/snapshot.js";
 import { fold } from "../src/core/state.js";
 import { homeDir, readEvents } from "../src/core/store.js";
 import type { Run } from "../src/core/types.js";
@@ -254,6 +255,21 @@ describe("pull requests", () => {
     expect(third.events.map((e) => e.type === "pr.change" && e.change)).toEqual(["ci_failed"]);
   });
 
+  it("a PR that stays in conflict reports it once, though GitHub forgets it each time main moves", () => {
+    const first = nextCache({ prs: [], since: {} }, [pr({ mergeable: "CONFLICTING" })], ["github.com"], ts(10));
+    // main moved: GitHub works it out again
+    const unknown = nextCache(first.cache, [pr({ mergeable: "UNKNOWN" })], ["github.com"], ts(20));
+    expect(unknown.events).toEqual([]);
+    expect(unknown.cache.prs[0]!.mergeable).toBe("CONFLICTING");
+    expect(unknown.cache.since[pr().key]!.waitingOn).toBe("conflict");
+    const again = nextCache(unknown.cache, [pr({ mergeable: "CONFLICTING" })], ["github.com"], ts(30));
+    expect(again.events).toEqual([]);
+    // fixed, then broken by a later merge: that is news
+    const fixed = nextCache(again.cache, [pr({ mergeable: "MERGEABLE" })], ["github.com"], ts(40));
+    const broken = nextCache(fixed.cache, [pr({ mergeable: "CONFLICTING" })], ["github.com"], ts(50));
+    expect(broken.events.map((e) => e.type === "pr.change" && e.change)).toEqual(["conflict"]);
+  });
+
   it("a PR linked since the last reading reports a CI that ended before it was first seen", () => {
     const key = new Set([pr().key]);
     const green = nextCache({ fetchedAt: ts(0), prs: [], since: {} }, [pr({ ci: "SUCCESS" })], ["github.com"], ts(10), key);
@@ -266,6 +282,20 @@ describe("pull requests", () => {
     // still running, or not newly linked: nothing yet
     expect(nextCache({ fetchedAt: ts(0), prs: [], since: {} }, [pr({ ci: "PENDING" })], ["github.com"], ts(10), key).events).toEqual([]);
     expect(nextCache({ fetchedAt: ts(0), prs: [], since: {} }, [pr({ ci: "SUCCESS" })], ["github.com"], ts(10)).events).toEqual([]);
+  });
+
+  it("a PR someone unlinked is not linked again from the log of the session that opened it", () => {
+    const url = "https://github.com/acme/api/pull/88";
+    const opener = [run("sess-123456", { project: "api", createdPrs: [url] })];
+    expect(linkCreatedPrs(opener, fold(readEvents()))).toBe(true);
+    unlinkPr(pr().key);
+    expect(linkCreatedPrs(opener, fold(readEvents()))).toBe(false);
+    expect(fold(readEvents()).prLinks.has(pr().key)).toBe(false);
+    // linked again by hand: it is a PR like any other
+    linkPr({ pr: parsePrRef(url)!, session: "sess-654321", project: "api" });
+    const state = fold(readEvents());
+    expect(state.unlinked.has(pr().key)).toBe(false);
+    expect(state.prLinks.get(pr().key)!.session).toBe("sess-654321");
   });
 
   it("reads the newest linked PRs by number, and not again once they are finished", async () => {

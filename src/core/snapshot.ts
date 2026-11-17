@@ -62,15 +62,16 @@ export function snapshot(opts: { sinceHours?: number; project?: string; closed?:
 /**
  * A pull request a session's log shows it opened belongs to that session, unless linked already.
  * An earlier automatic link to another session gives way when that session's log no longer shows
- * it opening the PR (it was read wrongly); a link made with `parawatch pr link` never does.
+ * it opening the PR (it was read wrongly); a link made with `parawatch pr link` never does. A PR
+ * someone unlinked stays unlinked until someone links it again.
  */
-function linkCreatedPrs(runs: Run[], state: State): boolean {
+export function linkCreatedPrs(runs: Run[], state: State): boolean {
   let added = false;
   for (const r of runs) {
     for (const url of r.createdPrs ?? []) {
       const key = keyOf(url);
       const pr = parsePrRef(url);
-      if (!key || !pr) continue;
+      if (!key || !pr || state.unlinked.has(key)) continue;
       const had = state.prLinks.get(key);
       if (had) {
         if (!had.auto || !had.session || r.id.startsWith(had.session)) continue;
