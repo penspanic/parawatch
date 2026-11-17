@@ -12,7 +12,8 @@ import { splitInlineList } from "./inlineList";
 export interface PanelHost {
   renderMarkdown(md: string, el: HTMLElement): void;
   icon(el: HTMLElement, name: string): void;
-  notice(message: string): void;
+  /** a short message; `copy` is what its Copy button copies when that is not the message itself */
+  notice(message: string, copy?: string): void;
   /** Ask for a fresh snapshot now. */
   refresh(): void;
   /** Add the host's own controls to the end of the status row (the desktop app's settings). */
@@ -102,7 +103,8 @@ function basename(p: string): string {
       return p;
     }
   }
-  const parts = p.replace(/\/+$/, "").split("/");
+  // a path from a Windows machine keeps its backslashes on a Mac
+  const parts = p.replace(/[\\/]+$/, "").split(/[\\/]/);
   return parts[parts.length - 1] || p;
 }
 
@@ -945,7 +947,7 @@ export class Panel {
     if (c.previewFile) refs.appendChild(this.fileLink(c.previewFile, "file", "Open the file the preview came from"));
     for (const target of c.open ?? []) {
       if (away.has(target)) {
-        refs.appendChild(this.missingLink(target));
+        refs.appendChild(this.missingLink(target, c));
         continue;
       }
       const b = el("button", "pw-ref", undefined, refs);
@@ -956,8 +958,8 @@ export class Panel {
       this.withMenu(b, target);
     }
     const media = (c.attach ?? []).filter((f) => IMAGE.test(f) || VIDEO.test(f));
-    for (const f of (c.attach ?? []).filter((x) => !media.includes(x))) refs.appendChild(away.has(f) ? this.missingLink(f) : this.fileLink(f));
-    for (const f of media.filter((x) => away.has(x))) refs.appendChild(this.missingLink(f));
+    for (const f of (c.attach ?? []).filter((x) => !media.includes(x))) refs.appendChild(away.has(f) ? this.missingLink(f, c) : this.fileLink(f));
+    for (const f of media.filter((x) => away.has(x))) refs.appendChild(this.missingLink(f, c));
     if (!refs.childElementCount) refs.remove();
     const here = media.filter((x) => !away.has(x));
     if (here.length) this.media(here, el("div", "pw-media", undefined, box));
@@ -1334,13 +1336,26 @@ export class Panel {
     });
   }
 
-  /** A file the card names that this machine does not have yet: says so instead of failing to open. */
-  private missingLink(f: string): HTMLElement {
+  /**
+   * A file the card names that this machine does not have: says so instead of failing to open.
+   * One outside the folders kept in step stays on the machine that asked, so it says where it is
+   * rather than that it is on its way.
+   */
+  private missingLink(f: string, c: Card): HTMLElement {
+    const there = c.away?.includes(f) && c.dev ? c.dev : undefined;
     const b = el("button", "pw-ref pw-file is-missing");
-    this.icon(b, "cloud-off", "pw-btn-icon");
-    el("span", undefined, `${basename(f)} · not on this machine yet`, b);
-    b.title = `${f}\nNot on this machine yet. A sync tool or cloud drive may still be bringing it, or it is only on the machine that asked.`;
-    b.onclick = () => this.host.notice(`${basename(f)} is not on this machine yet. If it is still syncing, it opens once it arrives.`);
+    this.icon(b, there ? "monitor" : "cloud-off", "pw-btn-icon");
+    el("span", undefined, there ? `${basename(f)} · on ${there}` : `${basename(f)} · not on this machine yet`, b);
+    b.title = there
+      ? `${f}\nOnly on ${there}: it is outside the shared folder, so it does not come here. Open it on ${there}.`
+      : `${f}\nNot on this machine yet. A sync tool or cloud drive may still be bringing it, or it is only on the machine that asked.`;
+    b.onclick = () =>
+      this.host.notice(
+        there
+          ? `${basename(f)} is only on ${there}, outside the shared folder. Open it there; Copy takes its path.`
+          : `${basename(f)} is not on this machine yet. If it is still syncing, it opens once it arrives. Copy takes the whole of what the card names.`,
+        f,
+      );
     this.withMenu(b, f);
     return b;
   }

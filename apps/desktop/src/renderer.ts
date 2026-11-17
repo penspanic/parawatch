@@ -1,5 +1,5 @@
 import { Marked } from "marked";
-import { Panel, setIcon, type Backend, type Reply, type Snapshot } from "@parawatch/panel";
+import { makeToast, Panel, setIcon, type Backend, type Reply, type Snapshot } from "@parawatch/panel";
 import type { ParawatchApi } from "./preload";
 import { SettingsView } from "./settingsView";
 
@@ -40,14 +40,7 @@ function renderMarkdown(md: string, el: HTMLElement): void {
   }
 }
 
-let toastTimer: number | undefined;
-function toast(text: string): void {
-  const box = document.getElementById("toast")!;
-  box.textContent = text;
-  box.classList.add("is-shown");
-  if (toastTimer) window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => box.classList.remove("is-shown"), 5000);
-}
+const toast = makeToast(document.getElementById("toast")!);
 
 const backend: Backend = {
   snapshot: () => call(api.snapshot() as Promise<Snapshot>),

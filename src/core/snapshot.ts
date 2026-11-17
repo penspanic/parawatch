@@ -5,6 +5,7 @@ import { endedSessions, leadOf, linkPr, listeners, readState } from "./ops.js";
 import { collectRuns } from "./runs.js";
 import type { State } from "./state.js";
 import { deviceName, eventFiles, sharedDir } from "./store.js";
+import { syncedHere } from "./sync.js";
 import { SCHEMA_VERSION, type Card, type Run, type Snapshot } from "./types.js";
 
 export type { Snapshot };
@@ -17,6 +18,8 @@ export type { Snapshot };
  */
 export function snapshot(opts: { sinceHours?: number; project?: string; closed?: number; keepRepeats?: boolean } = {}): Snapshot {
   let state = readState();
+  const synced = syncedHere();
+  const me = deviceName();
   const runs = collectRuns(state, { sinceHours: opts.sinceHours ?? 6, project: opts.project, keepRepeats: opts.keepRepeats });
   if (linkCreatedPrs(runs, state)) state = readState();
   const all = [...state.cards.values()].filter((c) => !opts.project || c.project === opts.project);
@@ -32,7 +35,9 @@ export function snapshot(opts: { sinceHours?: number; project?: string; closed?:
     .map((c) => (c.status !== "closed" && (!c.session || c.ownerEnded) ? route(c) : c))
     .map((c) => {
       const missing = notHere([...(c.attach ?? []), ...(c.open ?? [])]);
-      return missing.length ? { ...c, missing } : c;
+      if (!missing.length) return c;
+      const away = c.dev && c.dev !== me ? missing.filter((f) => !synced(f)) : [];
+      return away.length ? { ...c, missing, away } : { ...c, missing };
     });
   quietAnsweredAsks(runs, all);
   const cache = readCache();

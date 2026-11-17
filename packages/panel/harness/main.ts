@@ -3,6 +3,7 @@
 import { Marked } from "marked";
 import { Panel } from "../src/panel";
 import { setIcon } from "../src/icons";
+import { makeToast } from "../src/toast";
 import type { Backend, Card, ChatItem, ChatState, Reply, Snapshot } from "../src/types";
 
 const markdown = new Marked({ gfm: true, breaks: true });
@@ -85,7 +86,10 @@ const cards: Card[] = [
     title: "Try build 139: does the glass read as glass?",
     from: "Spill Director",
     dev: "winpc",
-    open: ["/Applications/Game.app", "https://example.com/builds/139"],
+    open: ["/Applications/Game.app", "https://example.com/builds/139", "E:\\dev\\game\\run-game.cmd"],
+    // a file the PC named outside the shared folder: it stays there
+    missing: ["E:\\dev\\game\\run-game.cmd"],
+    away: ["E:\\dev\\game\\run-game.cmd"],
     // ?look=list numbers several points in one line, as agents often do
     look: new URLSearchParams(location.search).get("look") === "list"
       ? "1) the tank walls when it is full, at the top right. 2) the glass edge against the dark floor. 3) whether the water line wobbles after a shake."
@@ -169,6 +173,7 @@ const media: Record<string, string> = {
   "/captures/glass.png": swatch("Glass, full", 170),
 };
 
+const toast = makeToast(document.getElementById("toast")!);
 const log = (msg: string) => {
   const box = document.getElementById("log")!;
   const line = document.createElement("div");
@@ -419,7 +424,10 @@ const panel = new Panel(root, backend, {
     el.innerHTML = markdown.parse(md, { async: false }) as string;
   },
   icon: setIcon,
-  notice: (m) => log(`notice: ${m}`),
+  notice: (m, copy) => {
+    log(`notice: ${m}`);
+    toast(m, copy);
+  },
   refresh: () => void load().then((s) => panel.update(s)),
 });
 // ?titles=name or ?titles=work shows one of a session's name and its work instead of both

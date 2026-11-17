@@ -133,6 +133,16 @@ describe("panel", () => {
     expect(look?.textContent).toBe("1) the camera\n2) the hand\n3) the pocket");
   });
 
+  it("a file the card names says whether it is on its way or stays on the machine that asked", () => {
+    const shared = "/Users/me/agent-sync/parawatch/attachments/a.png";
+    const pc = "E:\\dev\\game\\run.cmd";
+    mount(snapshot({ cards: [card({ id: "pc-c1", kind: "try", title: "Try it", dev: "pc", open: [pc], attach: [shared], missing: [pc, shared], away: [pc] })] }));
+    const links = [...root.querySelectorAll(".pw-file.is-missing")].map((b) => b.textContent);
+    expect(links).toEqual(["run.cmd · on pc", "a.png · not on this machine yet"]);
+    root.querySelector<HTMLButtonElement>(".pw-file.is-missing")!.click();
+    expect(notices.at(-1)).toMatch(/only on pc/);
+  });
+
   it("answered cards wait on the agent; those no session gets have their own group and a Help button", async () => {
     const answered = { status: "answered" as const, answers: [{ seq: 2, at: ago(1), by: "human", choice: 1 }], options: ["Yes"] };
     mount(

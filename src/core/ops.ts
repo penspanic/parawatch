@@ -37,6 +37,24 @@ export function storedPath(x: string): string {
   return path.resolve(x);
 }
 
+/**
+ * What a card offers to open is an app, a file or a URL; parawatch never runs a command. A command
+ * given there would be stored as a path relative to this folder and show on every machine as a
+ * file that has not arrived, so it is refused with where to put it instead.
+ */
+const COMMAND = /&&|\|\||\s\|\s|;\s|\$\(|`|\s--(?:\s|[A-Za-z])/;
+
+export function checkOpenTargets(xs: string[] | undefined): void {
+  for (const x of xs ?? []) {
+    const t = x.trim();
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(t) || !COMMAND.test(t)) continue;
+    throw new UserError(
+      `--open takes an app, a file or a URL, and parawatch never runs it; this looks like a command: ${t}\n` +
+        "Put the command in the body (-b) as a code block, so the human can copy it, and give --open only the app or file it starts.",
+    );
+  }
+}
+
 function absPaths(xs: string[] | undefined): string[] | undefined {
   return cleanList(xs)?.map(storedPath);
 }
@@ -108,6 +126,7 @@ function checkKind(kind: string): CardKind {
 export function openCard(input: CardInput): Card {
   if (!input.title.trim()) throw new UserError("a card needs a title");
   if (!input.project.trim()) throw new UserError("a card needs --project");
+  checkOpenTargets(input.open);
   const action = input.action?.trim() || undefined;
   // an approval with no choices of its own is a yes or a no
   const options = cleanList(input.options) ?? (action ? ["Do it", "Don't"] : undefined);
