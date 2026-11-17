@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `--open` refuses a command (`&&`, a pipe, `--flags` after the app): parawatch never runs it, and on Windows such a line was stored as a path under the current folder, so every other machine showed it as a file not arrived yet. The error says to put the command in the body as a code block. The skill says the same.
+- A file a card from another machine names outside the shared folder (a script on that PC's own drive) shows as "on winpc", not "not on this machine yet": it never comes here, so the panel no longer suggests waiting for it. File names from a Windows machine are shortened at the last backslash too.
+- Messages at the bottom of the window have a Copy button, on the desktop app and the phone. For something the card names that is not on this machine, Copy takes the whole of it, not only the name shown.
+
 ## 0.3.22 (2026-11-17)
 
 - A session shows its own name and the work it claimed apart: "Spill Director · Model and launch" instead of the work's title alone, which hid which session it was once a lead claimed a task. The name is what the Claude app calls the session (or its log's title); the work is the title of its latest claim. Settings > Agent names picks Both, Session or Work; the phone has the same choice under This phone. A session from a machine on an older version shows its title as before.

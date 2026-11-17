@@ -4,7 +4,7 @@
  * kept on this phone only and never sent anywhere.
  */
 import { Marked } from "marked";
-import { isRunTitles, Panel, setIcon, type RunTitles } from "@parawatch/panel";
+import { isRunTitles, makeToast, Panel, setIcon, type RunTitles } from "@parawatch/panel";
 import { phoneBackend } from "./backend";
 import { readJoinCode, type RelayConfig } from "./seal";
 import { Space } from "./space";
@@ -39,14 +39,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return e;
 }
 
-let toastTimer: number | undefined;
-function toast(text: string): void {
-  const box = $("toast");
-  box.textContent = text;
-  box.classList.add("is-shown");
-  if (toastTimer) window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => box.classList.remove("is-shown"), 5000);
-}
+const toast = makeToast(document.getElementById("toast")!);
 
 function openUrl(url: string): void {
   if (!/^https?:\/\//i.test(url)) return toast("Only web links open from here");

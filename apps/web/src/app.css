@@ -98,6 +98,12 @@ input:focus {
 #toast.is-shown {
   opacity: 1;
   transform: none;
+  pointer-events: auto;
+}
+#toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 /* ---------------------------------------------------------------- pairing and this phone */

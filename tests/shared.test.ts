@@ -273,6 +273,18 @@ describe("two machines", () => {
     });
   });
 
+  it("a missing file the other machine named outside the shared folder is marked as staying there", () => {
+    const inShared = path.join(shared("pc"), "attachments", "spill", "a.png");
+    const outside = "E:\\dev\\spill\\run.cmd";
+    on("pc", () => openCard({ kind: "try", project: "spill", title: "Run it", attach: [inShared], open: [outside] }));
+    both();
+    on("mac", () => {
+      const c = snapshot().cards.find((x) => x.id === "pc-c1")!;
+      expect(c.missing).toEqual([path.join(shared("mac"), "attachments", "spill", "a.png"), outside]);
+      expect(c.away).toEqual([outside]);
+    });
+  });
+
   it("maps the preview file, opened or edited on the other machine, when reading", () => {
     const body = path.join(root, "pc", "work", "spill", "pr-body.md");
     on("pc", () => {

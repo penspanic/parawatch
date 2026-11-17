@@ -79,6 +79,21 @@ describe("paths on cards", () => {
     expect(storedPath("C:relative\\f.png")).toBe(path.resolve("C:relative\\f.png"));
     expect(storedPath("./g.png")).toBe(path.resolve("g.png"));
   });
+
+  it("refuses a command given as something to open, and says where it goes", () => {
+    const cmd = "cd /Users/pp/spill && python3 scripts/play.py --player Builds/Spill.app --for owner -- -playgroundDevScreens";
+    expect(() => openCard({ kind: "try", project: "demo", title: "Try it", open: [cmd] })).toThrow(/looks like a command[\s\S]*body \(-b\)/);
+    expect(() => openCard({ kind: "try", project: "demo", title: "Try it", open: ["Spill.app --for owner"] })).toThrow(UserError);
+    expect(() => openCard({ kind: "try", project: "demo", title: "Try it", open: ["make run | tee log"] })).toThrow(UserError);
+    // paths with spaces and dashes, and URLs with query strings, still open
+    const ok = openCard({
+      kind: "try",
+      project: "demo",
+      title: "Try it",
+      open: ["/Applications/My Game - beta.app", "C:\\Program Files\\Game\\game-x64.exe", "https://example.com/a?x=1&y=2"],
+    });
+    expect(ok.open).toHaveLength(3);
+  });
 });
 
 describe("inbox", () => {

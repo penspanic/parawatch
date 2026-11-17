@@ -23,7 +23,7 @@ const MIME: Record<string, string> = {
 
 const URL_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
 
-export function phoneBackend(space: Space, openUrl: (url: string) => void, notice: (m: string) => void): Backend {
+export function phoneBackend(space: Space, openUrl: (url: string) => void, notice: (m: string, copy?: string) => void): Backend {
   const card = (id: string) => {
     const c = space.state().cards.get(id);
     if (!c) throw new Error(`No card ${id} here yet`);
@@ -81,7 +81,7 @@ export function phoneBackend(space: Space, openUrl: (url: string) => void, notic
 
     open(target: string) {
       if (URL_RE.test(target)) return openUrl(target);
-      notice("That is a file or app on a computer; open it there");
+      notice("That is a file or app on a computer; open it there. Copy takes its path.", target);
     },
 
     mediaUrl(file: string) {

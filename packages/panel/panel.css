@@ -2369,3 +2369,26 @@ a.pw-chat-step-text {
 .pw-chat-note.is-blocked {
   color: var(--color-yellow);
 }
+
+/* ---------------------------------------------------------------- toast (makeToast; the host places #toast) */
+
+.pw-toast-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+button.pw-toast-copy {
+  flex: none;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--background-primary) 35%, transparent);
+  background: transparent;
+  box-shadow: none;
+  color: var(--background-primary);
+  font-size: var(--font-ui-smaller, 12px);
+  cursor: pointer;
+}
+button.pw-toast-copy:hover {
+  background: color-mix(in srgb, var(--background-primary) 15%, transparent);
+}

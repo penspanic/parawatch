@@ -97,6 +97,11 @@ export interface Card {
    * cloud drive may still be bringing them). Never stored.
    */
   missing?: string[];
+  /**
+   * In a snapshot: those of `missing` that stay on the machine that opened the card, being outside
+   * the folders kept in step (the shared folder and named roots). Never stored.
+   */
+  away?: string[];
 }
 
 /** Fields `parawatch edit` may change on a card. */

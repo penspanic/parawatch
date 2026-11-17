@@ -21,6 +21,26 @@
         border: 1px solid var(--background-modifier-border);
         padding: 8px;
       }
+      #toast {
+        position: fixed;
+        left: 16px;
+        bottom: 16px;
+        width: 340px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        background: var(--text-normal);
+        color: var(--background-primary);
+        font-size: 13px;
+        opacity: 0;
+        pointer-events: none;
+      }
+      #toast.is-shown {
+        opacity: 1;
+        pointer-events: auto;
+      }
       #log {
         font: 12px ui-monospace, Menlo, monospace;
         color: var(--text-muted);
@@ -32,6 +52,7 @@
   <body>
     <div id="panel"></div>
     <div id="log"></div>
+    <div id="toast" role="status" aria-live="polite"></div>
     <script>
       if (new URLSearchParams(location.search).get("theme") === "dark") document.documentElement.dataset.theme = "dark";
       // ?wide lets the panel take the page, to see the board beside the feed

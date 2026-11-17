@@ -165,6 +165,19 @@ export function mapPath(p: string, from: DeviceInfo | undefined, me: DeviceInfo 
   return best ? joinOn(me.platform, best.root, best.rest) : p;
 }
 
+/**
+ * Whether a path on this machine is in a folder kept in step with the others (the shared folder or
+ * a named root). A file another machine names outside them stays on that machine.
+ */
+export function syncedHere(): (p: string) => boolean {
+  const shared = sharedDir();
+  if (!shared) return () => false;
+  const me = readDevices(shared).find((d) => d.name === deviceName());
+  const roots = [shared, ...Object.values(me?.roots ?? {})];
+  const caseless = process.platform === "win32" || process.platform === "darwin";
+  return (p) => roots.some((r) => startsWithPath(p, r, caseless) !== undefined);
+}
+
 /** The path map for reading the shared log on this machine, or undefined when nothing is shared. */
 export function pathMap(): PathMap | undefined {
   const shared = sharedDir();
