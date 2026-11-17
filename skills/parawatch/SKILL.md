@@ -74,6 +74,9 @@ A pull request you open with `gh pr create` is linked from your log on its own, 
 
 News from somewhere GitHub does not show (a merge bot, a ticket system) can be recorded by any tool: `parawatch pr event <url> <change> -m "<what happened>"`.
 
+- **Taking over a pull request another session opened** (its session ended, and you continue the work): run `parawatch pr link <url>` when you start. The latest link wins, so its news comes to you from then on instead of to the lead.
+- **A pull request set aside on purpose** (a draft parked until later): `parawatch pr unlink <url>`. Its news then wakes no one, not even the session that opened it, until someone links it again. A conflict on a PR that stays in conflict is reported once, not again each time main moves.
+
 ## 4. Waiting for the answer
 
 Right after opening cards or linking a pull request, keep exactly one wait armed:
@@ -84,6 +87,8 @@ Right after opening cards or linking a pull request, keep exactly one wait armed
 Inside your session, `wait` and `inbox` read only what is yours: answers on cards you opened and news on pull requests linked to you. Other sessions in the same project are not woken by your news and cannot take it from you, and you are not woken by theirs. What no session owns, and what a session that has ended left open, goes to the project's lead (section 8); with no lead it waits in parawatch until the human picks one. `-p <project>` only names a project other than the one you claimed.
 
 If the human hands you a card or a pull request (`parawatch hand`), your wait prints `[project] c4 "..." handed to you by the human; the answer: ...`. It is yours from then on: act on it and close it like your own.
+
+Re-arming the wait after each wake is the intended use; the wake is what costs, not the re-arm. Do not keep `parawatch watch` running instead: it is for plugins and monitors, streams every event of every project with none of the session or lead filtering above, and would wake you more often, not less.
 
 Keep working on other things meanwhile. A wait with `--timeout <seconds>` exits with code 2 when nothing came; re-arm it if you still need the answer. While no wait runs, an answer is kept, and the card tells the human that no agent is waiting; it reaches you on your next turn or your next wait.
 
@@ -131,6 +136,7 @@ The session then shows as done, not as idle, and the line goes into the human's 
 - The lead owns the cards for the work it hands out. Workers (subagents, `codex exec` jobs, other sessions you start) report back to the lead instead of opening cards, unless the lead told them to ask the human directly.
 - A session the human started on their own asks the human directly. Its cards and pull requests are its own: answers and news on them go to it, not to the lead. When that work belongs in the lead's queue, the session tells the lead, not the other way round.
 - Tell workers in their brief what to return to you, so the lead can turn it into one clear card.
+- When a worker continues a pull request that an earlier, ended worker opened, put `parawatch pr link <url>` in its brief (or run `parawatch hand <pr> <session>` once it runs). Until then that PR's news, CI failures included, comes to you. A PR you park for later: `parawatch pr unlink <url>`.
 - **A lead that finishes one task claims its next work, not `--done`** (`parawatch claim -p <project> -t <next> --role lead`). `--done` ends the session as lead too: from then on what no session owns in the project goes nowhere until a session claims the lead. When you do a worker's task yourself, its brief's rules for workers (such as "do not use parawatch") are not yours.
 - Before ending a session, close cards you handled, end runs you started, and claim `--done`.
 

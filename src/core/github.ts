@@ -404,6 +404,16 @@ export function changesBetween(old: PrStatus, now: PrStatus): { change: PrChange
 }
 
 /**
+ * GitHub answers UNKNOWN while it works out again whether a PR merges, which it does each time the
+ * base branch moves. That is no answer: keep the last one, or a PR that stays in conflict reports
+ * a new conflict every time someone merges to main.
+ */
+function keepMergeable(p: PrStatus, old: PrStatus | undefined): PrStatus {
+  if (p.state !== "open" || (p.mergeable && p.mergeable !== "UNKNOWN") || !old?.mergeable || old.mergeable === "UNKNOWN") return p;
+  return { ...p, mergeable: old.mergeable };
+}
+
+/**
  * Next cache and the events it implies, given the previous cache and a fresh reading. `newlyLinked`
  * names PRs a session linked since the previous reading: one first seen with its CI already done,
  * or already merged or closed, reports that, since no earlier reading can show it changing (a CI
@@ -419,6 +429,7 @@ export function nextCache(
   const old = new Map(prev.prs.map((p) => [p.key, p]));
   const events: EventBody[] = [];
   const since: GithubCache["since"] = {};
+  fresh = fresh.map((p) => keepMergeable(p, old.get(p.key)));
   for (const p of fresh) {
     const was = old.get(p.key) ?? (newlyLinked.has(p.key) ? unseen(p) : undefined);
     if (was) {
