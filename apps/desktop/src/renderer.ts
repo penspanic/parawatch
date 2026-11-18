@@ -47,6 +47,7 @@ const backend: Backend = {
   answer: (card: string, reply: Reply) => call(api.answer(card, reply) as Promise<void>),
   goto: (target: string) => call(api.goto(target) as Promise<string>),
   hideRun: (id: string) => call(api.hideRun(id) as Promise<void>),
+  issueAside: (key: string, aside: boolean) => call(api.issueAside(key, aside) as Promise<void>),
   dismiss: (card: string) => call(api.dismiss(card) as Promise<void>),
   lead: (project: string, session: string) => call(api.lead(project, session) as Promise<void>),
   open: (target: string) => void call(api.open(target)).catch((err) => toast(plain(err).message)),

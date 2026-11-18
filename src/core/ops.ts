@@ -452,6 +452,15 @@ export function prEvent(pr: PrRef, change: string, opts: { by?: string; text?: s
   appendEvent(() => ({ type: "pr.change", pr, change: change as PrChange, by: opts.by, text: opts.text?.trim() || undefined, title: opts.title, source: "external" }));
 }
 
+// ---------------------------------------------------------------- issues
+
+/** Fold an issue assigned to the human away until someone else comments on it, or bring it back. */
+export function setIssueAside(key: string, aside: boolean): void {
+  const state = readState();
+  if (!aside && !state.aside.has(key)) throw new UserError(`${key} is not set aside`);
+  appendEvent(() => (aside ? { type: "issue.aside", issue: key } : { type: "issue.back", issue: key }));
+}
+
 // ---------------------------------------------------------------- inbox
 
 export interface InboxItem {

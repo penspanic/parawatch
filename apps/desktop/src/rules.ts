@@ -61,6 +61,8 @@ export interface Alert {
   body: string;
   /** the card to show when the notification is clicked */
   card?: string;
+  /** a page to open when the notification is clicked, instead of the window */
+  url?: string;
 }
 
 /**
@@ -75,6 +77,11 @@ export function alertFor(ev: PwEvent, state: { runTitle(id: string): string | un
   }
   if (ev.type === "pr.change" && PR_ALERTS[ev.change]) {
     return { title: `${ev.pr.repo.split("/")[1]}#${ev.pr.number} · ${PR_ALERTS[ev.change]}${ev.by && ev.source === "github" ? ` by ${ev.by}` : ""}`, body: ev.text ? `${ev.title ?? ""}\n${ev.text}`.trim() : (ev.title ?? ev.pr.url) };
+  }
+  if (ev.type === "issue.change") {
+    const where = `${ev.issue.repo.split("/")[1]}#${ev.issue.number}`;
+    const what = ev.change === "assigned" ? `assigned to you${ev.by ? ` by ${ev.by}` : ""}` : `${ev.by ?? "someone"} commented`;
+    return { title: `${where} · ${what}`, body: ev.title ?? ev.issue.url, url: ev.issue.url };
   }
   if (ev.type === "run.end" && ev.status === "failed") {
     const title = state.runTitle(ev.run) ?? ev.run;

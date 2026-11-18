@@ -29,10 +29,11 @@ import {
   startListening,
   startRun,
   unlinkPr,
+  setIssueAside,
   waitInbox,
   type CardInput,
 } from "../core/ops.js";
-import { githubConfig, readCache, resolvePrRef, syncGithub, prViews } from "../core/github.js";
+import { githubConfig, issueViews, parseIssueRef, readCache, resolvePrRef, syncGithub, prViews } from "../core/github.js";
 import { recordPrompt, type PromptHookInput } from "../core/prompts.js";
 import { callingSubagent } from "../adapters/claudeCode.js";
 import { digest, digestText, localDate } from "../core/digest.js";
@@ -43,7 +44,7 @@ import { syncText } from "../core/format.js";
 import { RelayClient, RelayMirror, joinCode, newKey, readJoinCode, relayConfig, takeMirrorLock, type RelayConfig } from "../core/relay.js";
 import { createRelayServer } from "../relay/server.js";
 import { collectRuns, shareRunsDue } from "../core/runs.js";
-import { askRows, cardDetail, cardLine, cardRows, inboxLine, prRows, runsTree, view } from "../core/format.js";
+import { askRows, cardDetail, cardLine, cardRows, inboxLine, issueRows, prRows, runsTree, view } from "../core/format.js";
 import { hookContext, notify, removeInstructions, writeInstructions } from "../core/integrate.js";
 import { installSkill, skillSource, skillTargets, uninstallSkill } from "../core/skill.js";
 import { recordClient, runningDesktop, versionSkew } from "../core/clients.js";
@@ -472,6 +473,37 @@ pr.command("list")
     if (o.json) print({ v: SCHEMA_VERSION, prs });
     else process.stdout.write(prs.length ? prRows(prs, view()).join("\n") + "\n" : githubNote() ?? "No open pull requests.\n");
   });
+const issue = program.command("issue").description("issues assigned to you on GitHub (read through gh); they wake no agent");
+issue
+  .command("list")
+  .description("open issues assigned to you, with who assigned each and the latest word from someone else")
+  .option("-p, --project <name>", "only this project")
+  .option("-a, --all", "include the ones set aside")
+  .option("--offline", "do not read GitHub, show the last reading")
+  .option("--json", "JSON output")
+  .action(async (o) => {
+    if (!o.offline) await refreshGithub();
+    let issues = issueViews(readCache(), readState());
+    if (o.project) issues = issues.filter((i) => i.project === o.project);
+    if (!o.all) issues = issues.filter((i) => !i.aside);
+    if (o.json) print({ v: SCHEMA_VERSION, issues });
+    else process.stdout.write(issues.length ? issueRows(issues, view()).join("\n") + "\n" : githubNote() ?? "No open issues assigned to you.\n");
+  });
+issue
+  .command("aside <issue>")
+  .description("fold an issue away: it comes back when someone else comments on it")
+  .action((ref: string) => setIssueAside(issueKey(ref), true));
+issue
+  .command("back <issue>")
+  .description("bring back an issue you set aside")
+  .action((ref: string) => setIssueAside(issueKey(ref), false));
+
+function issueKey(ref: string): string {
+  const r = parseIssueRef(ref);
+  if (!r) throw new UserError(`"${ref}" is not an issue: give a URL or owner/repo#N`);
+  return r.key;
+}
+
 pr.command("sync")
   .description("read GitHub now")
   .action(async () => {
@@ -553,6 +585,12 @@ program
     if (reviews.length) {
       out.push("", head("REVIEWS ASKED OF YOU", reviews.length));
       out.push(...prRows(reviews, v, now, "  "));
+    }
+    const issues = (snap.issues ?? []).filter((i) => !i.aside);
+    const aside = (snap.issues ?? []).length - issues.length;
+    if (issues.length) {
+      out.push("", head("ISSUES ASSIGNED TO YOU", issues.length, aside ? `  (${aside} set aside)` : ""));
+      out.push(...issueRows(issues, v, now, "  "));
     }
     if (todo.length) {
       out.push("", head("TO DO, NOTHING WAITS ON IT", todo.length));

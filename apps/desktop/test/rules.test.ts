@@ -46,6 +46,17 @@ describe("what needs the human", () => {
     });
     expect(alertFor(ev({ type: "run.end", run: "r2", status: "done" }), noRuns)).toBeUndefined();
   });
+
+  it("tells an issue assigned to the human and a new comment on it, and opens the issue on a click", () => {
+    const issue = { key: "github.com/kim/game#21", host: "github.com", repo: "kim/game", number: 21, url: "https://github.com/kim/game/issues/21" };
+    expect(alertFor(ev({ type: "issue.change", issue, change: "assigned", title: "Wreck interior", by: "kim", source: "github" }), noRuns)).toEqual({
+      title: "game#21 · assigned to you by kim",
+      body: "Wreck interior",
+      url: issue.url,
+    });
+    expect(alertFor(ev({ type: "issue.change", issue, change: "commented", title: "Wreck interior", by: "kim", source: "github" }), noRuns)?.title).toBe("game#21 · kim commented");
+    expect(alertFor(ev({ type: "issue.aside", issue: issue.key }), noRuns)).toBeUndefined();
+  });
 });
 
 describe("icons drawn in code", () => {

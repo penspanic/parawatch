@@ -29,6 +29,9 @@ parawatch runs --every           # each run of a scheduled task, not one row per
 parawatch run hide <id>         # hide a run (6+ characters of its id) until it does something new; `runs --all` still shows it
 parawatch run unhide <id>
 parawatch pr list                # open pull requests: what each waits on, since when, whose it is
+parawatch issue list             # open issues assigned to you: who gave each, the latest word from someone else (-a: with the ones set aside)
+parawatch issue aside <issue>    # fold an issue away (URL or owner/repo#N) until someone else comments on it
+parawatch issue back <issue>
 parawatch goto api#88            # open the session that owns a pull request
 parawatch lead game 811a9612     # make a session the project's lead; it is handed what no session got
 parawatch hand c12 811a9612      # give a card (or a pull request: api#88) to another session

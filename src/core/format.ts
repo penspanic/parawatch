@@ -1,7 +1,7 @@
 import { settingsLine } from "./model.js";
 import type { InboxItem } from "./ops.js";
 import type { SyncStatus } from "./sync.js";
-import type { Card, PrView, Run } from "./types.js";
+import type { Card, IssueView, PrView, Run } from "./types.js";
 
 export function ago(iso: string | undefined, now = Date.now()): string {
   if (!iso) return "?";
@@ -271,6 +271,32 @@ export function prRows(prs: PrView[], v: View = PLAIN, now = Date.now(), indent 
       fit(p.title, titleW),
     ].join("").trimEnd();
   });
+}
+
+/** Issues assigned to the human: who assigned each and when, and the latest word from someone else. */
+export function issueRows(issues: IssueView[], v: View = PLAIN, now = Date.now(), indent = ""): string[] {
+  const label = (i: IssueView) => `${i.repo.split("/")[1]}#${i.number}`;
+  const note = (i: IssueView) =>
+    [i.assignedBy ? `from ${i.assignedBy}` : "", i.lastOther && i.lastOther.at > (i.assignedAt ?? "") ? `${i.lastOther.by} wrote ${ago(i.lastOther.at, now)} ago` : "", i.aside ? "set aside" : ""]
+      .filter(Boolean)
+      .join(", ");
+  const idW = Math.max(4, ...issues.map((i) => textWidth(label(i))));
+  const noteW = Math.min(36, Math.max(0, ...issues.map((i) => textWidth(note(i)))));
+  const fixed = textWidth(indent) + idW + 2 + 4 + 2 + (noteW ? noteW + 2 : 0);
+  const titleW = Math.max(8, v.width - fixed);
+  return issues.map((i) =>
+    [
+      indent,
+      paint(v, pad(label(i), idW), ...(i.aside ? (["dim"] as Paint[]) : (["bold"] as Paint[]))),
+      "  ",
+      paint(v, ago(i.assignedAt ?? i.lastOther?.at, now).padStart(4), "dim"),
+      "  ",
+      noteW ? paint(v, pad(fit(note(i), noteW), noteW), "dim") + "  " : "",
+      fit(i.title, titleW),
+    ]
+      .join("")
+      .trimEnd(),
+  );
 }
 
 export function waitText(p: PrView): string {

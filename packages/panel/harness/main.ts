@@ -4,7 +4,7 @@ import { Marked } from "marked";
 import { Panel } from "../src/panel";
 import { setIcon } from "../src/icons";
 import { makeToast } from "../src/toast";
-import type { Backend, Card, ChatItem, ChatState, Reply, Snapshot } from "../src/types";
+import type { Backend, Card, ChatItem, ChatState, IssueView, Reply, Snapshot } from "../src/types";
 
 const markdown = new Marked({ gfm: true, breaks: true });
 const now = Date.now();
@@ -301,6 +301,7 @@ async function load(): Promise<Snapshot> {
             mine: false,
           },
         ],
+    issues: useReal ? real!.issues : fakeIssues,
     // ?github=failing shows the banner for a reader that cannot run gh
     github: useReal
       ? real!.github
@@ -311,6 +312,13 @@ async function load(): Promise<Snapshot> {
     devices: useReal ? real!.devices : { me: "mac", others: ["winpc"] },
   };
 }
+
+/** Issues assigned to the human; one set aside. */
+const fakeIssues: IssueView[] = [
+  { key: "github.com/mina/diving#21", url: "https://github.com/mina/diving/issues/21", repo: "mina/diving", number: 21, title: "Wreck interior: two decks of modules", assignedBy: "mina", assignedAt: at(60 * 72), lastOther: { by: "mina", at: at(60 * 70) }, project: "diving", aside: false },
+  { key: "github.com/mina/diving#22", url: "https://github.com/mina/diving/issues/22", repo: "mina/diving", number: 22, title: "Fan worm folds when the diver comes close", assignedBy: "mina", assignedAt: at(60 * 71), project: "diving", aside: false },
+  { key: "github.com/mina/diving#18", url: "https://github.com/mina/diving/issues/18", repo: "mina/diving", number: 18, title: "Rusty hull modules", assignedBy: "mina", assignedAt: at(60 * 96), project: "diving", aside: true },
+];
 
 /** A Codex conversation for the chat pane; a message sent here gets a canned answer. */
 const chatItems: ChatItem[] = [
@@ -396,6 +404,11 @@ const backend: Backend = {
     const r = fakeRuns.find((x) => x.id === session);
     if (r) r.role = "lead";
     strandedPrsLed = true;
+  },
+  issueAside: async (key, aside) => {
+    log(`${aside ? "aside" : "back"} ${key}`);
+    const i = fakeIssues.find((x) => x.key === key);
+    if (i) i.aside = aside;
   },
   hideRun: async (id) => {
     log(`hide ${id}`);

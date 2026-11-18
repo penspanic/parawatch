@@ -30,6 +30,7 @@ const api = {
   answer: (card: string, reply: unknown) => ipcRenderer.invoke("pw:answer", card, reply),
   goto: (target: string) => ipcRenderer.invoke("pw:goto", target),
   hideRun: (id: string) => ipcRenderer.invoke("pw:hide-run", id),
+  issueAside: (key: string, aside: boolean) => ipcRenderer.invoke("pw:issue-aside", key, aside),
   dismiss: (card: string) => ipcRenderer.invoke("pw:dismiss", card),
   lead: (project: string, session: string) => ipcRenderer.invoke("pw:lead", project, session),
   open: (target: string) => ipcRenderer.invoke("pw:open", target),

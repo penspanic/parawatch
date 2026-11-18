@@ -90,7 +90,7 @@ Every session, its subagents and its `codex exec` jobs, grouped by project, with
 
 ### Pull requests
 
-Read through the GitHub CLI you are already signed in to. Each open pull request shows what it waits on (a review, CI, the merge queue) and for how long. Its news wakes the session that owns it, like an answer.
+Read through the GitHub CLI you are already signed in to. Each open pull request shows what it waits on (a review, CI, the merge queue) and for how long. Its news wakes the session that owns it, like an answer. Issues someone assigned to you show next to the reviews asked of you, with a notification when one comes in or someone comments on it; they wake no agent.
 
 ### In a terminal
 

@@ -9,7 +9,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { app, autoUpdater as squirrel, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, Notification, protocol, shell, systemPreferences, Tray } from "electron";
 import { readClient, recordClient, versionSkew } from "../../../src/core/clients.js";
-import { answerCard, dismissCard, hideRun, makeLead, readState, UserError } from "../../../src/core/ops.js";
+import { answerCard, dismissCard, hideRun, makeLead, readState, setIssueAside, UserError } from "../../../src/core/ops.js";
 import { cardContextLine, inAppUrl, resolveGoto } from "../../../src/core/desktop.js";
 import { followEvents } from "../../../src/core/follow.js";
 import { syncGithub } from "../../../src/core/github.js";
@@ -199,7 +199,7 @@ function watchGithub(): void {
 
 function onEvent(ev: PwEvent): void {
   // every machine reads GitHub itself, so news another machine logged is told here already
-  const echo = ev.type === "pr.change" && !!ev.dev && ev.dev !== deviceName();
+  const echo = (ev.type === "pr.change" || ev.type === "issue.change") && !!ev.dev && ev.dev !== deviceName();
   const alert = settings.notify && !echo
     ? alertFor(ev, { runTitle: (id) => readState().runs.get(id)?.title })
     : undefined;
@@ -213,7 +213,7 @@ function onEvent(ev: PwEvent): void {
  * (or an unsigned build); then the alert goes through the system's own notifier instead, which
  * cannot open the card but still gets the human's attention.
  */
-function notifyHuman(alert: { title: string; body: string; card?: string }): void {
+function notifyHuman(alert: { title: string; body: string; card?: string; url?: string }): void {
   const fallback = () => {
     if (process.platform !== "darwin") return;
     const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -221,7 +221,7 @@ function notifyHuman(alert: { title: string; body: string; card?: string }): voi
   };
   if (!Notification.isSupported()) return fallback();
   const n = new Notification({ title: alert.title, body: alert.body, silent: false });
-  n.on("click", () => showWindow(alert.card));
+  n.on("click", () => (alert.url ? void shell.openExternal(alert.url) : showWindow(alert.card)));
   n.on("failed", (_e, error) => {
     logger.warn(`system notification refused (${error}); using the fallback notifier`);
     fallback();
@@ -790,6 +790,10 @@ function registerIpc(): void {
   });
   ipcMain.handle("pw:lead", (_e, project: string, session: string) => {
     makeLead(project, session);
+    refresh();
+  });
+  ipcMain.handle("pw:issue-aside", (_e, key: string, aside: boolean) => {
+    setIssueAside(key, aside);
     refresh();
   });
   ipcMain.handle("pw:hide-run", (_e, id: string) => {

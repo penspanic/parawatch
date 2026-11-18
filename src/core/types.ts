@@ -191,6 +191,18 @@ export type PrChange =
 
 export const PR_CHANGES: PrChange[] = ["review", "approved", "changes_requested", "commented", "ci_failed", "ci_passed", "queued", "queue_removed", "conflict", "merged", "closed", "note"];
 
+/** An issue on GitHub; the key is `host/owner/repo#12`, like a pull request's. */
+export interface IssueRef {
+  key: string;
+  host: string;
+  repo: string;
+  number: number;
+  url: string;
+}
+
+/** What happened on an issue assigned to the human: it was assigned, or someone else commented. */
+export type IssueChange = "assigned" | "commented";
+
 /** Fields shared by every event line. */
 interface EventBase {
   v: number;
@@ -225,6 +237,11 @@ export type EventBody =
   | { type: "pr.unlink"; pr: string }
   /** something happened on a pull request: read from GitHub, or reported by another tool */
   | { type: "pr.change"; pr: PrRef; change: PrChange; title?: string; by?: string; text?: string; source: "github" | "external" }
+  /** news on an issue assigned to the human, read from GitHub; it wakes no agent */
+  | { type: "issue.change"; issue: IssueRef; change: IssueChange; title?: string; by?: string; source: "github" }
+  /** the human set an issue aside: it folds away until someone else comments on it */
+  | { type: "issue.aside"; issue: string }
+  | { type: "issue.back"; issue: string }
   /** left in a single-machine log that moved to a shared folder, so older copies stop writing to it */
   | { type: "store.moved"; to: string };
 
@@ -239,6 +256,8 @@ export interface Snapshot {
   runs: Run[];
   /** open pull requests and what each waits on; absent when GitHub is not set up */
   prs?: PrView[];
+  /** open issues assigned to the human; absent when GitHub is not set up */
+  issues?: IssueView[];
   github?: GithubInfo;
   /** agents blocked in `parawatch wait` right now */
   listeners?: Listener[];
@@ -306,6 +325,25 @@ export interface PrView {
   lead?: string;
   /** open, its session has ended or it has none, and the project has no live lead: no one gets its news */
   unrouted?: boolean;
+}
+
+/** An open issue assigned to the human, as `status` and the panel show it. */
+export interface IssueView {
+  key: string;
+  url: string;
+  repo: string;
+  number: number;
+  title: string;
+  author?: string;
+  /** who assigned it to the human, and when */
+  assignedBy?: string;
+  assignedAt?: string;
+  /** the latest comment by someone other than the human */
+  lastOther?: { by: string; at: string };
+  /** the registered project whose repository it is in */
+  project?: string;
+  /** the human set it aside, and nobody else has commented since */
+  aside: boolean;
 }
 
 /** Who counts as a human when deciding what wakes an agent. */

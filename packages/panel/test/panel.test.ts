@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Panel, spanLabel } from "../src/panel";
-import type { Backend, Card, PrView, Run, Snapshot } from "../src/types";
+import type { Backend, Card, IssueView, PrView, Run, Snapshot } from "../src/types";
 
 /**
  * The panel as the human sees it: a snapshot goes in, and the sections, counts and buttons that
@@ -34,6 +34,11 @@ function pr(over: Partial<PrView> & Pick<PrView, "number" | "title">): PrView {
     project: "app",
     ...over,
   } as PrView;
+}
+
+function issue(over: Partial<IssueView> & Pick<IssueView, "number" | "title">): IssueView {
+  const n = over.number;
+  return { key: `github.com/kim/game#${n}`, url: `https://github.com/kim/game/issues/${n}`, repo: "kim/game", assignedBy: "kim", assignedAt: ago(60 * 24 * 3), aside: false, ...over };
 }
 
 function snapshot(over: Partial<Snapshot> = {}): Snapshot {
@@ -404,5 +409,42 @@ describe("opening a session", () => {
     expect(Number(chart().style.getPropertyValue("--pw-who-f"))).toBeCloseTo(0.15);
     bar().dispatchEvent(new MouseEvent("dblclick"));
     expect(chart().style.getPropertyValue("--pw-who-f")).toBe("0.42");
+  });
+
+  it("issues assigned to the human show with who gave them, fold aside, and come back", async () => {
+    backend.issueAside = vi.fn(async () => {});
+    const s = snapshot({
+      issues: [
+        issue({ number: 21, title: "Wreck interior", lastOther: { by: "kim", at: ago(60) }, project: "scuba" }),
+        issue({ number: 22, title: "Fan worm" }),
+        issue({ number: 18, title: "Rusty modules", aside: true }),
+      ],
+    });
+    mount(s);
+    expect(badgeIn(head(), "circle-dot")).toBe("2");
+    const group = sec("assigned")!;
+    const rows = () => [...group.querySelectorAll<HTMLElement>(".pw-issue")];
+    expect(rows().map((r) => r.dataset.issue)).toEqual(["github.com/kim/game#21", "github.com/kim/game#22"]);
+    // the newer word from someone else shows over who assigned it
+    expect(rows()[0]!.querySelector(".pw-pr-wait")?.textContent).toBe("kim wrote");
+    expect(rows()[1]!.querySelector(".pw-pr-wait")?.textContent).toBe("from kim");
+    expect(rows()[0]!.textContent).toContain("scuba");
+    rows()[1]!.querySelector<HTMLElement>(".pw-pr-label")!.click();
+    expect(backend.open).toHaveBeenCalledWith("https://github.com/kim/game/issues/22");
+    rows()[1]!.querySelector<HTMLButtonElement>(".pw-issue-aside")!.click();
+    expect(backend.issueAside).toHaveBeenCalledWith("github.com/kim/game#22", true);
+    // the one set aside waits behind a line, with a way back
+    const more = group.querySelector<HTMLButtonElement>(".pw-issue-more")!;
+    expect(more.textContent).toBe("1 set aside");
+    more.click();
+    const back = sec("assigned")!.querySelector<HTMLElement>('.pw-issue.is-aside .pw-issue-aside')!;
+    expect(back.title).toBe("Bring back");
+    back.click();
+    expect(backend.issueAside).toHaveBeenCalledWith("github.com/kim/game#18", false);
+  });
+
+  it("a host that cannot set issues aside shows them without the button", () => {
+    mount(snapshot({ issues: [issue({ number: 5, title: "Fix it" })] }));
+    expect(sec("assigned")!.querySelector(".pw-issue-aside")).toBeNull();
   });
 });

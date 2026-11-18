@@ -16,6 +16,8 @@ import { keysOf, open, seal, sealedName, type Keys, type RelayConfig } from "./s
 /** Small enough to open just to learn its path: device and listener files are far smaller. */
 const PROBE_MAX = 4096;
 const RUNS_GONE_MS = 15 * 60_000;
+/** How far back a run's active minutes go (the CLI's ACTIVITY_MINUTES): the agents chart reaches back a day. */
+const ACTIVITY_MINUTES = 24 * 60;
 const LISTENER_GONE_MS = 3 * 60_000;
 const DEVICE_EVERY_MS = 10 * 60_000;
 const WAIT_S = 25;
@@ -471,7 +473,7 @@ export class Space {
       const at = s ? Date.parse(s.at) : NaN;
       if (!s || !Number.isFinite(at) || now - at > RUNS_GONE_MS || !Array.isArray(s.runs)) continue;
       const shift = Math.max(0, Math.floor((now - at) / 60_000));
-      for (const r of s.runs) runs.push({ ...r, device: d, activity: r.activity?.map((x) => x + shift).filter((x) => x < 60) });
+      for (const r of s.runs) runs.push({ ...r, device: d, activity: r.activity?.map((x) => x + shift).filter((x) => x < ACTIVITY_MINUTES) });
     }
     const listeners: Listener[] = [];
     for (const rel of this.text.keys()) {
