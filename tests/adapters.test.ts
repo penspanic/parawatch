@@ -281,10 +281,12 @@ describe("activity", () => {
       { timestamp: "2026-11-07T11:58:00Z" },
       { timestamp: "2026-11-07T11:30:00Z", message: { content: 'quoted "timestamp":"x" inside text' } },
       { timestamp: "2026-11-07T10:30:00Z" },
+      // a day back is past what the chart can show
+      { timestamp: "2026-11-06T11:59:00Z" },
       { note: "no timestamp" },
     ]
       .map((r) => JSON.stringify(r))
       .join("\n");
-    expect(activeMinutes(timestampsIn(text), now)).toEqual([0, 2, 30]);
+    expect(activeMinutes(timestampsIn(text), now)).toEqual([0, 2, 30, 90]);
   });
 });

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Panel } from "../src/panel";
+import { Panel, spanLabel } from "../src/panel";
 import type { Backend, Card, PrView, Run, Snapshot } from "../src/types";
 
 /**
@@ -369,5 +369,40 @@ describe("opening a session", () => {
     const titles = Object.fromEntries([...root.querySelectorAll(".pw-board .pw-br-title")].map((t) => [t.textContent, t.tagName]));
     expect(titles).toEqual({ "Spill Director": "A", "No remote": "SPAN" });
   });
-});
 
+  it("the chart reaches back as far as the human picks on its axis, remembered", () => {
+    const runs = [run({ id: "r1", title: "Long job", activity: [0, 1, 100, 101, 300] })];
+    mount(snapshot({ runs }));
+    const lane = () => root.querySelector(".pw-run .pw-lane")!;
+    const pick = () => root.querySelector<HTMLSelectElement>(".pw-axis .pw-span")!;
+    expect(pick().value).toBe("60");
+    expect(lane().querySelectorAll("i")).toHaveLength(1);
+    pick().value = "360";
+    pick().dispatchEvent(new Event("change"));
+    expect(lane().querySelectorAll("i")).toHaveLength(3);
+    expect([...root.querySelectorAll(".pw-axis > span")].map((e) => e.textContent)).toEqual(["−3h", "now"]);
+    expect(window.localStorage.getItem("parawatch:chart-span")).toBe("360");
+    mount(snapshot({ runs }));
+    expect(pick().value).toBe("360");
+    expect(spanLabel(30)).toBe("30m");
+    expect(spanLabel(90)).toBe("90m");
+    expect(spanLabel(720)).toBe("12h");
+  });
+
+  it("the divider between names and lanes moves, is remembered, and resets on a double click", () => {
+    mount(snapshot({ runs: [run({ id: "r1", title: "Job" })] }));
+    const chart = () => root.querySelector<HTMLElement>(".pw-agents")!;
+    const bar = () => root.querySelector<HTMLElement>(".pw-divider")!;
+    expect(chart().style.getPropertyValue("--pw-who-f")).toBe("0.42");
+    for (let i = 0; i < 5; i++) bar().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft" }));
+    expect(Number(chart().style.getPropertyValue("--pw-who-f"))).toBeCloseTo(0.32);
+    expect(window.localStorage.getItem("parawatch:chart-names")).toBe("0.320");
+    // it never squeezes either side away
+    for (let i = 0; i < 40; i++) bar().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft" }));
+    expect(Number(chart().style.getPropertyValue("--pw-who-f"))).toBeCloseTo(0.15);
+    mount(snapshot({ runs: [run({ id: "r1", title: "Job" })] }));
+    expect(Number(chart().style.getPropertyValue("--pw-who-f"))).toBeCloseTo(0.15);
+    bar().dispatchEvent(new MouseEvent("dblclick"));
+    expect(chart().style.getPropertyValue("--pw-who-f")).toBe("0.42");
+  });
+});

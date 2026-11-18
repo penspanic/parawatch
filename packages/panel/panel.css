@@ -16,7 +16,6 @@
   --pw-block: var(--color-red, #d64545);
   --pw-todo: var(--text-muted);
   --pw-bad: var(--color-red, #d64545);
-  --pw-who: 42%;
   --pw-well: color-mix(in srgb, var(--text-normal) 3.5%, transparent);
   font-size: var(--font-ui-small, 13px);
   padding: 4px 2px 24px;
@@ -302,6 +301,10 @@
 /* ---------------------------------------------------------------- agents chart */
 
 .pw-agents {
+  /* the share of a row the names take (the divider sets it), and that share as a column width */
+  --pw-who-f: 0.42;
+  --pw-who: calc(var(--pw-who-f) * 100%);
+  position: relative;
   container-type: inline-size;
   background: var(--pw-surface);
   border: 1px solid var(--pw-line);
@@ -332,6 +335,67 @@
   display: flex;
   align-items: center;
   gap: 6px;
+}
+.pw-axis {
+  align-items: center;
+}
+/* the axis's first label is a menu: how far back the lanes reach */
+.pw-axis .pw-span {
+  margin-left: -6px;
+  height: auto;
+  min-height: 0;
+  padding: 1px 18px 1px 6px;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  background-color: transparent;
+  background-position: right 4px center;
+  background-size: 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s, 4px);
+  color: var(--text-muted);
+  box-shadow: none;
+  cursor: pointer;
+}
+.pw-axis .pw-span:hover,
+.pw-axis .pw-span:focus-visible {
+  border-color: var(--pw-line);
+  color: var(--text-normal);
+}
+/* the line between the names and the lanes, which the human can drag */
+.pw-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(12px + var(--pw-who-f) * (100% - 24px) - 4px);
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 2;
+}
+.pw-divider::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3.5px;
+  width: 1px;
+  background: transparent;
+  transition: background 0.12s;
+}
+.pw-divider:hover::after,
+.pw-divider:focus-visible::after,
+.pw-agents.is-resizing .pw-divider::after {
+  background: var(--pw-accent);
+}
+.pw-divider:focus-visible {
+  outline: none;
+}
+.pw-agents.is-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+.pw-agents.is-collapsed .pw-divider {
+  display: none;
 }
 .pw-axis {
   display: flex;
@@ -414,7 +478,7 @@
   position: absolute;
   top: 50%;
   /* at the end of the name column, clear of the lane and the cards it shows */
-  left: calc(var(--pw-who) - 22px);
+  left: calc(12px + var(--pw-who-f) * (100% - 24px) - 22px);
   transform: translateY(-50%);
   display: none;
   padding: 3px;
@@ -643,7 +707,8 @@
     grid-template-columns: 1fr;
   }
   .pw-lane,
-  .pw-axis {
+  .pw-axis,
+  .pw-divider {
     display: none;
   }
 }
