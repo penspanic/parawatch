@@ -116,6 +116,19 @@ describe("notifications from other people", () => {
   });
 });
 
+describe("an older version reading GitHub too", () => {
+  it("keeps the inbox when a version that does not know it rewrites the cache", async () => {
+    const state = () => fold(readEvents());
+    await syncGithub({ state: state(), gh: fakeGh([note("1", "mention", { comment: "c1" })], { c1: "kim" }), force: true });
+    expect(readCache().inbox?.map((t) => t.key)).toEqual(["github.com:1"]);
+    // 0.3.26 writes github.json with only what it knows
+    const file = path.join(homeDir(), "github.json");
+    const { inbox: _gone, ...old } = JSON.parse(fs.readFileSync(file, "utf8"));
+    fs.writeFileSync(file, JSON.stringify({ ...old, fetchedAt: new Date().toISOString() }));
+    expect(readCache().inbox?.map((t) => t.key)).toEqual(["github.com:1"]);
+  });
+});
+
 describe("readings that come late", () => {
   it("marks news found after a long gap late, so the desktop app does not pop it up", async () => {
     const gh = (notes: unknown[]) => fakeGh(notes, { c1: "kim", c2: "kim" });

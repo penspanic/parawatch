@@ -183,20 +183,42 @@ export function cachePath(): string {
   return path.join(homeDir(), "github.json");
 }
 
+/**
+ * The notifications from people live in a file of their own: a version before 0.3.27 (an agent's
+ * `wait` not yet updated) rewrites github.json without them, which would empty the list and make
+ * every reading after it look like the first.
+ */
+function inboxPath(): string {
+  return path.join(homeDir(), "github-inbox.json");
+}
+
 export function readCache(): GithubCache {
+  let c: GithubCache;
   try {
-    const c = JSON.parse(fs.readFileSync(cachePath(), "utf8")) as GithubCache;
-    return { ...c, prs: c.prs ?? [], since: c.since ?? {} };
+    c = JSON.parse(fs.readFileSync(cachePath(), "utf8")) as GithubCache;
   } catch {
-    return { prs: [], since: {} };
+    c = { prs: [], since: {} };
   }
+  let inbox = c.inbox;
+  try {
+    inbox = (JSON.parse(fs.readFileSync(inboxPath(), "utf8")) as { inbox?: InboxThread[] }).inbox ?? inbox;
+  } catch {
+    // none yet
+  }
+  return { ...c, prs: c.prs ?? [], since: c.since ?? {}, inbox };
+}
+
+function writeJson(file: string, value: unknown): void {
+  fs.mkdirSync(homeDir(), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(value) + "\n");
+  fs.renameSync(tmp, file);
 }
 
 function writeCache(c: GithubCache): void {
-  fs.mkdirSync(homeDir(), { recursive: true });
-  const tmp = `${cachePath()}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(c) + "\n");
-  fs.renameSync(tmp, cachePath());
+  const { inbox, ...rest } = c;
+  if (inbox) writeJson(inboxPath(), { inbox });
+  writeJson(cachePath(), rest);
 }
 
 /** Runs `gh`; tests swap this for a fake. */
