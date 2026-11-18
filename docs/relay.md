@@ -32,7 +32,7 @@ PARAWATCH_RELAY_INVITE=<a long random string> parawatch relay serve --port 8787 
 - **The invite is what it takes to make a space.** Give it only to people you want on your server. Without `PARAWATCH_RELAY_INVITE` no new space can be made; existing ones keep working.
 - **What it keeps:** each space in its own folder under `--data`: `space.json` (a hash of its token), `journal.jsonl` (which sealed file changed when) and `files/` (the sealed files). Back up that folder to keep the spaces.
 
-`deploy/relay/` has a script that sets this up on an Amazon Lightsail instance with Caddy and a domain of yours.
+`deploy/relay/` has a script that sets this up on an Amazon Lightsail instance with Caddy and a domain of yours. The project's own relay is described as Terraform in [`infra/terraform`](../infra/terraform/README.md).
 
 ## API
 

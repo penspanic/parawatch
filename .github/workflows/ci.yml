@@ -28,3 +28,15 @@ jobs:
       - run: npx vitest run
         working-directory: apps/desktop
       - run: npm run build
+
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.5"
+      - run: terraform fmt -check -recursive infra/terraform
+      # no credentials and no backend: checks the code only, never the real infrastructure
+      - run: terraform -chdir=infra/terraform/envs/prod init -backend=false -input=false
+      - run: terraform -chdir=infra/terraform/envs/prod validate
