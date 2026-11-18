@@ -31,6 +31,7 @@ const api = {
   goto: (target: string) => ipcRenderer.invoke("pw:goto", target),
   hideRun: (id: string) => ipcRenderer.invoke("pw:hide-run", id),
   issueAside: (key: string, aside: boolean) => ipcRenderer.invoke("pw:issue-aside", key, aside),
+  inboxDone: (key: string) => ipcRenderer.invoke("pw:inbox-done", key),
   dismiss: (card: string) => ipcRenderer.invoke("pw:dismiss", card),
   lead: (project: string, session: string) => ipcRenderer.invoke("pw:lead", project, session),
   open: (target: string) => ipcRenderer.invoke("pw:open", target),
@@ -51,6 +52,7 @@ const api = {
   onSnapshot: (fn: Listener<unknown>) => on("pw:snapshot", fn),
   onError: (fn: Listener<string | null>) => on("pw:error", fn),
   onFocusCard: (fn: Listener<string>) => on("pw:focus-card", fn),
+  onFocus: (fn: Listener<{ focus: string; url?: string }>) => on("pw:focus", fn),
 };
 
 contextBridge.exposeInMainWorld("parawatch", api);

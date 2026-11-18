@@ -9,7 +9,7 @@ import path from "node:path";
 import { UserError } from "./ops.js";
 import type { State } from "./state.js";
 import { appendLocked, deviceName, homeDir, withLock } from "./store.js";
-import type { EventBody, IssueChange, IssueRef, IssueView, PrChange, PrRef, PrView, PwEvent, Run } from "./types.js";
+import type { EventBody, InboxThread, IssueChange, IssueRef, IssueView, NewsItem, PrChange, PrRef, PrView, PwEvent, Run } from "./types.js";
 
 // ------------------------------------------------------------------ config
 
@@ -175,6 +175,8 @@ export interface GithubCache {
   finished?: string[];
   /** open issues assigned to the human; absent until the first reading that asked for them */
   issues?: IssueStatus[];
+  /** unread GitHub notifications from other people; absent until the first reading that asked for them */
+  inbox?: InboxThread[];
 }
 
 export function cachePath(): string {
@@ -398,7 +400,7 @@ export function toIssue(host: string, node: Obj, viewer: string): IssueStatus | 
 }
 
 /** Every open PR the human wrote or is asked to review on one host, plus the extra ones named, and the issues assigned to the human. */
-export async function fetchHost(host: string, extra: PrRef[], gh: GhRunner = runGh, maxAgeDays = 60): Promise<{ prs: PrStatus[]; issues: IssueStatus[] }> {
+export async function fetchHost(host: string, extra: PrRef[], gh: GhRunner = runGh, maxAgeDays = 60): Promise<{ prs: PrStatus[]; issues: IssueStatus[]; viewer: string }> {
   const updatedSince = new Date(Date.now() - maxAgeDays * 86_400_000).toISOString().slice(0, 10);
   const ask = async (withQueue: boolean) => JSON.parse(await gh(["api", "graphql", "--hostname", host, "-f", `query=${buildQuery(extra, withQueue, updatedSince)}`])) as Obj;
   let out: Obj;
@@ -425,7 +427,114 @@ export async function fetchHost(host: string, extra: PrRef[], gh: GhRunner = run
     if (Object.keys(pr).length) put(pr, false);
   });
   const issues = ((o(data.assigned).nodes as unknown[]) ?? []).map((n) => toIssue(host, o(n), viewer)).filter((x): x is IssueStatus => Boolean(x));
-  return { prs: [...byKey.values()], issues };
+  return { prs: [...byKey.values()], issues, viewer };
+}
+
+// ------------------------------------------------------------------ notifications from people
+
+const SUBJECT_RE = /\/repos\/([^/]+\/[^/]+)\/(pulls|issues|commits|releases|discussions)\/([^/?#]+)/;
+const SUBJECT_KIND: Record<string, InboxThread["kind"]> = { pulls: "pr", issues: "issue", commits: "commit", releases: "release", discussions: "discussion" };
+/** Reasons that are about the human whoever's thread it is: someone asked for them. */
+const PERSONAL = new Set(["mention", "team_mention", "assign", "review_requested", "approval_requested", "invitation", "security_alert", "member_feature_requested"]);
+/** CI news reaches the session that owns the pull request, and shows on it. */
+const NOT_INBOX = new Set(["ci_activity"]);
+/** Comment authors looked up per reading at most; the rest wait for the next one. */
+const LOOKUPS = 50;
+
+/** One notification as GitHub's REST API gives it, reduced; `comment` is where its latest comment is. */
+export function toThread(host: string, n: Obj): { thread: Omit<InboxThread, "project">; comment?: string } | undefined {
+  const id = s(n.id);
+  const repo = s(o(n.repository).full_name);
+  const subject = o(n.subject);
+  if (!id || !repo) return undefined;
+  const m = SUBJECT_RE.exec(s(subject.url) ?? "");
+  const kind: InboxThread["kind"] = m ? (SUBJECT_KIND[m[2]!] ?? "other") : s(subject.type) === "Discussion" ? "discussion" : "other";
+  const number = m && (kind === "pr" || kind === "issue") ? Number(m[3]) : undefined;
+  const url =
+    number !== undefined ? `https://${host}/${repo}/${kind === "pr" ? "pull" : "issues"}/${number}` : kind === "release" || kind === "commit" || kind === "discussion" ? `https://${host}/${repo}/${kind}s` : `https://${host}/${repo}`;
+  return {
+    thread: {
+      key: `${host}:${id}`,
+      host,
+      id,
+      repo,
+      kind,
+      number,
+      item: number !== undefined ? `${host}/${repo}#${number}` : undefined,
+      title: s(subject.title) ?? "",
+      reason: s(n.reason) ?? "subscribed",
+      url,
+      at: s(n.updated_at) ?? new Date().toISOString(),
+    },
+    comment: s(subject.latest_comment_url) ?? undefined,
+  };
+}
+
+/**
+ * The unread notifications on one host that another person caused. Left out: CI news, news on a
+ * pull request a session owns (the session is told, and shows it), and threads whose latest word
+ * is the human's own account (which is also every agent's) or a bot, or is not a comment at all. Someone
+ * asking for the human (a mention, a review request, an assignment) always stays.
+ */
+export async function fetchInbox(
+  host: string,
+  viewer: string,
+  owned: ReadonlySet<string>,
+  known: ReadonlyMap<string, InboxThread>,
+  gh: GhRunner = runGh,
+): Promise<Omit<InboxThread, "project">[]> {
+  const raw = JSON.parse(await gh(["api", "--hostname", host, "notifications?per_page=50"])) as unknown;
+  const out: Omit<InboxThread, "project">[] = [];
+  let lookups = 0;
+  const authorOf = async (url: string): Promise<string | undefined> => {
+    const p = /repos\/.*$/.exec(url)?.[0];
+    if (!p || lookups >= LOOKUPS) return undefined;
+    lookups++;
+    try {
+      return s(o(o(JSON.parse(await gh(["api", "--hostname", host, p]))).user).login);
+    } catch {
+      return undefined;
+    }
+  };
+  for (const n of Array.isArray(raw) ? raw : []) {
+    const got = toThread(host, o(n));
+    if (!got || NOT_INBOX.has(got.thread.reason)) continue;
+    const t = got.thread;
+    const was = known.get(t.key);
+    // the same news as last time: keep who wrote it, do not ask again
+    const by = was && was.at === t.at ? was.by : got.comment ? await authorOf(got.comment) : undefined;
+    if (PERSONAL.has(t.reason)) {
+      // who asked is not always who wrote last; name the last writer only when it is someone else
+      out.push(by && by !== viewer ? { ...t, by } : t);
+      continue;
+    }
+    if (t.item && owned.has(t.item)) continue;
+    // news on the human's own threads counts only when someone else wrote it: the account's own
+    // words are the human's or an agent's, and a change without a comment says nobody's
+    if (!by || by === viewer || by.endsWith("[bot]")) continue;
+    out.push(by ? { ...t, by } : t);
+  }
+  return out;
+}
+
+/**
+ * The inbox news between two readings: a thread not seen before, or one with news since. The first
+ * reading that asks for the inbox (`prev` absent) reports nothing; a thread marked read stays quiet
+ * until it has news after that.
+ */
+export function nextInbox(prev: InboxThread[] | undefined, fresh: InboxThread[], read: ReadonlyMap<string, string>): EventBody[] {
+  if (!prev) return [];
+  const old = new Map(prev.map((t) => [t.key, t]));
+  const out: EventBody[] = [];
+  for (const t of fresh) {
+    const was = old.get(t.key);
+    if (was && was.at >= t.at) continue;
+    const readAt = read.get(t.key);
+    if (readAt && readAt >= t.at) continue;
+    const { project: _p, ...thread } = t;
+    out.push({ type: "inbox.new", thread });
+  }
+  return out;
 }
 
 // ------------------------------------------------------------------ what changed
@@ -561,7 +670,14 @@ export function nextIssues(prev: IssueStatus[] | undefined, fresh: IssueStatus[]
 export function dropReported(fresh: EventBody[], log: PwEvent[], since: string | undefined, me = deviceName()): EventBody[] {
   if (!since) return fresh;
   const seen = new Set<string>();
-  const key = (b: EventBody) => (b.type === "pr.change" ? `${b.pr.key}|${b.change}|${b.by ?? ""}` : b.type === "issue.change" ? `issue|${b.issue.key}|${b.change}|${b.by ?? ""}` : undefined);
+  const key = (b: EventBody) =>
+    b.type === "pr.change"
+      ? `${b.pr.key}|${b.change}|${b.by ?? ""}`
+      : b.type === "issue.change"
+        ? `issue|${b.issue.key}|${b.change}|${b.by ?? ""}`
+        : b.type === "inbox.new"
+          ? `inbox|${b.thread.key}|${b.thread.at}`
+          : undefined;
   for (const e of log) {
     const k = key(e);
     if (k && e.dev && e.dev !== me && e.ts >= since) seen.add(k);
@@ -571,6 +687,9 @@ export function dropReported(fresh: EventBody[], log: PwEvent[], since: string |
 }
 
 // ------------------------------------------------------------------ sync
+
+/** A reading this long after the previous one marks what it found as late. */
+export const LATE_MS = 30 * 60_000;
 
 /** When this process last failed to read GitHub at all. */
 let failedHere = 0;
@@ -656,7 +775,10 @@ export async function syncGithub(opts: SyncOptions): Promise<GithubCache> {
     for (const p of prev.prs) if (p.state === "open" && p.updatedAt >= cutoff) extra.set(p.key, prRef(p.host, p.repo, p.number, p.url));
     const fresh: PrStatus[] = [];
     const issues: IssueStatus[] = [];
+    const inbox: InboxThread[] = [];
     const errors: string[] = [];
+    const owned = new Set([...opts.state.prLinks.values()].filter((l) => l.session).map((l) => l.pr.key));
+    const knownThreads = new Map((prev.inbox ?? []).map((t) => [t.key, t]));
     const allHosts = new Set([...hosts, ...[...extra.values()].map((r) => r.host)]);
     for (const host of allHosts) {
       if (!hosts.includes(host)) {
@@ -667,11 +789,18 @@ export async function syncGithub(opts: SyncOptions): Promise<GithubCache> {
         const got = await fetchHost(host, [...extra.values()].filter((r) => r.host === host).slice(0, 80), gh, cfg.maxAgeDays);
         fresh.push(...got.prs);
         issues.push(...got.issues);
+        try {
+          inbox.push(...(await fetchInbox(host, got.viewer, owned, knownThreads, gh)));
+        } catch (err) {
+          errors.push(`${host} notifications: ${(err as Error).message}`);
+          inbox.push(...(prev.inbox ?? []).filter((t) => t.host === host));
+        }
       } catch (err) {
         errors.push(`${host}: ${(err as Error).message}`);
         // keep what we knew about that host
         fresh.push(...prev.prs.filter((p) => p.host === host));
         issues.push(...(prev.issues ?? []).filter((i) => i.host === host));
+        inbox.push(...(prev.inbox ?? []).filter((t) => t.host === host));
       }
     }
     return withLock(() => {
@@ -684,7 +813,14 @@ export async function syncGithub(opts: SyncOptions): Promise<GithubCache> {
       cache.finished = [...done].filter((k) => opts.state.prLinks.has(k));
       const repos = projectRepos(opts.state);
       cache.issues = issues.map((i) => ({ ...i, project: repos.get(`${i.host}/${i.repo}`.toLowerCase()) }));
+      cache.inbox = inbox.map((t) => ({ ...t, project: repos.get(`${t.host}/${t.repo}`.toLowerCase()) }));
       events.push(...nextIssues(latest.issues, issues, latest.fetchedAt));
+      events.push(...nextInbox(latest.inbox, cache.inbox, opts.state.readThreads));
+      // a reading long after the previous one finds old news: it still goes to the agents and the
+      // news list, but is not notified as if it had just happened
+      if (latest.fetchedAt && Date.parse(started) - Date.parse(latest.fetchedAt) > LATE_MS) {
+        for (const e of events) if (e.type === "pr.change" || e.type === "issue.change" || e.type === "inbox.new") e.late = true;
+      }
       if (errors.length) cache.error = errors.join("; ");
       appendLocked((log) => dropReported(events, log, latest.fetchedAt));
       writeCache(cache);
@@ -735,6 +871,76 @@ export function projectRepos(state: State): Map<string, string> {
 }
 
 // ------------------------------------------------------------------ views
+
+/**
+ * Mark a notification read, on GitHub too, so it leaves GitHub's own inbox as well. It comes back
+ * here when the thread gets news. Without `gh` (or on another machine's thread), it is marked read
+ * here only.
+ */
+export async function markThreadRead(key: string, gh: GhRunner = runGh): Promise<{ onGithub: boolean }> {
+  const m = /^([^:]+):(\d+)$/.exec(key);
+  if (!m) throw new UserError(`"${key}" is not a notification: give the key parawatch showed (host:id)`);
+  let onGithub = true;
+  try {
+    await gh(["api", "--hostname", m[1]!, "-X", "PATCH", `notifications/threads/${m[2]}`]);
+  } catch {
+    onGithub = false;
+  }
+  withLock(() => {
+    appendLocked(() => [{ type: "inbox.read", thread: key }]);
+    const c = readCache();
+    if (c.inbox?.some((t) => t.key === key)) writeCache({ ...c, inbox: c.inbox.filter((t) => t.key !== key) });
+  });
+  return { onGithub };
+}
+
+/** Unread notifications from other people, newest first, without the ones marked read since their last news. */
+export function inboxViews(cache: GithubCache, state: State): InboxThread[] {
+  return (cache.inbox ?? [])
+    .filter((t) => {
+      const readAt = state.readThreads.get(t.key);
+      return !readAt || readAt < t.at;
+    })
+    .sort((a, b) => b.at.localeCompare(a.at));
+}
+
+/** What happened on pull requests and issues since `since`, newest first, the same news from two machines once. */
+export function newsViews(state: State, since: string, runs: Run[] = []): NewsItem[] {
+  const out: NewsItem[] = [];
+  const seen = new Map<string, number>();
+  // a merge says CI passed; the line before it adds nothing
+  const merged = new Set(state.news.filter((e) => e.type === "pr.change" && e.change === "merged" && e.ts >= since).map((e) => (e.type === "pr.change" ? e.pr.key : "")));
+  for (const e of state.news) {
+    if (e.ts < since) continue;
+    const ref = e.type === "pr.change" ? e.pr : e.issue;
+    if (e.change === "ci_passed" && merged.has(ref.key)) continue;
+    const id = `${ref.key}|${e.change}|${e.by ?? ""}|${e.type === "pr.change" ? (e.text ?? "") : ""}`;
+    const t = Date.parse(e.ts);
+    const before = seen.get(id);
+    // two machines read the same change within minutes of each other
+    if (before !== undefined && Math.abs(t - before) < 15 * 60_000) continue;
+    seen.set(id, t);
+    const link = e.type === "pr.change" ? state.prLinks.get(ref.key) : undefined;
+    const claim = link?.session ? state.claims.find((c) => link.session!.startsWith(c.session)) : undefined;
+    const run = link?.session ? runs.find((r) => r.id.startsWith(link.session!)) : undefined;
+    out.push({
+      at: e.ts,
+      kind: e.type === "pr.change" ? "pr" : "issue",
+      key: ref.key,
+      url: ref.url,
+      repo: ref.repo,
+      number: ref.number,
+      title: e.title,
+      change: e.change,
+      by: e.by,
+      text: e.type === "pr.change" ? e.text : undefined,
+      session: link?.session,
+      sessionTitle: claim?.title ?? run?.title,
+      project: link?.project ?? claim?.project,
+    });
+  }
+  return out.reverse();
+}
 
 /** Open issues assigned to the human, newest assignment first, the ones set aside last. */
 export function issueViews(cache: GithubCache, state: State): IssueView[] {

@@ -1,5 +1,8 @@
 import type { Answer, Card, Claim, DeclaredRun, PrLink, Project, PwEvent } from "./types.js";
 
+/** How many pull request and issue news events the state keeps for the recent news list. */
+const NEWS_KEPT = 300;
+
 /** The claimed name of a session (claims may hold an id prefix). */
 export function sessionTitle(claims: Claim[], session: string | undefined): string | undefined {
   if (!session) return undefined;
@@ -20,6 +23,10 @@ export interface State {
   unlinked: Set<string>;
   /** issues the human set aside, by issue key, with when */
   aside: Map<string, string>;
+  /** GitHub notifications the human marked read, by thread key, with when */
+  readThreads: Map<string, string>;
+  /** the latest pull request and issue news, oldest first */
+  news: Extract<PwEvent, { type: "pr.change" | "issue.change" }>[];
   lastSeq: number;
 }
 
@@ -35,7 +42,7 @@ function mapAll(xs: string[] | undefined, map: PathMap | undefined, from: string
 
 /** Rebuild current state from the event log. `map` makes other machines' paths local. */
 export function fold(events: PwEvent[], map?: PathMap): State {
-  const s: State = { projects: new Map(), cards: new Map(), runs: new Map(), claims: [], hidden: new Map(), prLinks: new Map(), unlinked: new Set(), aside: new Map(), lastSeq: 0 };
+  const s: State = { projects: new Map(), cards: new Map(), runs: new Map(), claims: [], hidden: new Map(), prLinks: new Map(), unlinked: new Set(), aside: new Map(), readThreads: new Map(), news: [], lastSeq: 0 };
   for (const ev of events) {
     s.lastSeq = Math.max(s.lastSeq, ev.seq);
     switch (ev.type) {
@@ -150,6 +157,14 @@ export function fold(events: PwEvent[], map?: PathMap): State {
         break;
       case "issue.back":
         s.aside.delete(ev.issue);
+        break;
+      case "inbox.read":
+        s.readThreads.set(ev.thread, ev.ts);
+        break;
+      case "pr.change":
+      case "issue.change":
+        s.news.push(ev);
+        if (s.news.length > NEWS_KEPT * 2) s.news = s.news.slice(-NEWS_KEPT);
         break;
     }
   }

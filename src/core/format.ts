@@ -1,7 +1,8 @@
 import { settingsLine } from "./model.js";
 import type { InboxItem } from "./ops.js";
 import type { SyncStatus } from "./sync.js";
-import type { Card, IssueView, PrView, Run } from "./types.js";
+import type { Card, InboxThread, IssueView, NewsItem, PrView, Run } from "./types.js";
+import { inboxReason, newsWords } from "./words.js";
 
 export function ago(iso: string | undefined, now = Date.now()): string {
   if (!iso) return "?";
@@ -297,6 +298,57 @@ export function issueRows(issues: IssueView[], v: View = PLAIN, now = Date.now()
       .join("")
       .trimEnd(),
   );
+}
+
+/** GitHub notifications from other people: where, why, when, and the key to mark one read. */
+export function inboxRows(threads: InboxThread[], v: View = PLAIN, now = Date.now(), indent = ""): string[] {
+  const label = (t: InboxThread) => (t.number !== undefined ? `${t.repo.split("/")[1]}#${t.number}` : t.repo);
+  const idW = Math.max(4, ...threads.map((t) => textWidth(label(t))));
+  const whyW = Math.min(32, Math.max(0, ...threads.map((t) => textWidth(inboxReason(t)))));
+  const keyW = Math.max(0, ...threads.map((t) => textWidth(t.key)));
+  const fixed = textWidth(indent) + idW + 2 + 4 + 2 + whyW + 2 + keyW + 2;
+  const titleW = Math.max(8, v.width - fixed);
+  return threads.map((t) =>
+    [
+      indent,
+      paint(v, pad(label(t), idW), "bold"),
+      "  ",
+      paint(v, ago(t.at, now).padStart(4), "dim"),
+      "  ",
+      paint(v, pad(fit(inboxReason(t), whyW), whyW), "yellow"),
+      "  ",
+      paint(v, pad(t.key, keyW), "dim"),
+      "  ",
+      fit(t.title, titleW),
+    ]
+      .join("")
+      .trimEnd(),
+  );
+}
+
+/** Recent changes on pull requests and issues, newest first. */
+export function newsRows(news: NewsItem[], v: View = PLAIN, now = Date.now(), indent = ""): string[] {
+  const label = (n: NewsItem) => `${n.repo.split("/")[1]}#${n.number}`;
+  const idW = Math.max(4, ...news.map((n) => textWidth(label(n))));
+  const whatW = Math.min(30, Math.max(0, ...news.map((n) => textWidth(newsWords(n)))));
+  const fixed = textWidth(indent) + 4 + 2 + idW + 2 + whatW + 2;
+  const restW = Math.max(8, v.width - fixed);
+  return news.map((n) => {
+    const tone: Paint[] = /^(ci_failed|conflict|changes_requested|queue_removed)$/.test(n.change) ? ["red"] : /^(merged|approved|ci_passed)$/.test(n.change) ? ["green"] : [];
+    const owner = n.sessionTitle ?? n.project;
+    return [
+      indent,
+      paint(v, ago(n.at, now).padStart(4), "dim"),
+      "  ",
+      paint(v, pad(label(n), idW), "bold"),
+      "  ",
+      tone.length ? paint(v, pad(fit(newsWords(n), whatW), whatW), ...tone) : pad(fit(newsWords(n), whatW), whatW),
+      "  ",
+      fit(n.title ?? "", Math.max(8, restW - (owner ? Math.min(24, textWidth(owner)) + 2 : 0))) + (owner ? paint(v, `  ${fit(owner, 24)}`, "dim") : ""),
+    ]
+      .join("")
+      .trimEnd();
+  });
 }
 
 export function waitText(p: PrView): string {

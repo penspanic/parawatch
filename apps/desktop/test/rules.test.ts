@@ -2,7 +2,7 @@ import zlib from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { artPng, countLabel, draw, drawTray, TRAY_IDLE, trayWidth } from "../src/art.js";
 import { npmBin, npmPrefix } from "../src/npmPath.js";
-import { agentsWorking, alertFor, issueUrl, needsYou, summary, toDo, updateLabel } from "../src/rules.js";
+import { agentsWorking, alertFor, combineAlerts, issueUrl, needsYou, summary, toDo, updateLabel, type Alert } from "../src/rules.js";
 import type { Card, PwEvent, Snapshot } from "../../../src/core/types.js";
 
 const card = (id: string, kind: Card["kind"], status: Card["status"] = "open"): Card => ({
@@ -52,10 +52,29 @@ describe("what needs the human", () => {
     expect(alertFor(ev({ type: "issue.change", issue, change: "assigned", title: "Wreck interior", by: "kim", source: "github" }), noRuns)).toEqual({
       title: "game#21 · assigned to you by kim",
       body: "Wreck interior",
+      focus: `issue:${issue.key}`,
       url: issue.url,
+      dedupe: issue.url,
     });
     expect(alertFor(ev({ type: "issue.change", issue, change: "commented", title: "Wreck interior", by: "kim", source: "github" }), noRuns)?.title).toBe("game#21 · kim commented");
     expect(alertFor(ev({ type: "issue.aside", issue: issue.key }), noRuns)).toBeUndefined();
+    expect(alertFor(ev({ type: "issue.change", issue, change: "assigned", by: "kim", source: "github", late: true }), noRuns)).toBeUndefined();
+  });
+
+  it("tells a notification from another person and opens it where the panel shows it", () => {
+    const thread = { key: "github.com:7", host: "github.com", id: "7", repo: "kim/game", kind: "issue", number: 21, title: "Wreck interior", reason: "mention", by: "kim", url: "https://github.com/kim/game/issues/21", at: "" };
+    expect(alertFor(ev({ type: "inbox.new", thread }), noRuns)).toEqual({ title: "game#21 · kim mentioned you", body: "Wreck interior", focus: "inbox:github.com:7", url: thread.url, dedupe: thread.url });
+    expect(alertFor(ev({ type: "inbox.new", thread, late: true }), noRuns)).toBeUndefined();
+  });
+
+  it("tells the same thing once, keeps cards apart, and folds a burst into one notification", () => {
+    const a = (title: string, extra: Partial<Alert> = {}): Alert => ({ title, body: "", ...extra });
+    expect(combineAlerts([a("x", { dedupe: "u" }), a("y", { dedupe: "u" }), a("z")]).map((x) => x.title)).toEqual(["x", "z"]);
+    const burst = combineAlerts([a("card", { card: "c1" }), a("one"), a("two"), a("three"), a("four"), a("five")]);
+    expect(burst.map((x) => x.title)).toEqual(["card", "5 updates on GitHub and jobs"]);
+    expect(burst[1]).toMatchObject({ body: "one\ntwo\nthree\nand 2 more", focus: "news" });
+    // many cards and one other: nothing to fold
+    expect(combineAlerts([a("c1", { card: "1" }), a("c2", { card: "2" }), a("c3", { card: "3" }), a("x")])).toHaveLength(4);
   });
 });
 
@@ -120,9 +139,16 @@ describe("pull requests and stuck work", () => {
   const pr = { type: "pr.change", pr: { key: "github.com/acme/api#88", host: "github.com", repo: "acme/api", number: 88, url: "https://github.com/acme/api/pull/88" }, title: "Fix login", source: "github" };
 
   it("notifies what keeps a pull request from landing, and the landing", () => {
-    expect(alertFor(ev({ ...pr, change: "queue_removed" }), noRuns)).toEqual({ title: "api#88 · dropped from the merge queue", body: "Fix login" });
+    expect(alertFor(ev({ ...pr, change: "queue_removed" }), noRuns)).toEqual({ title: "api#88 · dropped from the merge queue", body: "Fix login", focus: "pr:github.com/acme/api#88", url: pr.pr.url });
     expect(alertFor(ev({ ...pr, change: "changes_requested", by: "alice" }), noRuns)?.title).toBe("api#88 · changes requested by alice");
     expect(alertFor(ev({ ...pr, change: "commented" }), noRuns)).toBeUndefined();
+  });
+
+  it("stays quiet on news a live session hears itself, and on news read late", () => {
+    const owned = { ...noRuns, ownedLive: (k: string) => k === pr.pr.key };
+    expect(alertFor(ev({ ...pr, change: "ci_failed" }), owned)).toBeUndefined();
+    expect(alertFor(ev({ ...pr, change: "merged", late: true }), noRuns)).toBeUndefined();
+    expect(alertFor(ev({ ...pr, change: "merged" }), noRuns)?.title).toBe("api#88 · merged");
   });
 
   it("reports a pull request or a job once when it gets stuck, and again only after it recovers", async () => {

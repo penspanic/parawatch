@@ -48,6 +48,7 @@ const backend: Backend = {
   goto: (target: string) => call(api.goto(target) as Promise<string>),
   hideRun: (id: string) => call(api.hideRun(id) as Promise<void>),
   issueAside: (key: string, aside: boolean) => call(api.issueAside(key, aside) as Promise<void>),
+  inboxDone: (key: string) => call(api.inboxDone(key) as Promise<void>),
   dismiss: (card: string) => call(api.dismiss(card) as Promise<void>),
   lead: (project: string, session: string) => call(api.lead(project, session) as Promise<void>),
   open: (target: string) => void call(api.open(target)).catch((err) => toast(plain(err).message)),
@@ -150,6 +151,10 @@ api.onError((e) => {
   if (e) panel.update(undefined, e);
 });
 api.onFocusCard((id) => panel.focusCard(id));
+api.onFocus(({ focus, url }) => {
+  // a merged pull request or a thread already read is no longer in the window: open its page
+  if (!panel.focusTarget(focus) && url) backend.open(url);
+});
 void backend
   .snapshot()
   .then((s) => panel.update(s))

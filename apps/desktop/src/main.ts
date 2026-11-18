@@ -9,10 +9,10 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { app, autoUpdater as squirrel, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, Notification, protocol, shell, systemPreferences, Tray } from "electron";
 import { readClient, recordClient, versionSkew } from "../../../src/core/clients.js";
-import { answerCard, dismissCard, hideRun, makeLead, readState, setIssueAside, UserError } from "../../../src/core/ops.js";
+import { answerCard, dismissCard, endedSessions, hideRun, makeLead, readState, setIssueAside, UserError } from "../../../src/core/ops.js";
 import { cardContextLine, inAppUrl, resolveGoto } from "../../../src/core/desktop.js";
 import { followEvents } from "../../../src/core/follow.js";
-import { syncGithub } from "../../../src/core/github.js";
+import { markThreadRead, syncGithub } from "../../../src/core/github.js";
 import { desktopPidPath } from "../../../src/core/integrate.js";
 import { allowedSite, siteForPr } from "../../../src/core/sites.js";
 import { snapshot as takeSnapshot } from "../../../src/core/snapshot.js";
@@ -24,7 +24,7 @@ import { artPng, trayPng, type TrayState } from "./art.js";
 import { logger, logPath } from "./logger.js";
 import { siteIcon } from "./siteIcons.js";
 import { KEEP_CLOSED, RUN_TITLES, SINCE_HOURS, THEMES, validPref, type AboutInfo, type Prefs, type Theme, type UpdateState } from "./prefs.js";
-import { alertFor, agentsWorking, issueUrl, needsYou, newlyStuck, summary } from "./rules.js";
+import { alertFor, agentsWorking, combineAlerts, issueUrl, needsYou, newlyStuck, summary, type Alert } from "./rules.js";
 import { cliState, onCliChange, updateCli } from "./cliUpdate.js";
 import type { ChatState } from "../../../src/core/chatTypes.js";
 import { Chats } from "./chat.js";
@@ -155,7 +155,7 @@ function refresh(): void {
     latest = takeSnapshot({ sinceHours: settings.sinceHours, closed: settings.keepClosed });
     lastError = undefined;
     const alerts = newlyStuck(latest, stuck);
-    if (stuckPrimed && settings.notify) for (const a of alerts) notifyHuman(a);
+    if (stuckPrimed && settings.notify) for (const a of alerts) queueAlert(a);
     stuckPrimed = true;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -199,13 +199,34 @@ function watchGithub(): void {
 
 function onEvent(ev: PwEvent): void {
   // every machine reads GitHub itself, so news another machine logged is told here already
-  const echo = (ev.type === "pr.change" || ev.type === "issue.change") && !!ev.dev && ev.dev !== deviceName();
+  const echo = (ev.type === "pr.change" || ev.type === "issue.change" || ev.type === "inbox.new") && !!ev.dev && ev.dev !== deviceName();
   const alert = settings.notify && !echo
-    ? alertFor(ev, { runTitle: (id) => readState().runs.get(id)?.title })
+    ? alertFor(ev, {
+        runTitle: (id) => readState().runs.get(id)?.title,
+        ownedLive: (key) => {
+          const state = readState();
+          const session = state.prLinks.get(key)?.session;
+          return !!session && !endedSessions(state)(session);
+        },
+      })
     : undefined;
-  if (alert) notifyHuman(alert);
+  if (alert) queueAlert(alert);
   if (debounce) clearTimeout(debounce);
   debounce = setTimeout(refresh, 250);
+}
+
+/** Alerts that arrive together (one GitHub reading) are held a moment and told as one. */
+let alertQueue: Alert[] = [];
+let alertTimer: NodeJS.Timeout | undefined;
+function queueAlert(a: Alert): void {
+  alertQueue.push(a);
+  if (alertTimer) return;
+  alertTimer = setTimeout(() => {
+    alertTimer = undefined;
+    const batch = alertQueue;
+    alertQueue = [];
+    for (const one of combineAlerts(batch)) notifyHuman(one);
+  }, 1500);
 }
 
 /**
@@ -213,7 +234,7 @@ function onEvent(ev: PwEvent): void {
  * (or an unsigned build); then the alert goes through the system's own notifier instead, which
  * cannot open the card but still gets the human's attention.
  */
-function notifyHuman(alert: { title: string; body: string; card?: string; url?: string }): void {
+function notifyHuman(alert: Alert): void {
   const fallback = () => {
     if (process.platform !== "darwin") return;
     const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -221,7 +242,7 @@ function notifyHuman(alert: { title: string; body: string; card?: string; url?: 
   };
   if (!Notification.isSupported()) return fallback();
   const n = new Notification({ title: alert.title, body: alert.body, silent: false });
-  n.on("click", () => (alert.url ? void shell.openExternal(alert.url) : showWindow(alert.card)));
+  n.on("click", () => (alert.card || !alert.focus ? showWindow(alert.card) : showTarget(alert.focus, alert.url)));
   n.on("failed", (_e, error) => {
     logger.warn(`system notification refused (${error}); using the fallback notifier`);
     fallback();
@@ -669,6 +690,14 @@ function showWindow(card?: string): void {
   scheduleRefresh();
 }
 
+/** Open the window on what a notification was about; a page it no longer shows opens in the browser. */
+function showTarget(focus: string, url?: string): void {
+  showWindow();
+  const send = () => win!.webContents.send("pw:focus", { focus, url });
+  if (win!.webContents.isLoading()) win!.webContents.once("did-finish-load", send);
+  else send();
+}
+
 function startHidden(): boolean {
   if (process.argv.includes("--hidden")) return true;
   return process.platform === "darwin" && app.getLoginItemSettings().wasOpenedAtLogin === true;
@@ -794,6 +823,10 @@ function registerIpc(): void {
   });
   ipcMain.handle("pw:issue-aside", (_e, key: string, aside: boolean) => {
     setIssueAside(key, aside);
+    refresh();
+  });
+  ipcMain.handle("pw:inbox-done", async (_e, key: string) => {
+    await markThreadRead(key);
     refresh();
   });
   ipcMain.handle("pw:hide-run", (_e, id: string) => {

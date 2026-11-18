@@ -3,7 +3,7 @@ import type { Card, Snapshot } from "../../../src/core/types.js";
 import type { ChatState } from "../../../src/core/chatTypes.js";
 
 export type { ChatItem, ChatSettings, ChatState, ChatView } from "../../../src/core/chatTypes.js";
-export type { Answer, Card, CardKind, Comment, IssueView, Listener, PrView, Project, Run, RunState, Snapshot } from "../../../src/core/types.js";
+export type { Answer, Card, CardKind, Comment, InboxThread, IssueView, Listener, NewsItem, PrView, Project, Run, RunState, Snapshot } from "../../../src/core/types.js";
 
 /** One line of `parawatch watch`. */
 export interface PwEvent {
@@ -35,6 +35,8 @@ export interface Backend {
   hideRun(id: string): Promise<void>;
   /** Set an issue assigned to the human aside until someone else comments, or bring it back. Hosts without it show no button. */
   issueAside?(key: string, aside: boolean): Promise<void>;
+  /** Mark a GitHub notification read, on GitHub too. Hosts without it show no button. */
+  inboxDone?(key: string): Promise<void>;
   /** Open a file, app or URL with the system. */
   open(target: string): void;
   /** A URL the panel can put in <img> or <video> for a file outside the vault. */

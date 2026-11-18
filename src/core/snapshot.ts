@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { issueViews, prViews, keyOf, parsePrRef, readCache, githubConfig, githubFailing } from "./github.js";
+import { inboxViews, issueViews, newsViews, prViews, keyOf, parsePrRef, readCache, githubConfig, githubFailing } from "./github.js";
 import { endedSessions, leadOf, linkPr, listeners, readState } from "./ops.js";
 import { collectRuns } from "./runs.js";
 import type { State } from "./state.js";
@@ -48,6 +48,10 @@ export function snapshot(opts: { sinceHours?: number; project?: string; closed?:
   if (prs) prs = prs.map((p) => (p.state === "open" && p.project && (!p.session || ended(p.session)) ? route(p) : p));
   let issues = enabled ? issueViews(cache, state) : undefined;
   if (issues && opts.project) issues = issues.filter((i) => i.project === opts.project);
+  let inbox = enabled ? inboxViews(cache, state) : undefined;
+  if (inbox && opts.project) inbox = inbox.filter((t) => t.project === opts.project);
+  let news = newsViews(state, new Date(Date.now() - 24 * 3_600_000).toISOString(), runs);
+  if (opts.project) news = news.filter((n) => n.project === opts.project);
   return {
     v: SCHEMA_VERSION,
     generatedAt: new Date().toISOString(),
@@ -56,6 +60,8 @@ export function snapshot(opts: { sinceHours?: number; project?: string; closed?:
     runs,
     prs,
     issues,
+    inbox,
+    news,
     github: { enabled, fetchedAt: cache.fetchedAt, error: cache.error, failing: githubFailing(cache) || undefined, failedBy: cache.failedBy, failedAt: cache.failedAt },
     listeners: listeners(),
     devices: sharedDir() ? { me: deviceName(), others: eventFiles().map((f) => f.device).filter((d) => d !== deviceName()) } : undefined,

@@ -1,8 +1,9 @@
 import { boardModel, MARKS, type BoardRow, type Mark } from "./board";
 import { settingsFull, settingsLine } from "../../../src/core/model.js";
 import { serviceName, siteForPr, siteForRun } from "../../../src/core/sites.js";
+import { inboxReason, newsWords } from "../../../src/core/words.js";
 import { ago, clean, groupRuns, OTHER, type FoldNode, type Group, type RunNode } from "./tree";
-import type { Backend, Card, IssueView, Listener, PrView, Reply, Run, Snapshot } from "./types";
+import type { Backend, Card, InboxThread, IssueView, Listener, NewsItem, PrView, Reply, Run, Snapshot } from "./types";
 import { openViewer } from "./viewer";
 import { runLabel, runLabelText, type RunTitles } from "./runTitle";
 import { ChatPane } from "./chat";
@@ -36,6 +37,9 @@ const WHO_MIN = 0.15;
 const WHO_MAX = 0.8;
 const KIND_ORDER: Card["kind"][] = ["block", "decide", "try", "todo"];
 const DAY = 24 * 60 * 60 * 1000;
+/** Lines the recent news shows at most. */
+const NEWS_SHOWN = 40;
+const NEWS_TONE: Partial<Record<string, string>> = { ci_failed: "bad", conflict: "bad", changes_requested: "bad", queue_removed: "bad", merged: "good", approved: "good", ci_passed: "good" };
 
 /** When the matter came up: `since` when it is older than the card, else when the card opened. */
 function cardStart(c: Card): string {
@@ -308,6 +312,32 @@ export class Panel {
   }
 
   /**
+   * Bring what a notification was about into view: `pr:<key>`, `issue:<key>`, `inbox:<key>`, a
+   * card as `card:<id>`, or `news` for the recent news. A pull request no longer open shows in the
+   * news. False when the window does not show it (the caller then opens its page).
+   */
+  focusTarget(target: string): boolean {
+    if (target.startsWith("card:")) {
+      this.focusCard(target.slice(5));
+      return true;
+    }
+    this.closeChat();
+    if (!this.split && this.mode === "board") this.setView("feed");
+    const item = target.replace(/^(pr|issue|inbox):/, "");
+    const box =
+      this.cardsEl.querySelector<HTMLElement>(`[data-focus="${CSS.escape(target)}"]`) ??
+      (target === "news" ? this.cardsEl.querySelector<HTMLElement>('[data-sec="news"]') : this.cardsEl.querySelector<HTMLElement>(`[data-news="${CSS.escape(item)}"]`));
+    if (!box) return false;
+    for (let g = box.closest<HTMLElement>(".pw-fold-group.is-collapsed"); g; g = g.parentElement?.closest<HTMLElement>(".pw-fold-group.is-collapsed") ?? null) {
+      g.querySelector<HTMLElement>(":scope > .pw-fold-head")?.click();
+    }
+    // a click above may have drawn the section again
+    const again = this.cardsEl.querySelector<HTMLElement>(`[data-focus="${CSS.escape(target)}"]`) ?? (target === "news" ? this.cardsEl.querySelector<HTMLElement>('[data-sec="news"]') : this.cardsEl.querySelector<HTMLElement>(`[data-news="${CSS.escape(item)}"]`)) ?? box;
+    this.spotlight(again, "center");
+    return true;
+  }
+
+  /**
    * Scroll `target` into view and, once it has stopped moving, pulse a ring around it, so the eye
    * finds what the click was about. Starting the pulse at the click would spend it while the page
    * is still moving.
@@ -473,6 +503,8 @@ export class Panel {
     if (strandedN) this.jumpTo(this.badge(row, "life-buoy", strandedN, `${strandedN} with no session to act on ${strandedN === 1 ? "it" : "them"}: pick a lead`, "pw-asks"), '[data-sec="stranded"]');
     const reviews = s?.prs?.filter((p) => p.reviewRequested && !p.mine).length ?? 0;
     if (reviews) this.jumpTo(this.badge(row, "eye", reviews, `${reviews} pull request${reviews === 1 ? "" : "s"} asking for your review`, "pw-chip-review"), '[data-sec="reviews"]');
+    const fromPeople = s?.inbox?.length ?? 0;
+    if (fromPeople) this.jumpTo(this.badge(row, "bell", fromPeople, `${fromPeople} GitHub notification${fromPeople === 1 ? "" : "s"} from other people`, "pw-chip-review"), '[data-sec="inbox"]');
     const assigned = s?.issues?.filter((i) => !i.aside).length ?? 0;
     if (assigned) this.jumpTo(this.badge(row, "circle-dot", assigned, `${assigned} issue${assigned === 1 ? "" : "s"} assigned to you`, "pw-chip-review"), '[data-sec="assigned"]');
     const stuck = s?.prs?.filter((p) => p.stalled && !(p.reviewRequested && !p.mine)).length ?? 0;
@@ -521,9 +553,11 @@ export class Panel {
     const prs = (s?.prs ?? []).map((p) => [p.key, p.waitingOn, p.since, p.stalled, p.sessionTitle, p.title, p.lead, p.unrouted]);
     const ls = (s?.listeners ?? []).map((l) => [l.pid, l.project, l.card]);
     const issues = (s?.issues ?? []).map((i) => [i.key, i.title, i.aside, i.assignedAt, i.lastOther?.at, i.project]);
+    const inbox = (s?.inbox ?? []).map((t) => [t.key, t.at, t.by]);
+    const news = (s?.news ?? []).slice(0, NEWS_SHOWN).map((n) => [n.key, n.change, n.at, n.sessionTitle]);
     // the lead help lists the project's sessions
     const leaders = this.helpOpen.size ? (s?.runs ?? []).filter((r) => r.kind === "session").map((r) => [r.id, this.nameOf(r), r.state, r.project]) : [];
-    return JSON.stringify([cards.map((c) => [c.id, c.status, c.kind, c.title, c.since, c.from, c.session, c.answers.length, c.comments.length, c.closedAt, c.lead, c.unrouted]), asks, prs, ls, [...this.busy], [...this.reopened], [...this.helpOpen], leaders, issues, this.showAside]);
+    return JSON.stringify([cards.map((c) => [c.id, c.status, c.kind, c.title, c.since, c.from, c.session, c.answers.length, c.comments.length, c.closedAt, c.lead, c.unrouted]), asks, prs, ls, [...this.busy], [...this.reopened], [...this.helpOpen], leaders, issues, this.showAside, inbox, news]);
   }
 
   private renderCards(now: number): void {
@@ -602,6 +636,16 @@ export class Panel {
     const reviews = prs.filter((p) => p.reviewRequested && !p.mine);
     const strandedPrs = prs.filter((p) => p.unrouted && !(p.reviewRequested && !p.mine));
     const waiting = prs.filter((p) => !(p.reviewRequested && !p.mine) && !p.unrouted);
+    const inbox = this.snapshot?.inbox ?? [];
+    if (inbox.length) {
+      const body = this.foldGroup(root, "inbox", "", false, {
+        tile: "bell",
+        tone: "review",
+        count: inbox.length,
+        label: `From people: ${inbox.length} GitHub notification${inbox.length === 1 ? "" : "s"} someone else sent you`,
+      });
+      for (const t of inbox) body.appendChild(this.inboxRow(t, now));
+    }
     if (reviews.length) {
       const body = this.foldGroup(root, "reviews", "", false, {
         tile: "eye",
@@ -679,6 +723,26 @@ export class Panel {
       });
       body.parentElement!.classList.add("pw-answered-group");
       for (const c of answered) body.appendChild(this.pastCard(c, now));
+    }
+
+    const news = (this.snapshot?.news ?? []).slice(0, NEWS_SHOWN);
+    if (news.length) {
+      // what happened on pull requests and issues today, so a merged one can still be found; starts folded
+      const body = this.foldGroup(root, "news", "", true, {
+        tile: "activity",
+        tone: "closed",
+        count: news.length,
+        label: `Recent: ${news.length} change${news.length === 1 ? "" : "s"} on pull requests and issues in the last day`,
+      });
+      const first = new Set<string>();
+      for (const n of news) {
+        const row = this.newsRow(n, now);
+        if (!first.has(n.key)) {
+          first.add(n.key);
+          row.dataset.news = n.key;
+        }
+        body.appendChild(row);
+      }
     }
 
     if (closed.length) {
@@ -1462,6 +1526,14 @@ export class Panel {
       r.title = m.reviews.map((p) => `${p.repo}#${p.number}: ${p.title}`).join("\n");
       r.onclick = () => this.feedJump('[data-sec="reviews"]');
     }
+    const people = this.snapshot?.inbox ?? [];
+    if (people.length) {
+      const r = el("button", "pw-board-extra", undefined, sum);
+      this.icon(r, "bell");
+      el("span", undefined, `${people.length} from people`, r);
+      r.title = people.map((t) => `${t.repo}${t.number !== undefined ? `#${t.number}` : ""}: ${inboxReason(t)}`).join("\n");
+      r.onclick = () => this.feedJump('[data-sec="inbox"]');
+    }
     const assigned = (this.snapshot?.issues ?? []).filter((i) => !i.aside);
     if (assigned.length) {
       const r = el("button", "pw-board-extra", undefined, sum);
@@ -1748,10 +1820,83 @@ export class Panel {
   }
 
   /** A pull request: what it waits on and since when, and the session that owns it. */
+  /** A GitHub notification from another person: why it is here, and a way to mark it read. */
+  private inboxRow(t: InboxThread, now: number): HTMLElement {
+    const row = el("div", "pw-pr pw-issue pw-inbox");
+    row.dataset.focus = `inbox:${t.key}`;
+    const top = el("div", "pw-pr-top", undefined, row);
+    this.siteSlot(this.icon(top, t.kind === "pr" ? "git-pull-request" : t.kind === "issue" ? "circle-dot" : "message-square", "pw-pr-icon"), siteForPr(t));
+    const label = el("a", "pw-pr-label", t.number !== undefined ? `${t.repo.split("/")[1]}#${t.number}` : t.repo, top);
+    (label as HTMLAnchorElement).href = "#";
+    label.title = `Open ${t.url}${this.backend.inboxDone ? ", and mark it read" : ""}`;
+    label.onclick = (e) => {
+      e.preventDefault();
+      this.backend.open(t.url);
+      if (this.backend.inboxDone) void this.backend.inboxDone(t.key).then(() => this.host.refresh(), () => {});
+    };
+    this.withMenu(label, t.url);
+    el("span", "pw-pr-wait", inboxReason(t), top);
+    el("span", "pw-meta", ago(t.at, now), top).title = `Last news ${new Date(t.at).toLocaleString()}`;
+    if (this.backend.inboxDone) {
+      const b = el("button", "pw-issue-aside clickable-icon", undefined, top);
+      this.host.icon(b, "check");
+      b.title = "Mark read, here and on GitHub";
+      b.setAttribute("aria-label", "Mark read");
+      b.onclick = () => void this.backend.inboxDone!(t.key).then(() => this.host.refresh(), (err) => this.host.notice(err instanceof Error ? err.message : String(err)));
+    }
+    el("div", "pw-pr-title", t.title, row);
+    const pr = t.item ? this.snapshot?.prs?.find((p) => p.key === t.item) : undefined;
+    if (pr?.session || t.project) {
+      const own = el(pr?.session ? "a" : "span", "pw-meta pw-pr-owner", undefined, row);
+      this.icon(own, pr?.session ? "bot" : "folder");
+      el("span", undefined, pr?.sessionTitle ?? pr?.project ?? t.project ?? "", own);
+      if (pr?.session) {
+        (own as HTMLAnchorElement).href = "#";
+        own.title = "Open the session that owns this pull request";
+        own.onclick = (e) => {
+          e.preventDefault();
+          void this.backend.goto(pr.session!).catch((err) => this.host.notice(err instanceof Error ? err.message : String(err)));
+        };
+      }
+    }
+    return row;
+  }
+
+  /** One change on a pull request or an issue today: when, what, and whose session it is. */
+  private newsRow(n: NewsItem, now: number): HTMLElement {
+    const tone = NEWS_TONE[n.change] ?? "";
+    const row = el("div", `pw-news${tone ? ` is-${tone}` : ""}`);
+    el("span", "pw-news-age", ago(n.at, now), row).title = new Date(n.at).toLocaleString();
+    const label = el("a", "pw-pr-label", `${n.repo.split("/")[1]}#${n.number}`, row);
+    (label as HTMLAnchorElement).href = "#";
+    label.title = `Open ${n.url}`;
+    label.onclick = (e) => {
+      e.preventDefault();
+      this.backend.open(n.url);
+    };
+    this.withMenu(label, n.url);
+    el("span", "pw-news-what", newsWords(n), row);
+    const title = el("span", "pw-news-title", n.title ?? "", row);
+    if (n.text) title.title = n.text;
+    if (n.session) {
+      const own = el("a", "pw-meta pw-pr-owner", undefined, row);
+      this.icon(own, "bot");
+      el("span", undefined, n.sessionTitle ?? n.project ?? n.session.slice(0, 8), own);
+      (own as HTMLAnchorElement).href = "#";
+      own.title = "Open the session that owns this pull request";
+      own.onclick = (e) => {
+        e.preventDefault();
+        void this.backend.goto(n.session!).catch((err) => this.host.notice(err instanceof Error ? err.message : String(err)));
+      };
+    }
+    return row;
+  }
+
   /** An issue assigned to the human: who gave it and when, and the latest word from someone else. */
   private issueRow(i: IssueView, now: number): HTMLElement {
     const row = el("div", `pw-pr pw-issue${i.aside ? " is-aside" : ""}`);
     row.dataset.issue = i.key;
+    row.dataset.focus = `issue:${i.key}`;
     const top = el("div", "pw-pr-top", undefined, row);
     this.siteSlot(this.icon(top, "circle-dot", "pw-pr-icon"), siteForPr(i));
     const label = el("a", "pw-pr-label", `${i.repo.split("/")[1]}#${i.number}`, top);
@@ -1787,6 +1932,7 @@ export class Panel {
   private prRow(p: PrView, now: number): HTMLElement {
     const row = el("div", `pw-pr${p.stalled ? " is-stuck" : ""}`);
     row.dataset.pr = p.key;
+    row.dataset.focus = `pr:${p.key}`;
     const top = el("div", "pw-pr-top", undefined, row);
     this.siteSlot(this.icon(top, "git-pull-request", "pw-pr-icon"), siteForPr(p));
     const label = el("a", "pw-pr-label", `${p.repo.split("/")[1]}#${p.number}`, top);

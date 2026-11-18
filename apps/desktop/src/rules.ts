@@ -3,6 +3,7 @@
  * badge counts, and which events become a system notification.
  */
 import type { Card, PwEvent, Snapshot } from "../../../src/core/types.js";
+import { inboxReason } from "../../../src/core/words.js";
 import type { AboutInfo, UpdateState } from "./prefs.js";
 
 const KIND_WORD: Record<Card["kind"], string> = { decide: "Decide", try: "Try", block: "Blocked", todo: "To do" };
@@ -42,7 +43,7 @@ export function newlyStuck(s: Snapshot | undefined, seen: Set<string>): Alert[] 
     if (!p.stalled || (p.reviewRequested && !p.mine)) continue;
     const key = `pr:${p.key}:${p.waitingOn}`;
     now.add(key);
-    if (!seen.has(key)) out.push({ title: `${p.repo.split("/")[1]}#${p.number} stuck in ${p.waitingOn}`, body: p.title });
+    if (!seen.has(key)) out.push({ title: `${p.repo.split("/")[1]}#${p.number} stuck in ${p.waitingOn}`, body: p.title, focus: `pr:${p.key}`, url: p.url });
   }
   for (const r of s.runs) {
     if (r.state !== "stalled" || r.kind !== "declared") continue;
@@ -61,33 +62,81 @@ export interface Alert {
   body: string;
   /** the card to show when the notification is clicked */
   card?: string;
-  /** a page to open when the notification is clicked, instead of the window */
+  /** what to bring into view in the window on a click: `pr:<key>`, `issue:<key>`, `inbox:<key>` */
+  focus?: string;
+  /** the page behind it, opened when the window no longer shows it (a pull request already merged) */
   url?: string;
+  /** the same thing told twice in one go (an assignment read as an issue and as a notification) is told once */
+  dedupe?: string;
+}
+
+/** What the notification rules need to know beyond the event. */
+export interface AlertContext {
+  runTitle(id: string): string | undefined;
+  /** a live session owns this pull request, so it hears the news itself */
+  ownedLive?(prKey: string): boolean;
 }
 
 /**
- * The notification an event deserves, if any: a card that needs the human, or a declared job that
- * failed. To-dos, answers, comments and closes stay quiet.
+ * The notification an event deserves, if any: a card that needs the human, a declared job that
+ * failed, GitHub news that needs the human, and what another person sent them. To-dos, answers,
+ * comments and closes stay quiet. So does pull request news a live session owns (the session is
+ * told), and news a late reading found: it is old by the time it shows.
  */
-export function alertFor(ev: PwEvent, state: { runTitle(id: string): string | undefined }): Alert | undefined {
+export function alertFor(ev: PwEvent, state: AlertContext): Alert | undefined {
   if (ev.type === "card.open") {
     const c = ev.card;
     if (c.kind === "todo") return undefined;
     return { title: `${c.project} · ${KIND_WORD[c.kind]}`, body: c.title, card: c.id };
   }
   if (ev.type === "pr.change" && PR_ALERTS[ev.change]) {
-    return { title: `${ev.pr.repo.split("/")[1]}#${ev.pr.number} · ${PR_ALERTS[ev.change]}${ev.by && ev.source === "github" ? ` by ${ev.by}` : ""}`, body: ev.text ? `${ev.title ?? ""}\n${ev.text}`.trim() : (ev.title ?? ev.pr.url) };
+    if (ev.late || state.ownedLive?.(ev.pr.key)) return undefined;
+    return {
+      title: `${ev.pr.repo.split("/")[1]}#${ev.pr.number} · ${PR_ALERTS[ev.change]}${ev.by && ev.source === "github" ? ` by ${ev.by}` : ""}`,
+      body: ev.text ? `${ev.title ?? ""}\n${ev.text}`.trim() : (ev.title ?? ev.pr.url),
+      focus: `pr:${ev.pr.key}`,
+      url: ev.pr.url,
+    };
   }
   if (ev.type === "issue.change") {
+    if (ev.late) return undefined;
     const where = `${ev.issue.repo.split("/")[1]}#${ev.issue.number}`;
     const what = ev.change === "assigned" ? `assigned to you${ev.by ? ` by ${ev.by}` : ""}` : `${ev.by ?? "someone"} commented`;
-    return { title: `${where} · ${what}`, body: ev.title ?? ev.issue.url, url: ev.issue.url };
+    return { title: `${where} · ${what}`, body: ev.title ?? ev.issue.url, focus: `issue:${ev.issue.key}`, url: ev.issue.url, dedupe: ev.issue.url };
+  }
+  if (ev.type === "inbox.new") {
+    if (ev.late) return undefined;
+    const t = ev.thread;
+    const where = t.number !== undefined ? `${t.repo.split("/")[1]}#${t.number}` : t.repo;
+    return { title: `${where} · ${inboxReason(t)}`, body: t.title, focus: `inbox:${t.key}`, url: t.url, dedupe: t.url };
   }
   if (ev.type === "run.end" && ev.status === "failed") {
     const title = state.runTitle(ev.run) ?? ev.run;
     return { title: "A job failed", body: ev.note ? `${title}: ${ev.note}` : title };
   }
   return undefined;
+}
+
+/**
+ * Alerts that came in together, as notifications: the same thing told twice once, and more than
+ * a few at a time as one notification that names them, so a burst does not pile up on the screen.
+ */
+export function combineAlerts(alerts: Alert[], most = 3): Alert[] {
+  const seen = new Set<string>();
+  const one = alerts.filter((a) => {
+    if (!a.dedupe) return true;
+    if (seen.has(a.dedupe)) return false;
+    seen.add(a.dedupe);
+    return true;
+  });
+  if (one.length <= most) return one;
+  // a card is a question to answer: it keeps its own notification
+  const cards = one.filter((a) => a.card);
+  const rest = one.filter((a) => !a.card);
+  if (rest.length <= 1) return one;
+  const lines = rest.slice(0, most).map((a) => a.title);
+  if (rest.length > most) lines.push(`and ${rest.length - most} more`);
+  return [...cards, { title: `${rest.length} updates on GitHub and jobs`, body: lines.join("\n"), focus: "news" }];
 }
 
 /** One line on what needs the human, for the menu bar menu and tooltip. */
