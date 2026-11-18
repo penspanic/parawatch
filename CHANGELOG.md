@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.25 (2026-11-18)
 
 - The line between the agent names and their lanes can be dragged to share the width between them. A double click puts it back; with the keyboard, the arrow keys move it. The width is remembered.
 - The lanes can reach back further than an hour: the start of the axis is a menu with 30 minutes, 1, 3, 6, 12 and 24 hours. Runs now keep a day of active minutes (it was an hour). A machine on an older version still sends only its last hour.
