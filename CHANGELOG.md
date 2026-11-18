@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.27 (2026-11-19)
 
 - A desktop notification opens the window at what it was about: the pull request's row, the issue, the thread from a person, or the line under Recent for a pull request that is no longer open. Before, a click on pull request news showed the window with nothing to find. When the window does not show it, the page opens.
 - From people: GitHub notifications another person caused (a mention, a review requested, someone else's comment on your thread) show at the top of the app with a bell count, in `status` (FROM PEOPLE ON GITHUB) and with `parawatch news`. The ones your own account made through agents, bots, CI, and news on pull requests a session owns are left out. Opening one, its check button, or `parawatch news done <key>` marks it read on GitHub too.
