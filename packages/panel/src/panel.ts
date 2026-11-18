@@ -27,8 +27,13 @@ interface Draft {
 
 const KIND_LABEL: Record<Card["kind"], string> = { decide: "Decide", try: "Try", block: "Blocked", todo: "To do" };
 const KIND_ICON: Record<Card["kind"], string> = { decide: "split", try: "eye", block: "hand", todo: "list-checks" };
-/** The agent chart covers the last hour, a minute per step (the runs' `activity`). */
-const CHART_MINUTES = 60;
+/** Spans the agent chart can show, in minutes; the runs' `activity` goes back a day. */
+export const CHART_SPANS = [30, 60, 180, 360, 720, 1440];
+const DEFAULT_SPAN = 60;
+/** The share of a chart row the names take, by default and at the ends of the divider. */
+const WHO_DEFAULT = 0.42;
+const WHO_MIN = 0.15;
+const WHO_MAX = 0.8;
 const KIND_ORDER: Card["kind"][] = ["block", "decide", "try", "todo"];
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -201,6 +206,12 @@ export class Panel {
   /** which of a session's name and its claimed work the lists show */
   private runTitles: RunTitles = "both";
   private collapsed = loadCollapsed();
+  /** how far back the agent chart reaches, in minutes */
+  private span = loadSpan();
+  /** the share of a chart row the names take; the rest is the lane */
+  private who = loadWho();
+  /** while the human drags the divider, redraws of the chart wait */
+  private dragging = false;
   private cardsSig = "";
   private head: HTMLElement;
   private cardsEl: HTMLElement;
@@ -1539,8 +1550,10 @@ export class Panel {
   }
 
   private renderAgents(now: number): void {
+    if (this.dragging) return;
     const root = this.agentsEl;
     root.replaceChildren();
+    root.style.setProperty("--pw-who-f", String(this.who));
     const runs = this.snapshot?.runs ?? [];
     const working = runs.filter((r) => r.state === "working" || r.state === "waiting").length;
     const head = el("div", "pw-agents-head", undefined, root);
@@ -1550,11 +1563,11 @@ export class Panel {
     const chevron = el("span", "pw-chevron", undefined, lead);
     this.host.icon(chevron, "chevron-down");
     this.badge(lead, "activity", working, `${working} agent${working === 1 ? "" : "s"} working, ${runs.length} in the last hours`, working ? "" : "is-zero");
+    // the axis starts with how far back it reaches, which the human can change there
     const axis = el("div", "pw-axis", undefined, head);
-    axis.setAttribute("aria-hidden", "true");
-    el("span", undefined, `−${CHART_MINUTES}m`, axis);
-    el("span", undefined, `−${CHART_MINUTES / 2}m`, axis);
-    el("span", undefined, "now", axis);
+    this.spanPicker(axis);
+    el("span", undefined, `−${spanLabel(this.span / 2)}`, axis).setAttribute("aria-hidden", "true");
+    el("span", undefined, "now", axis).setAttribute("aria-hidden", "true");
     const body = el("div", "pw-agents-body", undefined, root);
     this.foldable(root, head, "agents");
     if (!runs.length) {
@@ -1567,6 +1580,83 @@ export class Panel {
       const rows = this.projectLanes(body, g, at, now);
       for (const row of g.rows) rows.appendChild("run" in row ? this.runRow(row, now, at) : this.foldRow(row, now));
     }
+    this.divider(root);
+  }
+
+  /** How far back the chart reaches: a small menu in its head. */
+  private spanPicker(parent: HTMLElement): void {
+    const pick = el("select", "pw-span dropdown", undefined, parent) as HTMLSelectElement;
+    pick.title = "How far back the lanes reach";
+    pick.setAttribute("aria-label", "How far back the lanes reach");
+    for (const m of CHART_SPANS) {
+      const o = el("option", undefined, `−${spanLabel(m)}`, pick) as HTMLOptionElement;
+      o.value = String(m);
+      o.selected = m === this.span;
+    }
+    // the head folds the chart on a click or Enter; the menu is not part of that
+    pick.onclick = (e) => e.stopPropagation();
+    pick.onkeydown = (e) => e.stopPropagation();
+    pick.onchange = () => {
+      this.span = Number(pick.value);
+      saveSpan(this.span);
+      this.renderAgents(Date.now());
+    };
+  }
+
+  /**
+   * The line between the names and the lanes. Dragging it shares the width between them;
+   * a double click puts it back. Arrow keys move it too.
+   */
+  private divider(root: HTMLElement): void {
+    const bar = el("div", "pw-divider", undefined, root);
+    bar.setAttribute("role", "separator");
+    bar.setAttribute("aria-orientation", "vertical");
+    bar.setAttribute("aria-label", "Width of the names");
+    bar.setAttribute("aria-valuemin", String(Math.round(WHO_MIN * 100)));
+    bar.setAttribute("aria-valuemax", String(Math.round(WHO_MAX * 100)));
+    bar.tabIndex = 0;
+    bar.title = "Drag to share the width between names and lanes; double-click to reset";
+    const set = (f: number) => {
+      this.who = Math.min(WHO_MAX, Math.max(WHO_MIN, f));
+      root.style.setProperty("--pw-who-f", String(this.who));
+      bar.setAttribute("aria-valuenow", String(Math.round(this.who * 100)));
+    };
+    set(this.who);
+    const at = (x: number) => {
+      const r = root.getBoundingClientRect();
+      // rows keep 12px of padding on each side; the share is of what is between
+      return (x - r.left - ROW_PAD) / Math.max(1, r.width - 2 * ROW_PAD);
+    };
+    bar.onpointerdown = (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      bar.setPointerCapture(e.pointerId);
+      this.dragging = true;
+      root.classList.add("is-resizing");
+    };
+    bar.onpointermove = (e) => {
+      if (this.dragging && bar.hasPointerCapture(e.pointerId)) set(at(e.clientX));
+    };
+    const end = (e: PointerEvent) => {
+      if (!this.dragging) return;
+      if (bar.hasPointerCapture(e.pointerId)) bar.releasePointerCapture(e.pointerId);
+      this.dragging = false;
+      root.classList.remove("is-resizing");
+      saveWho(this.who);
+    };
+    bar.onpointerup = end;
+    bar.onpointercancel = end;
+    bar.ondblclick = () => {
+      set(WHO_DEFAULT);
+      saveWho(this.who);
+    };
+    bar.onkeydown = (e) => {
+      const step = e.key === "ArrowLeft" ? -0.02 : e.key === "ArrowRight" ? 0.02 : 0;
+      if (!step) return;
+      e.preventDefault();
+      set(this.who + step);
+      saveWho(this.who);
+    };
   }
 
   /**
@@ -1833,7 +1923,8 @@ export class Panel {
     lane.setAttribute("aria-hidden", "true");
     // the snapshot may be a little old; slide the chart so its right edge stays at now
     const shift = Math.max(0, Math.floor((now - at) / 60_000));
-    const mins = (r.activity ?? []).map((m) => m + shift).filter((m) => m < CHART_MINUTES);
+    const span = this.span;
+    const mins = (r.activity ?? []).map((m) => m + shift).filter((m) => m < span);
     const live = r.state === "working" || r.state === "waiting";
     const bad = r.state === "stalled" || r.state === "failed";
     for (let i = 0; i < mins.length; ) {
@@ -1842,8 +1933,8 @@ export class Panel {
       const newest = mins[i]!;
       const oldest = mins[j]!;
       const seg = el("i", undefined, undefined, lane);
-      seg.style.left = `${((CHART_MINUTES - 1 - oldest) / CHART_MINUTES) * 100}%`;
-      seg.style.width = `${((oldest - newest + 1) / CHART_MINUTES) * 100}%`;
+      seg.style.left = `${((span - 1 - oldest) / span) * 100}%`;
+      seg.style.width = `${((oldest - newest + 1) / span) * 100}%`;
       if (i === 0 && newest <= 1 && live) seg.className = "is-live";
       if (i === 0 && bad) seg.className = "is-bad";
       i = j + 1;
@@ -1878,6 +1969,46 @@ export class Panel {
 
 const COLLAPSED_KEY = "parawatch:collapsed";
 const VIEW_KEY = "parawatch:view";
+const SPAN_KEY = "parawatch:chart-span";
+const WHO_KEY = "parawatch:chart-names";
+/** the side padding of a chart row, which the divider's share leaves out */
+const ROW_PAD = 12;
+
+/** A span on the chart's axis: minutes below two hours, else hours. */
+export function spanLabel(minutes: number): string {
+  return minutes < 120 ? `${minutes}m` : `${+(minutes / 60).toFixed(1)}h`;
+}
+
+function loadSpan(): number {
+  try {
+    const v = Number(window.localStorage.getItem(SPAN_KEY));
+    return CHART_SPANS.includes(v) ? v : DEFAULT_SPAN;
+  } catch {
+    return DEFAULT_SPAN;
+  }
+}
+function saveSpan(v: number): void {
+  try {
+    window.localStorage.setItem(SPAN_KEY, String(v));
+  } catch {
+    // storage unavailable; the pick lasts for this session only
+  }
+}
+function loadWho(): number {
+  try {
+    const v = Number(window.localStorage.getItem(WHO_KEY));
+    return v >= WHO_MIN && v <= WHO_MAX ? v : WHO_DEFAULT;
+  } catch {
+    return WHO_DEFAULT;
+  }
+}
+function saveWho(v: number): void {
+  try {
+    window.localStorage.setItem(WHO_KEY, v.toFixed(3));
+  } catch {
+    // storage unavailable; the width lasts for this session only
+  }
+}
 /** From this width the board and the feed sit side by side. */
 const SPLIT_WIDTH = 980;
 

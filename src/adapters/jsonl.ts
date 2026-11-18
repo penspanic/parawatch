@@ -84,7 +84,8 @@ export function str(x: unknown): string | undefined {
   return typeof x === "string" ? x : undefined;
 }
 
-export const ACTIVITY_MINUTES = 60;
+/** How far back a run's active minutes go: the longest span the agents chart can show. */
+export const ACTIVITY_MINUTES = 24 * 60;
 
 /** Which of the last `window` minutes saw any of these times: minutes before now, ascending. */
 export function activeMinutes(times: Iterable<number>, now: number, window = ACTIVITY_MINUTES): number[] {

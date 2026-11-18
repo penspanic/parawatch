@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- The line between the agent names and their lanes can be dragged to share the width between them. A double click puts it back; with the keyboard, the arrow keys move it. The width is remembered.
+- The lanes can reach back further than an hour: the start of the axis is a menu with 30 minutes, 1, 3, 6, 12 and 24 hours. Runs now keep a day of active minutes (it was an hour). A machine on an older version still sends only its last hour.
+
 ## 0.3.24 (2026-11-17)
 
 - A pull request that stays in conflict reports it once. GitHub answers "unknown" for a while each time the base branch moves, and parawatch read that as the conflict gone, so every merge to main woke the owner (or the lead) with the same conflict again. A PR that is fixed and then breaks again still reports it.

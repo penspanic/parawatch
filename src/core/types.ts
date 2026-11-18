@@ -346,7 +346,7 @@ export interface Run {
   source?: string;
   error?: string;
   /**
-   * The minutes in the last hour with any activity, as minutes before the snapshot (0 is the
+   * The minutes in the last day with any activity, as minutes before the snapshot (0 is the
    * current minute), ascending. Read from the end of the log, so a very busy run may show less.
    */
   activity?: number[];
