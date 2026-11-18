@@ -32,6 +32,8 @@ parawatch pr list                # open pull requests: what each waits on, since
 parawatch issue list             # open issues assigned to you: who gave each, the latest word from someone else (-a: with the ones set aside)
 parawatch issue aside <issue>    # fold an issue away (URL or owner/repo#N) until someone else comments on it
 parawatch issue back <issue>
+parawatch news                   # GitHub notifications other people caused, then what changed on pull requests and issues today (--hours, -p, --json)
+parawatch news done <key>        # mark a notification read, here and on GitHub (the host:id `news` shows)
 parawatch goto api#88            # open the session that owns a pull request
 parawatch lead game 811a9612     # make a session the project's lead; it is handed what no session got
 parawatch hand c12 811a9612      # give a card (or a pull request: api#88) to another session

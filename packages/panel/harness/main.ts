@@ -4,7 +4,7 @@ import { Marked } from "marked";
 import { Panel } from "../src/panel";
 import { setIcon } from "../src/icons";
 import { makeToast } from "../src/toast";
-import type { Backend, Card, ChatItem, ChatState, IssueView, Reply, Snapshot } from "../src/types";
+import type { Backend, Card, ChatItem, ChatState, InboxThread, IssueView, NewsItem, Reply, Snapshot } from "../src/types";
 
 const markdown = new Marked({ gfm: true, breaks: true });
 const now = Date.now();
@@ -302,6 +302,8 @@ async function load(): Promise<Snapshot> {
           },
         ],
     issues: useReal ? real!.issues : fakeIssues,
+    inbox: useReal ? real!.inbox : fakeInbox,
+    news: useReal ? real!.news : fakeNews,
     // ?github=failing shows the banner for a reader that cannot run gh
     github: useReal
       ? real!.github
@@ -314,6 +316,29 @@ async function load(): Promise<Snapshot> {
 }
 
 /** Issues assigned to the human; one set aside. */
+const fakeInbox: InboxThread[] = [
+  { key: "github.com:1001", host: "github.com", id: "1001", repo: "kim/scuba", kind: "issue", number: 21, item: "github.com/kim/scuba#21", title: "Wreck interior, second floor", reason: "mention", by: "kim", url: "https://github.com/kim/scuba/issues/21", at: new Date(Date.now() - 50 * 60_000).toISOString(), project: "scuba" },
+  { key: "github.com:1002", host: "github.com", id: "1002", repo: "acme/api", kind: "pr", number: 91, item: "github.com/acme/api#91", title: "Rate limit the login endpoint", reason: "author", by: "alice", url: "https://github.com/acme/api/pull/91", at: new Date(Date.now() - 3 * 3_600_000).toISOString() },
+];
+const newsAt = (min: number, n: number, title: string, change: NewsItem["change"], extra: Partial<NewsItem> = {}): NewsItem => ({
+  at: new Date(Date.now() - min * 60_000).toISOString(),
+  kind: "pr",
+  key: `github.com/acme/api#${n}`,
+  url: `https://github.com/acme/api/pull/${n}`,
+  repo: "acme/api",
+  number: n,
+  title,
+  change,
+  ...extra,
+});
+const fakeNews: NewsItem[] = [
+  newsAt(4, 88, "Fix login redirect", "merged", { session: "r1", sessionTitle: "Login fix" }),
+  newsAt(16, 90, "Cache warmup on deploy", "ci_failed", { session: "r2", sessionTitle: "Deploy speed" }),
+  newsAt(35, 88, "Fix login redirect", "approved", { by: "alice", session: "r1", sessionTitle: "Login fix" }),
+  newsAt(80, 91, "Rate limit the login endpoint", "changes_requested", { by: "alice" }),
+  { ...newsAt(140, 21, "Wreck interior, second floor", "assigned", { by: "kim" }), kind: "issue", key: "github.com/kim/scuba#21", repo: "kim/scuba", url: "https://github.com/kim/scuba/issues/21" },
+];
+
 const fakeIssues: IssueView[] = [
   { key: "github.com/mina/diving#21", url: "https://github.com/mina/diving/issues/21", repo: "mina/diving", number: 21, title: "Wreck interior: two decks of modules", assignedBy: "mina", assignedAt: at(60 * 72), lastOther: { by: "mina", at: at(60 * 70) }, project: "diving", aside: false },
   { key: "github.com/mina/diving#22", url: "https://github.com/mina/diving/issues/22", repo: "mina/diving", number: 22, title: "Fan worm folds when the diver comes close", assignedBy: "mina", assignedAt: at(60 * 71), project: "diving", aside: false },
@@ -409,6 +434,11 @@ const backend: Backend = {
     log(`${aside ? "aside" : "back"} ${key}`);
     const i = fakeIssues.find((x) => x.key === key);
     if (i) i.aside = aside;
+  },
+  inboxDone: async (key) => {
+    log(`read ${key}`);
+    const i = fakeInbox.findIndex((t) => t.key === key);
+    if (i >= 0) fakeInbox.splice(i, 1);
   },
   hideRun: async (id) => {
     log(`hide ${id}`);

@@ -361,6 +361,7 @@ describe("pull requests", () => {
     let calls = 0;
     const gh: GhRunner = async (args) => {
       if (args[0] === "auth") return JSON.stringify({ hosts: { "github.com": [{ state: "success" }] } });
+      if (args[1] !== "graphql") return "[]"; // notifications: none
       calls++;
       const node = {
         number: reading.number,

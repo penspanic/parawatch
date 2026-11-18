@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Panel, spanLabel } from "../src/panel";
-import type { Backend, Card, IssueView, PrView, Run, Snapshot } from "../src/types";
+import type { Backend, Card, InboxThread, IssueView, NewsItem, PrView, Run, Snapshot } from "../src/types";
 
 /**
  * The panel as the human sees it: a snapshot goes in, and the sections, counts and buttons that
@@ -446,5 +446,38 @@ describe("opening a session", () => {
   it("a host that cannot set issues aside shows them without the button", () => {
     mount(snapshot({ issues: [issue({ number: 5, title: "Fix it" })] }));
     expect(sec("assigned")!.querySelector(".pw-issue-aside")).toBeNull();
+  });
+
+  it("notifications from people show why they came, open the page, and mark read", async () => {
+    backend.inboxDone = vi.fn(async () => {});
+    const thread = (id: string, over: Partial<InboxThread> = {}): InboxThread => ({ key: `github.com:${id}`, host: "github.com", id, repo: "kim/game", kind: "issue", number: Number(id), title: `Thread ${id}`, reason: "mention", by: "kim", url: `https://github.com/kim/game/issues/${id}`, at: ago(30), ...over });
+    mount(snapshot({ inbox: [thread("21"), thread("22", { reason: "author", by: "lee", kind: "pr", url: "https://github.com/kim/game/pull/22" })] }));
+    expect(badgeIn(head(), "bell")).toBe("2");
+    const rows = [...sec("inbox")!.querySelectorAll<HTMLElement>(".pw-inbox")];
+    expect(rows.map((r) => r.querySelector(".pw-pr-wait")?.textContent)).toEqual(["kim mentioned you", "lee wrote"]);
+    rows[1]!.querySelector<HTMLElement>(".pw-pr-label")!.click();
+    expect(backend.open).toHaveBeenCalledWith("https://github.com/kim/game/pull/22");
+    expect(backend.inboxDone).toHaveBeenCalledWith("github.com:22");
+    rows[0]!.querySelector<HTMLButtonElement>(".pw-issue-aside")!.click();
+    expect(backend.inboxDone).toHaveBeenCalledWith("github.com:21");
+  });
+
+  it("recent news starts folded, and a notification click opens what it was about", () => {
+    const at = (min: number, change: NewsItem["change"], n = 88): NewsItem => ({ at: ago(min), kind: "pr", key: `github.com/acme/app#${n}`, url: `https://github.com/acme/app/pull/${n}`, repo: "acme/app", number: n, title: "Fix login", change, session: "s-1", sessionTitle: "Login fix" });
+    const p = mount(snapshot({ prs: [pr({ number: 90, title: "Open one" })], news: [at(5, "merged"), at(20, "ci_failed"), at(30, "ci_failed", 91)] }));
+    const news = sec("news")!;
+    expect(news.classList.contains("is-collapsed")).toBe(true);
+    expect([...news.querySelectorAll(".pw-news-what")].map((e) => e.textContent)).toEqual(["merged", "CI failed", "CI failed"]);
+    // the newest line of each pull request is where a click lands
+    expect([...news.querySelectorAll<HTMLElement>("[data-news]")].map((e) => e.dataset.news)).toEqual(["github.com/acme/app#88", "github.com/acme/app#91"]);
+    news.querySelector<HTMLElement>(".pw-pr-owner")!.click();
+    expect(backend.goto).toHaveBeenCalledWith("s-1");
+    // an open pull request is found in place; a merged one in the news, which unfolds
+    expect(p.focusTarget("pr:github.com/acme/app#90")).toBe(true);
+    expect(p.focusTarget("pr:github.com/acme/app#88")).toBe(true);
+    expect(sec("news")!.classList.contains("is-collapsed")).toBe(false);
+    expect(p.focusTarget("news")).toBe(true);
+    // nothing to show: the caller opens the page instead
+    expect(p.focusTarget("issue:github.com/kim/game#99")).toBe(false);
   });
 });

@@ -33,7 +33,7 @@ import {
   waitInbox,
   type CardInput,
 } from "../core/ops.js";
-import { githubConfig, issueViews, parseIssueRef, readCache, resolvePrRef, syncGithub, prViews } from "../core/github.js";
+import { githubConfig, inboxViews, issueViews, markThreadRead, newsViews, parseIssueRef, readCache, resolvePrRef, syncGithub, prViews } from "../core/github.js";
 import { recordPrompt, type PromptHookInput } from "../core/prompts.js";
 import { callingSubagent } from "../adapters/claudeCode.js";
 import { digest, digestText, localDate } from "../core/digest.js";
@@ -44,7 +44,7 @@ import { syncText } from "../core/format.js";
 import { RelayClient, RelayMirror, joinCode, newKey, readJoinCode, relayConfig, takeMirrorLock, type RelayConfig } from "../core/relay.js";
 import { createRelayServer } from "../relay/server.js";
 import { collectRuns, shareRunsDue } from "../core/runs.js";
-import { askRows, cardDetail, cardLine, cardRows, inboxLine, issueRows, prRows, runsTree, view } from "../core/format.js";
+import { askRows, cardDetail, cardLine, cardRows, inboxLine, inboxRows, issueRows, newsRows, prRows, runsTree, view } from "../core/format.js";
 import { hookContext, notify, removeInstructions, writeInstructions } from "../core/integrate.js";
 import { installSkill, skillSource, skillTargets, uninstallSkill } from "../core/skill.js";
 import { recordClient, runningDesktop, versionSkew } from "../core/clients.js";
@@ -498,6 +498,45 @@ issue
   .description("bring back an issue you set aside")
   .action((ref: string) => setIssueAside(issueKey(ref), false));
 
+const news = program.command("news").description("GitHub news: notifications from other people, and what changed on pull requests and issues lately");
+news
+  .command("list", { isDefault: true })
+  .description("notifications someone else sent you, then the recent changes, newest first")
+  .option("-p, --project <name>", "only this project")
+  .option("--hours <n>", "how far back the recent changes go", "24")
+  .option("--offline", "do not read GitHub, show the last reading")
+  .option("--json", "JSON output")
+  .action(async (o) => {
+    if (!o.offline) await refreshGithub();
+    const state = readState();
+    const hours = Number(o.hours);
+    if (!(hours > 0)) throw new UserError(`--hours takes a number above 0, not "${o.hours}"`);
+    const runs = collectRuns(state, { sinceHours: 72 });
+    let inbox = inboxViews(readCache(), state);
+    let recent = newsViews(state, new Date(Date.now() - hours * 3_600_000).toISOString(), runs);
+    if (o.project) {
+      inbox = inbox.filter((t) => t.project === o.project);
+      recent = recent.filter((n) => n.project === o.project);
+    }
+    if (o.json) {
+      print({ v: SCHEMA_VERSION, inbox, news: recent });
+      return;
+    }
+    const v = view();
+    const out: string[] = [];
+    if (inbox.length) out.push(`FROM PEOPLE ON GITHUB  ${inbox.length}`, ...inboxRows(inbox, v, Date.now(), "  "), "  mark one read: parawatch news done <key>", "");
+    out.push(recent.length ? `RECENT  ${recent.length}` : `Nothing changed in the last ${hours} hours.`, ...newsRows(recent, v, Date.now(), "  "));
+    const note = githubNote();
+    process.stdout.write((note ?? "") + out.join("\n") + "\n");
+  });
+news
+  .command("done <key>")
+  .description("mark a notification read, here and on GitHub (the key is the host:id `news` shows)")
+  .action(async (key: string) => {
+    const r = await markThreadRead(key);
+    if (!r.onGithub) process.stderr.write("parawatch: GitHub did not take it; it is read here only\n");
+  });
+
 function issueKey(ref: string): string {
   const r = parseIssueRef(ref);
   if (!r) throw new UserError(`"${ref}" is not an issue: give a URL or owner/repo#N`);
@@ -585,6 +624,10 @@ program
     if (reviews.length) {
       out.push("", head("REVIEWS ASKED OF YOU", reviews.length));
       out.push(...prRows(reviews, v, now, "  "));
+    }
+    if (snap.inbox?.length) {
+      out.push("", head("FROM PEOPLE ON GITHUB", snap.inbox.length, "  (parawatch news)"));
+      out.push(...inboxRows(snap.inbox, v, now, "  "));
     }
     const issues = (snap.issues ?? []).filter((i) => !i.aside);
     const aside = (snap.issues ?? []).length - issues.length;

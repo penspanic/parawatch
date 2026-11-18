@@ -203,6 +203,34 @@ export interface IssueRef {
 /** What happened on an issue assigned to the human: it was assigned, or someone else commented. */
 export type IssueChange = "assigned" | "commented";
 
+/**
+ * A GitHub notification someone else caused: a mention, a review request, an assignment, a comment
+ * by another person. What the human's own account did (which includes everything its agents did)
+ * is left out. The key is `host:thread id`.
+ */
+export interface InboxThread {
+  key: string;
+  host: string;
+  /** GitHub's thread id, for marking it read */
+  id: string;
+  repo: string;
+  kind: "pr" | "issue" | "discussion" | "release" | "commit" | "other";
+  /** the pull request or issue number, when it is one */
+  number?: number;
+  /** `host/owner/repo#12`, the key a pull request or issue has elsewhere in parawatch */
+  item?: string;
+  title: string;
+  /** GitHub's reason: mention, review_requested, assign, comment, author, state_change, ... */
+  reason: string;
+  /** who wrote last, when GitHub says */
+  by?: string;
+  url: string;
+  /** when GitHub last updated the thread */
+  at: string;
+  /** the registered project whose repository it is in */
+  project?: string;
+}
+
 /** Fields shared by every event line. */
 interface EventBase {
   v: number;
@@ -236,9 +264,14 @@ export type EventBody =
   | { type: "pr.link"; link: Omit<PrLink, "at"> }
   | { type: "pr.unlink"; pr: string }
   /** something happened on a pull request: read from GitHub, or reported by another tool */
-  | { type: "pr.change"; pr: PrRef; change: PrChange; title?: string; by?: string; text?: string; source: "github" | "external" }
+  /** `late`: found by a reading long after the previous one, so it may be old news; it is not notified */
+  | { type: "pr.change"; pr: PrRef; change: PrChange; title?: string; by?: string; text?: string; source: "github" | "external"; late?: boolean }
   /** news on an issue assigned to the human, read from GitHub; it wakes no agent */
-  | { type: "issue.change"; issue: IssueRef; change: IssueChange; title?: string; by?: string; source: "github" }
+  | { type: "issue.change"; issue: IssueRef; change: IssueChange; title?: string; by?: string; source: "github"; late?: boolean }
+  /** a GitHub notification from another person came in, or got news; it wakes no agent */
+  | { type: "inbox.new"; thread: Omit<InboxThread, "project">; late?: boolean }
+  /** the human marked it read, here or on GitHub; it comes back when it gets news */
+  | { type: "inbox.read"; thread: string }
   /** the human set an issue aside: it folds away until someone else comments on it */
   | { type: "issue.aside"; issue: string }
   | { type: "issue.back"; issue: string }
@@ -258,6 +291,10 @@ export interface Snapshot {
   prs?: PrView[];
   /** open issues assigned to the human; absent when GitHub is not set up */
   issues?: IssueView[];
+  /** unread GitHub notifications from other people; absent when GitHub is not set up */
+  inbox?: InboxThread[];
+  /** what happened on pull requests and issues in the last day, newest first */
+  news?: NewsItem[];
   github?: GithubInfo;
   /** agents blocked in `parawatch wait` right now */
   listeners?: Listener[];
@@ -325,6 +362,24 @@ export interface PrView {
   lead?: string;
   /** open, its session has ended or it has none, and the project has no live lead: no one gets its news */
   unrouted?: boolean;
+}
+
+/** One thing that happened on a pull request or an issue, for the recent news list. */
+export interface NewsItem {
+  at: string;
+  kind: "pr" | "issue";
+  /** `host/owner/repo#12` */
+  key: string;
+  url: string;
+  repo: string;
+  number: number;
+  title?: string;
+  change: PrChange | IssueChange;
+  by?: string;
+  text?: string;
+  session?: string;
+  sessionTitle?: string;
+  project?: string;
 }
 
 /** An open issue assigned to the human, as `status` and the panel show it. */

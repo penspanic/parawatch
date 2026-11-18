@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- A desktop notification opens the window at what it was about: the pull request's row, the issue, the thread from a person, or the line under Recent for a pull request that is no longer open. Before, a click on pull request news showed the window with nothing to find. When the window does not show it, the page opens.
+- From people: GitHub notifications another person caused (a mention, a review requested, someone else's comment on your thread) show at the top of the app with a bell count, in `status` (FROM PEOPLE ON GITHUB) and with `parawatch news`. The ones your own account made through agents, bots, CI, and news on pull requests a session owns are left out. Opening one, its check button, or `parawatch news done <key>` marks it read on GitHub too.
+- Recent: what changed on pull requests and issues in the last day, with the session that owns each, folded at the bottom of the app and in `parawatch news`.
+- Fewer notifications: none for news on a pull request a running session owns (the session hears it), none for news read more than 30 minutes after the reading before it (after sleep), several at once told as one, and the same thing told once.
+
 ## 0.3.26 (2026-11-18)
 
 - Issues assigned to you on GitHub show next to the reviews asked of you: in `status` (ISSUES ASSIGNED TO YOU), in the app ("Assigned to you", with a count in the header and on the board), and with `parawatch issue list`. Each shows who assigned it, the latest comment by someone else, and the project whose repository it is in. The desktop app notifies when one is assigned to you and when someone else comments on it. They wake no agent. A row can be set aside until someone else comments (`parawatch issue aside`, `parawatch issue back`). They come from the same GitHub reading as pull requests, so no extra calls.
