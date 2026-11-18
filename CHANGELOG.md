@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.26 (2026-11-18)
 
 - Issues assigned to you on GitHub show next to the reviews asked of you: in `status` (ISSUES ASSIGNED TO YOU), in the app ("Assigned to you", with a count in the header and on the board), and with `parawatch issue list`. Each shows who assigned it, the latest comment by someone else, and the project whose repository it is in. The desktop app notifies when one is assigned to you and when someone else comments on it. They wake no agent. A row can be set aside until someone else comments (`parawatch issue aside`, `parawatch issue back`). They come from the same GitHub reading as pull requests, so no extra calls.
 - On the phone, other machines' lanes reach back a day, as on the desktop since 0.3.25; they stopped at an hour.
