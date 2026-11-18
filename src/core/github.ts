@@ -9,7 +9,7 @@ import path from "node:path";
 import { UserError } from "./ops.js";
 import type { State } from "./state.js";
 import { appendLocked, deviceName, homeDir, withLock } from "./store.js";
-import type { EventBody, PrChange, PrRef, PrView, PwEvent, Run } from "./types.js";
+import type { EventBody, IssueChange, IssueRef, IssueView, PrChange, PrRef, PrView, PwEvent, Run } from "./types.js";
 
 // ------------------------------------------------------------------ config
 
@@ -89,6 +89,22 @@ export function resolvePrRef(input: string, cwd = process.cwd()): PrRef {
   return ref;
 }
 
+const ISSUE_URL_RE = /^https?:\/\/([^/\s]+)\/([^/\s]+\/[^/\s]+)\/issues\/(\d+)/;
+
+export function issueRef(host: string, repo: string, number: number, url?: string): IssueRef {
+  return { key: `${host}/${repo}#${number}`, host, repo, number, url: url ?? `https://${host}/${repo}/issues/${number}` };
+}
+
+/** An issue from a URL, `owner/repo#12` or `host/owner/repo#12`. */
+export function parseIssueRef(input: string): IssueRef | undefined {
+  const t = input.trim();
+  const u = ISSUE_URL_RE.exec(t);
+  if (u) return issueRef(u[1]!, u[2]!, Number(u[3]));
+  const s = SHORT_RE.exec(t);
+  if (s) return issueRef(s[1] ?? "github.com", s[2]!, Number(s[3]));
+  return undefined;
+}
+
 /** The PR a link in a run's log or a key points at. */
 export function keyOf(input: string): string | undefined {
   return parsePrRef(input)?.key;
@@ -123,6 +139,26 @@ export interface PrStatus {
   reviewRequested: boolean;
 }
 
+/** An open issue assigned to the human, a reduced copy of what GitHub reports. */
+export interface IssueStatus {
+  key: string;
+  url: string;
+  host: string;
+  repo: string;
+  number: number;
+  title: string;
+  author?: string;
+  assignedBy?: string;
+  assignedAt?: string;
+  /** the human assigned it to themselves: nothing to tell them */
+  byMe?: boolean;
+  /** the latest comment by someone other than the human */
+  lastOther?: { by: string; at: string };
+  updatedAt: string;
+  /** the registered project whose repository this is, found when GitHub was read */
+  project?: string;
+}
+
 export interface GithubCache {
   /** the last reading that worked; a failed one leaves it, so a reader whose gh works tries at once */
   fetchedAt?: string;
@@ -137,6 +173,8 @@ export interface GithubCache {
   since: Record<string, { waitingOn: string; since: string }>;
   /** linked PRs seen merged or closed: not asked for again */
   finished?: string[];
+  /** open issues assigned to the human; absent until the first reading that asked for them */
+  issues?: IssueStatus[];
 }
 
 export function cachePath(): string {
@@ -251,6 +289,13 @@ const FIELDS = (withQueue: boolean) => `
   commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
   ${withQueue ? "mergeQueueEntry { state position }\n  autoMergeRequest { enabledAt }\n  mergeStateStatus" : ""}`;
 
+const ISSUE_FIELDS = `
+  number title url updatedAt
+  author { login }
+  repository { nameWithOwner }
+  timelineItems(itemTypes: [ASSIGNED_EVENT], last: 10) { nodes { ... on AssignedEvent { createdAt actor { login } assignee { ... on User { login } ... on Bot { login } ... on Mannequin { login } } } } }
+  comments(last: 20) { nodes { author { login } createdAt } }`;
+
 function gqlString(s: string): string {
   return JSON.stringify(s);
 }
@@ -266,6 +311,8 @@ function buildQuery(extra: PrRef[], withQueue: boolean, updatedSince: string): s
   viewer { login }
   mine: search(query: "is:pr is:open author:@me archived:false updated:>=${updatedSince}", type: ISSUE, first: 50) { nodes { ...P } }
   asked: search(query: "is:pr is:open review-requested:@me archived:false updated:>=${updatedSince}", type: ISSUE, first: 30) { nodes { ...P } }
+  assigned: search(query: "is:issue is:open assignee:@me archived:false updated:>=${updatedSince}", type: ISSUE, first: 30) { nodes { ... on Issue {${ISSUE_FIELDS}
+  } } }
 ${aliases}
 }
 fragment P on PullRequest {${FIELDS(withQueue)}
@@ -321,8 +368,37 @@ function toStatus(host: string, node: Obj, viewer: string, asked: boolean): PrSt
   };
 }
 
-/** Every open PR the human wrote or is asked to review on one host, plus the extra ones named. */
-export async function fetchHost(host: string, extra: PrRef[], gh: GhRunner = runGh, maxAgeDays = 60): Promise<PrStatus[]> {
+/** One open issue from a search result, with who assigned it to `viewer` and the latest comment by anyone else. */
+export function toIssue(host: string, node: Obj, viewer: string): IssueStatus | undefined {
+  const repo = s(o(node.repository).nameWithOwner);
+  const number = typeof node.number === "number" ? node.number : undefined;
+  if (!repo || number === undefined) return undefined;
+  const ref = issueRef(host, repo, number, s(node.url));
+  const assigned = ((o(node.timelineItems).nodes as unknown[]) ?? [])
+    .map((n) => o(n))
+    .filter((n) => s(o(n.assignee).login) === viewer)
+    .pop();
+  const others = ((o(node.comments).nodes as unknown[]) ?? [])
+    .map((n) => ({ by: s(o(o(n).author).login) ?? "someone", at: s(o(n).createdAt) ?? "" }))
+    .filter((c) => c.by !== viewer && c.at);
+  return {
+    key: ref.key,
+    url: ref.url,
+    host,
+    repo,
+    number,
+    title: s(node.title) ?? "",
+    author: s(o(node.author).login),
+    assignedBy: assigned ? s(o(assigned.actor).login) : undefined,
+    assignedAt: assigned ? s(assigned.createdAt) : undefined,
+    byMe: assigned ? s(o(assigned.actor).login) === viewer || undefined : undefined,
+    lastOther: others.pop(),
+    updatedAt: s(node.updatedAt) ?? new Date().toISOString(),
+  };
+}
+
+/** Every open PR the human wrote or is asked to review on one host, plus the extra ones named, and the issues assigned to the human. */
+export async function fetchHost(host: string, extra: PrRef[], gh: GhRunner = runGh, maxAgeDays = 60): Promise<{ prs: PrStatus[]; issues: IssueStatus[] }> {
   const updatedSince = new Date(Date.now() - maxAgeDays * 86_400_000).toISOString().slice(0, 10);
   const ask = async (withQueue: boolean) => JSON.parse(await gh(["api", "graphql", "--hostname", host, "-f", `query=${buildQuery(extra, withQueue, updatedSince)}`])) as Obj;
   let out: Obj;
@@ -348,7 +424,8 @@ export async function fetchHost(host: string, extra: PrRef[], gh: GhRunner = run
     const pr = o(o(data[`p${i}`]).pullRequest);
     if (Object.keys(pr).length) put(pr, false);
   });
-  return [...byKey.values()];
+  const issues = ((o(data.assigned).nodes as unknown[]) ?? []).map((n) => toIssue(host, o(n), viewer)).filter((x): x is IssueStatus => Boolean(x));
+  return { prs: [...byKey.values()], issues };
 }
 
 // ------------------------------------------------------------------ what changed
@@ -450,6 +527,32 @@ export function nextCache(
 }
 
 /**
+ * The issue news between two readings: an issue newly assigned to the human, and a comment by
+ * someone else on one already assigned. The first reading that asks for issues (`prev` absent)
+ * reports nothing: what was assigned before shows in the list, without a notification each. An
+ * issue assigned long ago that only now came into the reading (an old one someone touched) is
+ * not news either.
+ */
+export function nextIssues(prev: IssueStatus[] | undefined, fresh: IssueStatus[], prevAt: string | undefined): EventBody[] {
+  if (!prev) return [];
+  const old = new Map(prev.map((i) => [i.key, i]));
+  const events: EventBody[] = [];
+  const news = (i: IssueStatus, change: IssueChange, by?: string) =>
+    events.push({ type: "issue.change", issue: issueRef(i.host, i.repo, i.number, i.url), change, title: i.title, by, source: "github" });
+  // a day of slack: a machine that read GitHub last night still reports what came overnight
+  const recent = (at?: string) => !at || !prevAt || Date.parse(at) > Date.parse(prevAt) - 86_400_000;
+  for (const i of fresh) {
+    const was = old.get(i.key);
+    if (!was) {
+      if (!i.byMe && recent(i.assignedAt)) news(i, "assigned", i.assignedBy);
+      continue;
+    }
+    if (i.lastOther && (!was.lastOther || i.lastOther.at > was.lastOther.at)) news(i, "commented", i.lastOther.by);
+  }
+  return events;
+}
+
+/**
  * Drop news another machine already reported. This machine's reading spans from its previous
  * reading (`since`) to now; the same change on the same PR that another machine wrote in that
  * span is the one this machine just noticed, maybe long after. A machine that reads GitHub for
@@ -458,9 +561,13 @@ export function nextCache(
 export function dropReported(fresh: EventBody[], log: PwEvent[], since: string | undefined, me = deviceName()): EventBody[] {
   if (!since) return fresh;
   const seen = new Set<string>();
-  for (const e of log) if (e.type === "pr.change" && e.dev && e.dev !== me && e.ts >= since) seen.add(`${e.pr.key}|${e.change}|${e.by ?? ""}`);
+  const key = (b: EventBody) => (b.type === "pr.change" ? `${b.pr.key}|${b.change}|${b.by ?? ""}` : b.type === "issue.change" ? `issue|${b.issue.key}|${b.change}|${b.by ?? ""}` : undefined);
+  for (const e of log) {
+    const k = key(e);
+    if (k && e.dev && e.dev !== me && e.ts >= since) seen.add(k);
+  }
   if (!seen.size) return fresh;
-  return fresh.filter((b) => b.type !== "pr.change" || !seen.has(`${b.pr.key}|${b.change}|${b.by ?? ""}`));
+  return fresh.filter((b) => !seen.has(key(b) ?? ""));
 }
 
 // ------------------------------------------------------------------ sync
@@ -548,6 +655,7 @@ export async function syncGithub(opts: SyncOptions): Promise<GithubCache> {
     const cutoff = new Date(Date.now() - cfg.maxAgeDays * 86_400_000).toISOString();
     for (const p of prev.prs) if (p.state === "open" && p.updatedAt >= cutoff) extra.set(p.key, prRef(p.host, p.repo, p.number, p.url));
     const fresh: PrStatus[] = [];
+    const issues: IssueStatus[] = [];
     const errors: string[] = [];
     const allHosts = new Set([...hosts, ...[...extra.values()].map((r) => r.host)]);
     for (const host of allHosts) {
@@ -556,11 +664,14 @@ export async function syncGithub(opts: SyncOptions): Promise<GithubCache> {
         continue;
       }
       try {
-        fresh.push(...(await fetchHost(host, [...extra.values()].filter((r) => r.host === host).slice(0, 80), gh, cfg.maxAgeDays)));
+        const got = await fetchHost(host, [...extra.values()].filter((r) => r.host === host).slice(0, 80), gh, cfg.maxAgeDays);
+        fresh.push(...got.prs);
+        issues.push(...got.issues);
       } catch (err) {
         errors.push(`${host}: ${(err as Error).message}`);
         // keep what we knew about that host
         fresh.push(...prev.prs.filter((p) => p.host === host));
+        issues.push(...(prev.issues ?? []).filter((i) => i.host === host));
       }
     }
     return withLock(() => {
@@ -571,6 +682,9 @@ export async function syncGithub(opts: SyncOptions): Promise<GithubCache> {
       const { cache, events } = nextCache(latest, fresh, hosts, started, newly);
       const done = new Set([...(latest.finished ?? []), ...fresh.filter((p) => p.state !== "open").map((p) => p.key)]);
       cache.finished = [...done].filter((k) => opts.state.prLinks.has(k));
+      const repos = projectRepos(opts.state);
+      cache.issues = issues.map((i) => ({ ...i, project: repos.get(`${i.host}/${i.repo}`.toLowerCase()) }));
+      events.push(...nextIssues(latest.issues, issues, latest.fetchedAt));
       if (errors.length) cache.error = errors.join("; ");
       appendLocked((log) => dropReported(events, log, latest.fetchedAt));
       writeCache(cache);
@@ -581,7 +695,69 @@ export async function syncGithub(opts: SyncOptions): Promise<GithubCache> {
   }
 }
 
+// ------------------------------------------------------------------ projects by repository
+
+/** `host/owner/repo` of a git remote URL (https, ssh or scp-like), lower case. */
+export function remoteRepo(url: string): string | undefined {
+  const m = /^(?:[a-z+]+:\/\/)?(?:[^@/\s]+@)?([^/:\s]+)[:/](?:\d+\/)?([^/\s]+\/[^/\s]+?)(?:\.git)?\/?$/i.exec(url.trim());
+  return m ? `${m[1]}/${m[2]}`.toLowerCase() : undefined;
+}
+
+/** The `origin` remote of a checkout, read from its git config (a worktree points at the main one's). */
+function originOf(dir: string): string | undefined {
+  try {
+    let git = path.join(dir, ".git");
+    if (fs.statSync(git).isFile()) {
+      const to = /^gitdir:\s*(.+)$/m.exec(fs.readFileSync(git, "utf8"))?.[1]?.trim();
+      if (!to) return undefined;
+      git = path.resolve(dir, to);
+      const common = path.join(git, "commondir");
+      if (fs.existsSync(common)) git = path.resolve(git, fs.readFileSync(common, "utf8").trim());
+    }
+    const config = fs.readFileSync(path.join(git, "config"), "utf8");
+    const url = /\[remote "origin"\][^[]*?\burl\s*=\s*(\S+)/.exec(config)?.[1];
+    return url ? remoteRepo(url) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Registered projects by the repository their folders push to: `host/owner/repo` → project. */
+export function projectRepos(state: State): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const p of state.projects.values()) {
+    for (const dir of p.paths ?? []) {
+      const repo = originOf(dir);
+      if (repo && !out.has(repo)) out.set(repo, p.name);
+    }
+  }
+  return out;
+}
+
 // ------------------------------------------------------------------ views
+
+/** Open issues assigned to the human, newest assignment first, the ones set aside last. */
+export function issueViews(cache: GithubCache, state: State): IssueView[] {
+  return (cache.issues ?? [])
+    .map((i) => {
+      const asideAt = state.aside.get(i.key);
+      return {
+        key: i.key,
+        url: i.url,
+        repo: i.repo,
+        number: i.number,
+        title: i.title,
+        author: i.author,
+        assignedBy: i.assignedBy,
+        assignedAt: i.assignedAt,
+        lastOther: i.lastOther,
+        project: i.project,
+        // set aside until someone else writes again
+        aside: !!asideAt && (!i.lastOther || i.lastOther.at <= asideAt),
+      };
+    })
+    .sort((a, b) => Number(a.aside) - Number(b.aside) || (b.assignedAt ?? "").localeCompare(a.assignedAt ?? ""));
+}
 
 /** Open PRs as `status` shows them, each with the session that owns it when one does. */
 export function prViews(cache: GithubCache, state: State, runs: Run[], now = Date.now()): PrView[] {

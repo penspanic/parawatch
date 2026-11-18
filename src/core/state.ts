@@ -18,6 +18,8 @@ export interface State {
   prLinks: Map<string, PrLink>;
   /** pull requests someone unlinked and nobody linked again: a session's log no longer links them */
   unlinked: Set<string>;
+  /** issues the human set aside, by issue key, with when */
+  aside: Map<string, string>;
   lastSeq: number;
 }
 
@@ -33,7 +35,7 @@ function mapAll(xs: string[] | undefined, map: PathMap | undefined, from: string
 
 /** Rebuild current state from the event log. `map` makes other machines' paths local. */
 export function fold(events: PwEvent[], map?: PathMap): State {
-  const s: State = { projects: new Map(), cards: new Map(), runs: new Map(), claims: [], hidden: new Map(), prLinks: new Map(), unlinked: new Set(), lastSeq: 0 };
+  const s: State = { projects: new Map(), cards: new Map(), runs: new Map(), claims: [], hidden: new Map(), prLinks: new Map(), unlinked: new Set(), aside: new Map(), lastSeq: 0 };
   for (const ev of events) {
     s.lastSeq = Math.max(s.lastSeq, ev.seq);
     switch (ev.type) {
@@ -142,6 +144,12 @@ export function fold(events: PwEvent[], map?: PathMap): State {
       case "pr.unlink":
         s.prLinks.delete(ev.pr);
         s.unlinked.add(ev.pr);
+        break;
+      case "issue.aside":
+        s.aside.set(ev.issue, ev.ts);
+        break;
+      case "issue.back":
+        s.aside.delete(ev.issue);
         break;
     }
   }

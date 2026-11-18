@@ -2,7 +2,7 @@ import { boardModel, MARKS, type BoardRow, type Mark } from "./board";
 import { settingsFull, settingsLine } from "../../../src/core/model.js";
 import { serviceName, siteForPr, siteForRun } from "../../../src/core/sites.js";
 import { ago, clean, groupRuns, OTHER, type FoldNode, type Group, type RunNode } from "./tree";
-import type { Backend, Card, Listener, PrView, Reply, Run, Snapshot } from "./types";
+import type { Backend, Card, IssueView, Listener, PrView, Reply, Run, Snapshot } from "./types";
 import { openViewer } from "./viewer";
 import { runLabel, runLabelText, type RunTitles } from "./runTitle";
 import { ChatPane } from "./chat";
@@ -212,6 +212,8 @@ export class Panel {
   private who = loadWho();
   /** while the human drags the divider, redraws of the chart wait */
   private dragging = false;
+  /** the issues set aside show under the ones assigned */
+  private showAside = false;
   private cardsSig = "";
   private head: HTMLElement;
   private cardsEl: HTMLElement;
@@ -471,6 +473,8 @@ export class Panel {
     if (strandedN) this.jumpTo(this.badge(row, "life-buoy", strandedN, `${strandedN} with no session to act on ${strandedN === 1 ? "it" : "them"}: pick a lead`, "pw-asks"), '[data-sec="stranded"]');
     const reviews = s?.prs?.filter((p) => p.reviewRequested && !p.mine).length ?? 0;
     if (reviews) this.jumpTo(this.badge(row, "eye", reviews, `${reviews} pull request${reviews === 1 ? "" : "s"} asking for your review`, "pw-chip-review"), '[data-sec="reviews"]');
+    const assigned = s?.issues?.filter((i) => !i.aside).length ?? 0;
+    if (assigned) this.jumpTo(this.badge(row, "circle-dot", assigned, `${assigned} issue${assigned === 1 ? "" : "s"} assigned to you`, "pw-chip-review"), '[data-sec="assigned"]');
     const stuck = s?.prs?.filter((p) => p.stalled && !(p.reviewRequested && !p.mine)).length ?? 0;
     const prs = (s?.prs?.length ?? 0) - reviews;
     if (prs > 0) this.jumpTo(this.badge(row, "git-pull-request", prs, `${prs} open pull request${prs === 1 ? "" : "s"} waiting on others${stuck ? `, ${stuck} stuck` : ""}`, stuck ? "pw-prs is-stuck" : "pw-prs"), '[data-sec="waiting"]');
@@ -516,9 +520,10 @@ export class Panel {
     const asks = (s?.runs ?? []).filter((r) => r.asks).map((r) => [r.id, this.nameOf(r), r.asks!.text]);
     const prs = (s?.prs ?? []).map((p) => [p.key, p.waitingOn, p.since, p.stalled, p.sessionTitle, p.title, p.lead, p.unrouted]);
     const ls = (s?.listeners ?? []).map((l) => [l.pid, l.project, l.card]);
+    const issues = (s?.issues ?? []).map((i) => [i.key, i.title, i.aside, i.assignedAt, i.lastOther?.at, i.project]);
     // the lead help lists the project's sessions
     const leaders = this.helpOpen.size ? (s?.runs ?? []).filter((r) => r.kind === "session").map((r) => [r.id, this.nameOf(r), r.state, r.project]) : [];
-    return JSON.stringify([cards.map((c) => [c.id, c.status, c.kind, c.title, c.since, c.from, c.session, c.answers.length, c.comments.length, c.closedAt, c.lead, c.unrouted]), asks, prs, ls, [...this.busy], [...this.reopened], [...this.helpOpen], leaders]);
+    return JSON.stringify([cards.map((c) => [c.id, c.status, c.kind, c.title, c.since, c.from, c.session, c.answers.length, c.comments.length, c.closedAt, c.lead, c.unrouted]), asks, prs, ls, [...this.busy], [...this.reopened], [...this.helpOpen], leaders, issues, this.showAside]);
   }
 
   private renderCards(now: number): void {
@@ -605,6 +610,29 @@ export class Panel {
         label: `Reviews for you: ${reviews.length} pull request${reviews.length === 1 ? "" : "s"} asking for your review`,
       });
       for (const p of reviews) body.appendChild(this.prRow(p, now));
+    }
+    const issues = this.snapshot?.issues ?? [];
+    const assigned = issues.filter((i) => !i.aside);
+    const aside = issues.filter((i) => i.aside);
+    if (assigned.length || aside.length) {
+      const body = this.foldGroup(root, "assigned", "", !assigned.length, {
+        tile: "circle-dot",
+        tone: "review",
+        count: assigned.length,
+        label: assigned.length
+          ? `Assigned to you: ${assigned.length} issue${assigned.length === 1 ? "" : "s"}${aside.length ? `, ${aside.length} set aside` : ""}`
+          : `Assigned to you: ${aside.length} set aside`,
+      });
+      for (const i of assigned) body.appendChild(this.issueRow(i, now));
+      if (aside.length) {
+        const more = el("button", "pw-issue-more", this.showAside ? `Hide ${aside.length} set aside` : `${aside.length} set aside`, body);
+        more.onclick = () => {
+          this.showAside = !this.showAside;
+          this.cardsSig = "";
+          this.update(undefined, this.error);
+        };
+        if (this.showAside) for (const i of aside) body.appendChild(this.issueRow(i, now));
+      }
     }
     if (stranded.length || strandedPrs.length) {
       const n = stranded.length + strandedPrs.length;
@@ -1434,6 +1462,14 @@ export class Panel {
       r.title = m.reviews.map((p) => `${p.repo}#${p.number}: ${p.title}`).join("\n");
       r.onclick = () => this.feedJump('[data-sec="reviews"]');
     }
+    const assigned = (this.snapshot?.issues ?? []).filter((i) => !i.aside);
+    if (assigned.length) {
+      const r = el("button", "pw-board-extra", undefined, sum);
+      this.icon(r, "circle-dot");
+      el("span", undefined, `${assigned.length} assigned`, r);
+      r.title = assigned.map((i) => `${i.repo}#${i.number}: ${i.title}`).join("\n");
+      r.onclick = () => this.feedJump('[data-sec="assigned"]');
+    }
 
     const grid = el("div", "pw-board-grid", undefined, root);
     const show = (r: BoardRow) => !this.boardFilter || r.mark === this.boardFilter;
@@ -1712,6 +1748,42 @@ export class Panel {
   }
 
   /** A pull request: what it waits on and since when, and the session that owns it. */
+  /** An issue assigned to the human: who gave it and when, and the latest word from someone else. */
+  private issueRow(i: IssueView, now: number): HTMLElement {
+    const row = el("div", `pw-pr pw-issue${i.aside ? " is-aside" : ""}`);
+    row.dataset.issue = i.key;
+    const top = el("div", "pw-pr-top", undefined, row);
+    this.siteSlot(this.icon(top, "circle-dot", "pw-pr-icon"), siteForPr(i));
+    const label = el("a", "pw-pr-label", `${i.repo.split("/")[1]}#${i.number}`, top);
+    (label as HTMLAnchorElement).href = "#";
+    label.title = `Open ${i.url}`;
+    label.onclick = (e) => {
+      e.preventDefault();
+      this.backend.open(i.url);
+    };
+    this.withMenu(label, i.url);
+    const fresh = i.lastOther && i.lastOther.at > (i.assignedAt ?? "") ? i.lastOther : undefined;
+    el("span", "pw-pr-wait", fresh ? `${fresh.by} wrote` : i.assignedBy ? `from ${i.assignedBy}` : "assigned", top);
+    const at = fresh?.at ?? i.assignedAt;
+    if (at) el("span", "pw-meta", ago(at, now), top).title = fresh ? `${fresh.by} commented ${new Date(fresh.at).toLocaleString()}` : `Assigned ${new Date(at).toLocaleString()}`;
+    if (this.backend.issueAside) {
+      const b = el("button", "pw-issue-aside clickable-icon", undefined, top);
+      this.host.icon(b, i.aside ? "undo-2" : "archive");
+      const tip = i.aside ? "Bring back" : "Set aside until someone else comments";
+      b.title = tip;
+      b.setAttribute("aria-label", tip);
+      b.onclick = () =>
+        void this.backend.issueAside!(i.key, !i.aside).then(() => this.host.refresh(), (err) => this.host.notice(err instanceof Error ? err.message : String(err)));
+    }
+    el("div", "pw-pr-title", i.title, row);
+    if (i.project) {
+      const own = el("span", "pw-meta pw-pr-owner", undefined, row);
+      this.icon(own, "folder");
+      el("span", undefined, i.project, own);
+    }
+    return row;
+  }
+
   private prRow(p: PrView, now: number): HTMLElement {
     const row = el("div", `pw-pr${p.stalled ? " is-stuck" : ""}`);
     row.dataset.pr = p.key;

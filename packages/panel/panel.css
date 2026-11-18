@@ -1681,6 +1681,48 @@ button.pw-round.pw-send:disabled {
 .pw-pr-top .pw-meta {
   margin-left: auto;
 }
+.pw-issue-aside {
+  display: flex;
+  padding: 2px;
+  border: none;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  opacity: 0;
+}
+.pw-issue-aside svg {
+  width: 14px;
+  height: 14px;
+}
+.pw-issue:hover .pw-issue-aside,
+.pw-issue-aside:focus-visible {
+  opacity: 1;
+}
+.pw-issue-aside:hover {
+  color: var(--text-normal);
+}
+@media (hover: none) {
+  .pw-issue-aside {
+    opacity: 0.6;
+  }
+}
+.pw-issue.is-aside .pw-pr-label,
+.pw-issue.is-aside .pw-pr-title {
+  color: var(--text-faint);
+}
+.pw-issue-more {
+  margin: 2px 14px 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+}
+.pw-issue-more:hover {
+  color: var(--text-normal);
+}
 .pw-pr-title {
   margin-top: 2px;
   color: var(--text-muted);

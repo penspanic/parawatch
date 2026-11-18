@@ -90,7 +90,7 @@ Claude Code 는 답하는 순간 깨어납니다. `parawatch wait` 가 세션의
 
 ### Pull request
 
-이미 로그인해 둔 GitHub CLI 로 읽습니다. 열린 pull request 마다 무엇을(리뷰, CI, merge queue) 얼마나 기다리는지 보여 줍니다. 새 소식은 답처럼 그 PR 을 가진 세션을 깨웁니다.
+이미 로그인해 둔 GitHub CLI 로 읽습니다. 열린 pull request 마다 무엇을(리뷰, CI, merge queue) 얼마나 기다리는지 보여 줍니다. 새 소식은 답처럼 그 PR 을 가진 세션을 깨웁니다. 누가 나에게 할당한 이슈는 나에게 온 리뷰 요청 옆에 보이고, 새로 할당되거나 누가 댓글을 달면 알림이 옵니다. 이슈는 에이전트를 깨우지 않습니다.
 
 ### 터미널에서
 

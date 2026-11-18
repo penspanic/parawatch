@@ -10,6 +10,14 @@ When the [GitHub CLI](https://cli.github.com) is installed and signed in, parawa
 
 GitHub is read when its last reading is older than the interval: by `status`, by a running `wait`, and by the desktop app. `parawatch pr sync` reads it now. Pull requests nobody touched for 60 days are left out unless a session owns them.
 
+## Issues assigned to you
+
+The same reading asks for the open issues assigned to you, on every repository `gh` can see, touched in the last `maxAgeDays`. They are the human's, not an agent's: they wake no agent.
+
+- **Where.** `status` lists them under ISSUES ASSIGNED TO YOU, and the app under "Assigned to you", next to the reviews asked of you, with a count in the header. Each shows who assigned it and when, the latest comment by someone else when there is a newer one, and the project when the repository is one a registered project's folders push to.
+- **News.** The desktop app notifies once when an issue is assigned to you, and when someone else comments on one. Clicking the notification opens the issue. Issues you assign to yourself, and the ones already assigned when parawatch first reads them, are not news.
+- **Set aside.** The archive button on a row, or `parawatch issue aside <issue>`, folds an issue away. It comes back when someone else comments on it, or with `parawatch issue back <issue>`. An issue that is closed or no longer yours drops out on its own.
+
 `config.json` in the store folder changes the defaults (every key is optional):
 
 ```json
