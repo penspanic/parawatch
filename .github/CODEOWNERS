@@ -1,0 +1,8 @@
+# Changes here can reach the project's servers, its releases or its credentials: the owner reviews them.
+/infra/ @penspanic
+/deploy/ @penspanic
+/.github/ @penspanic
+/apps/desktop/scripts/ @penspanic
+/apps/desktop/builder.json @penspanic
+/package.json @penspanic
+/package-lock.json @penspanic

@@ -40,3 +40,9 @@ jobs:
       # no credentials and no backend: checks the code only, never the real infrastructure
       - run: terraform -chdir=infra/terraform/envs/prod init -backend=false -input=false
       - run: terraform -chdir=infra/terraform/envs/prod validate
+      - run: terraform -chdir=infra/terraform/envs/ci init -backend=false -input=false
+      - run: terraform -chdir=infra/terraform/envs/ci validate
+      - name: The deploy workflow and the relay setup script parse
+        run: |
+          bash -n deploy/relay/setup.sh
+          python3 -c "import sys, yaml; [yaml.safe_load(open(f)) for f in sys.argv[1:]]" .github/workflows/*.yml

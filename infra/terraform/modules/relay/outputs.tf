@@ -10,8 +10,12 @@ output "relay_url" {
   value = "https://${var.relay_domain}"
 }
 
-output "app_url" {
-  value = var.app_domain == "" ? null : "https://${var.app_domain}"
+output "instance_arn" {
+  value = aws_lightsail_instance.relay.arn
+}
+
+output "relay_domain" {
+  value = var.relay_domain
 }
 
 output "zone_id" {
