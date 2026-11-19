@@ -73,8 +73,13 @@ jobs:
         id: version
         run: |
           version=$(node -p "require('./package.json').version")
-          # the server installs it from npm
-          npm view "parawatch@$version" version >/dev/null
+          # the server installs it from npm, which can take minutes to show a version it has
+          # just published (this workflow starts seconds after the publish)
+          for i in $(seq 40); do
+            npm view "parawatch@$version" version --prefer-online >/dev/null 2>&1 && break
+            if [ "$i" = 40 ]; then echo "::error::parawatch@$version is not on npm after 10 minutes"; exit 1; fi
+            sleep 15
+          done
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "### parawatch $version" >> "$GITHUB_STEP_SUMMARY"
       - uses: aws-actions/configure-aws-credentials@v4
