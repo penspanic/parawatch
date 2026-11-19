@@ -35,7 +35,9 @@ provider "aws" {
 }
 
 locals {
-  repo         = "penspanic/parawatch"
+  # penspanic/parawatch as GitHub names it in the token's subject ("use_immutable_subject"): by
+  # owner and repository ids, so a repository that later takes the same name gets nothing
+  repo_ids     = "penspanic@13113921/parawatch@1449403714"
   state_bucket = "parawatch-tfstate-penspanic"
   prod         = data.terraform_remote_state.prod.outputs
 }
@@ -72,7 +74,7 @@ data "aws_iam_policy_document" "trust" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${local.repo}:environment:${each.value}"]
+      values   = ["repo:${local.repo_ids}:environment:${each.value}"]
     }
   }
 }
