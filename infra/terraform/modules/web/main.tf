@@ -87,8 +87,27 @@ resource "aws_acm_certificate_validation" "web" {
   validation_record_fqdns = [for r in aws_route53_record.validation : r.fqdn]
 }
 
-data "aws_cloudfront_cache_policy" "origin_headers" {
-  name = "UseOriginCacheControlHeaders"
+# follows the files' own Cache-Control (no-cache), and keys on the path alone. The managed
+# "UseOriginCacheControlHeaders" policy cannot be used: it forwards the Host header, and S3 then
+# looks for a bucket named after the distribution.
+resource "aws_cloudfront_cache_policy" "web" {
+  name        = "${replace(var.bucket_name, ".", "-")}-origin-headers"
+  min_ttl     = 0
+  default_ttl = 86400
+  max_ttl     = 31536000
+  parameters_in_cache_key_and_forwarded_to_origin {
+    enable_accept_encoding_gzip   = true
+    enable_accept_encoding_brotli = true
+    cookies_config {
+      cookie_behavior = "none"
+    }
+    headers_config {
+      header_behavior = "none"
+    }
+    query_strings_config {
+      query_string_behavior = "none"
+    }
+  }
 }
 
 # the same headers Caddy sent when the relay server served the app
@@ -130,7 +149,7 @@ resource "aws_cloudfront_distribution" "web" {
     allowed_methods            = ["GET", "HEAD"]
     cached_methods             = ["GET", "HEAD"]
     compress                   = true
-    cache_policy_id            = data.aws_cloudfront_cache_policy.origin_headers.id
+    cache_policy_id            = aws_cloudfront_cache_policy.web.id
     response_headers_policy_id = aws_cloudfront_response_headers_policy.web.id
   }
 
