@@ -101,7 +101,6 @@ data "aws_iam_policy_document" "read" {
       "cloudfront:GetOriginAccessControl",
       "cloudfront:GetResponseHeadersPolicy",
       "cloudfront:GetCachePolicy",
-      "cloudfront:ListCachePolicies",
       "cloudfront:ListTagsForResource",
     ]
     resources = ["*"]
