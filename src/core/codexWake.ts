@@ -9,6 +9,11 @@
  * say an answer reaches it, and passes what arrives to the thread as a queued message, taking it
  * off the session's inbox the way a wait does. A session that runs a wait of its own is left to it.
  * A thread the app has not loaded keeps the old way: it reads its inbox on its next turn.
+ *
+ * A thread in the middle of a turn is left alone: the Codex app would run the message only after
+ * the turn, and a turn that loops on `parawatch wait --timeout` would lose the news to the queue
+ * in the moment between two waits. Its own wait takes the news; what is left when the turn ends
+ * goes then. Sub-agent threads are skipped: the Codex app takes no queued messages for them.
  */
 import { execFile, execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -33,9 +38,17 @@ export interface WakeDeps {
   logs(ids: string[]): Map<string, string>;
   /** Of these log files, the ones the Codex app has loaded. */
   loaded(files: string[]): Set<string>;
+  /** What the thread's log says about it: a sub-agent's thread, and whether a turn is running. */
+  thread(file: string): ThreadState;
   /** Queue a message for a thread. Rejects when codex refuses. */
   queue(thread: string, text: string): Promise<void>;
   now?: () => number;
+}
+
+export interface ThreadState {
+  subagent: boolean;
+  /** A turn has started and not ended. */
+  busy: boolean;
 }
 
 export interface Wakeable {
@@ -87,10 +100,12 @@ export class CodexWaker {
     for (const k of known) {
       const file = files.get(k.session);
       if (!file || !loaded.has(file)) continue;
+      const thread = this.deps.thread(file);
+      if (thread.subagent) continue;
       // a session waiting for itself gets its news from that wait
       if (own.some((l) => l.scope === "session" && sameSession(l.session, k.session))) continue;
       hold.push({ consumer: sessionConsumer(k.session), session: k.session, scope: "session", via: CODEX_APP, ...(k.project ? { project: k.project } : {}) });
-      if (this.busy.has(k.session) || now - (this.failedAt.get(k.session) ?? -Infinity) < RETRY_MS) continue;
+      if (thread.busy || this.busy.has(k.session) || now - (this.failedAt.get(k.session) ?? -Infinity) < RETRY_MS) continue;
       const { consumer, filter } = inboxScope({}, k.session);
       const { items, undo } = takeInbox(consumer, filter);
       if (!items.length) continue;
@@ -187,6 +202,95 @@ function realPath(f: string): string {
   }
 }
 
+const metas = new Map<string, boolean>();
+const turns = new Map<string, { size: number; mtime: number; busy: boolean }>();
+/** How much of a log's end is read for the last turn event. */
+const TAIL = 512 * 1024;
+
+/** A Codex thread from its log: the first line says who started it, the last turn event whether it runs. */
+export function codexThread(file: string): ThreadState {
+  let subagent = metas.get(file);
+  if (subagent === undefined) {
+    const meta = firstLine(file);
+    if (meta !== undefined) {
+      subagent = isSubagent(meta);
+      metas.set(file, subagent);
+    }
+  }
+  return { subagent: subagent ?? false, busy: turnRunning(file) };
+}
+
+export function isSubagent(line: string): boolean {
+  try {
+    const p = JSON.parse(line)?.payload;
+    return p?.thread_source === "subagent" || !!p?.source?.subagent;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether the last turn event in these log lines is a start. With none (a turn that has written a
+ * lot since it started), a turn is taken to be running.
+ */
+export function lastTurnRunning(lines: string[]): boolean {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]!;
+    if (!/"(task_started|task_complete|turn_aborted)"/.test(line)) continue;
+    let ev: { type?: string; payload?: { type?: string } };
+    try {
+      ev = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const t = ev.type === "event_msg" ? ev.payload?.type : undefined;
+    if (t === "task_started") return true;
+    if (t === "task_complete" || t === "turn_aborted") return false;
+  }
+  return true;
+}
+
+function turnRunning(file: string): boolean {
+  let st: fs.Stats;
+  try {
+    st = fs.statSync(file);
+  } catch {
+    return false;
+  }
+  const seen = turns.get(file);
+  if (seen && seen.size === st.size && seen.mtime === st.mtimeMs) return seen.busy;
+  const start = Math.max(0, st.size - TAIL);
+  const buf = readRange(file, start, st.size - start);
+  const lines = buf.toString("utf8").split("\n");
+  if (start > 0) lines.shift(); // cut in the middle
+  const busy = lastTurnRunning(lines);
+  turns.set(file, { size: st.size, mtime: st.mtimeMs, busy });
+  return busy;
+}
+
+function firstLine(file: string): string | undefined {
+  const chunks: Buffer[] = [];
+  for (let at = 0; at < 4 * 1024 * 1024; at += 64 * 1024) {
+    const b = readRange(file, at, 64 * 1024);
+    const nl = b.indexOf(10);
+    if (nl >= 0) return Buffer.concat([...chunks, b.subarray(0, nl)]).toString("utf8");
+    if (b.length < 64 * 1024) return undefined; // the line is still being written
+    chunks.push(b);
+  }
+  return undefined;
+}
+
+function readRange(file: string, start: number, length: number): Buffer {
+  const fd = fs.openSync(file, "r");
+  try {
+    const b = Buffer.alloc(length);
+    const n = fs.readSync(fd, b, 0, length, start);
+    return b.subarray(0, n);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 /** Queue a message for a Codex thread with the codex command. */
 export function codexQueue(thread: string, text: string): Promise<void> {
   const bin = findCodex();
@@ -200,4 +304,4 @@ export function codexQueue(thread: string, text: string): Promise<void> {
   });
 }
 
-export const thisMachine: WakeDeps = { logs: (ids) => codexLogs(ids), loaded: (files) => loadedInCodexApp(files), queue: codexQueue };
+export const thisMachine: WakeDeps = { logs: (ids) => codexLogs(ids), loaded: (files) => loadedInCodexApp(files), thread: codexThread, queue: codexQueue };

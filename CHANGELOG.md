@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.29 (2026-11-19)
+
+- Codex wake no longer queues news to a thread in the middle of a turn. A turn that loops on `parawatch wait --timeout` lost the news to the Codex queue in the moment between two waits, and the queue runs only after the turn, so the messages piled up unread. Now the session's own wait takes the news during a turn, and what is left when the turn ends is passed then.
+- Sub-agent threads in the Codex app are no longer woken. The Codex app refuses queued messages for them, so the Parawatch app tried every five minutes and their cards said an answer reached them.
+
 ## 0.3.28 (2026-11-19)
 
 - Codex sessions in the Codex app wake when you answer. While the Parawatch app runs, it passes an answer, or news on a pull request the session owns, to the session's thread with `codex queue`, and the Codex app runs it at once, even while another thread is on screen. This works for threads the Codex app has loaded; others read their inbox on their next turn as before. Their cards say an answer reaches them. Settings > "Wake Codex sessions" turns it off.
