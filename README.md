@@ -60,7 +60,7 @@ Or run a [relay](docs/relay.md) of your own, a small server that carries the fol
   <img src="docs/flow-light.svg" alt="An agent asks with parawatch ask and waits. The question reaches you as a card. Your answer is returned to the waiting agent, which goes back to work." width="100%">
 </picture>
 
-Claude Code wakes the moment you answer, because `parawatch wait` runs as a background command of the session. Other runtimes read the answer at their next turn.
+Claude Code wakes the moment you answer, because `parawatch wait` runs as a background command of the session. A Codex session loaded in the Codex app wakes too: the Parawatch app passes the answer to its thread. Other runtimes read the answer at their next turn.
 
 
 ## What you see

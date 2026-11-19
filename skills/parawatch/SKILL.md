@@ -82,6 +82,7 @@ News from somewhere GitHub does not show (a merge bot, a ticket system) can be r
 Right after opening cards or linking a pull request, keep exactly one wait armed:
 
 - **Claude Code**: run `parawatch wait` as a background Bash command (`run_in_background: true`). When the human answers, the command exits, its output is the answer, and you are woken. Do not poll, do not sleep-loop, do not start a second wait while one is running.
+- **Codex**: check `parawatch inbox` at the start of every turn. In the Codex app you are also woken: while the Parawatch app runs, an answer or pull request news arrives in your thread as a message starting "parawatch: news for this session", with the same lines a wait prints. Handle it like a wait's output; it is already off your inbox.
 - **Other runtimes**: check `parawatch inbox` at the start of every turn.
 
 Inside your session, `wait` and `inbox` read only what is yours: answers on cards you opened and news on pull requests linked to you. Other sessions in the same project are not woken by your news and cannot take it from you, and you are not woken by theirs. What no session owns, and what a session that has ended left open, goes to the project's lead (section 8); with no lead it waits in parawatch until the human picks one. `-p <project>` only names a project other than the one you claimed.

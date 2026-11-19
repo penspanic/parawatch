@@ -53,6 +53,7 @@ import { checkUpdate, updateLine } from "../core/update.js";
 import { packageVersion } from "../core/version.js";
 import { cardContextLine, inAppUrl, resolveGoto } from "../core/desktop.js";
 import { snapshot } from "../core/snapshot.js";
+import { CODEX_APP } from "../core/codexWake.js";
 import { SCHEMA_VERSION, type Card } from "../core/types.js";
 
 const collect = (v: string, prev: string[] = []) => [...prev, v];
@@ -292,7 +293,7 @@ program
         : noOne
           ? `\nDelivery: no session gets an answer (${card.session ? "its session has ended" : "no session opened it"}, and ${card.project} has no lead). Pick a lead with parawatch lead ${card.project} <session>, or hand it on with parawatch hand ${card.id} <session>.`
           : waits.length
-          ? `\nDelivery: an agent is waiting (${waits.map((l) => l.consumer).join(", ")}); an answer wakes it now.`
+          ? `\nDelivery: an agent is waiting (${waits.map((l) => (l.via === CODEX_APP ? "its Codex app thread, through the Parawatch app" : l.consumer)).join(", ")}); an answer wakes it now.`
           : "\nDelivery: no agent is waiting; an answer is kept until the agent next checks (its next turn, or its next wait).";
     process.stdout.write(cardDetail(card) + delivery + "\n");
   });

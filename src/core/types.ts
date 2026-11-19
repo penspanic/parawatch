@@ -330,6 +330,11 @@ export interface Listener {
    * what has no owner in `project`. Without it, `project` or `card` say what the wait reads.
    */
   scope?: "session";
+  /**
+   * Who holds the wait when the session does not: "codex-app" is the Parawatch app, which passes
+   * what arrives to a thread loaded in the Codex app (see core/codexWake.ts).
+   */
+  via?: string;
   since: string;
 }
 

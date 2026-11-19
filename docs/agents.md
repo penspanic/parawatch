@@ -60,6 +60,17 @@ The hook only peeks. The agent's own `wait` or `inbox` moves its cursor.
 
 `PermissionRequest` and `Notification` tell parawatch when a session is held by a permission prompt. In the log a prompt looks the same as a long command (a tool call with no result yet), so without them such a session shows as stalled after 20 minutes, with "or a permission prompt is open". With them it shows under NEEDS YOU at once, as "approve a tool call: <tool>", until the tool call returns. The hook never answers the prompt.
 
+## Codex
+
+A Codex session cannot keep a wait running in the background, so it reads `parawatch inbox` at the start of each turn. When it runs in the Codex app, it does not have to wait for that turn: the Codex app runs a message queued for one of its threads (`codex queue --thread <id>`) as soon as the thread is loaded, even while another thread is on screen.
+
+While the Parawatch desktop app runs, it does that for every Codex session the Codex app has loaded (its log is held open by the app's server) and that has something in parawatch: a claim, an open card, or a linked pull request. It holds a wait for each, so their cards say an answer reaches them, and when an answer or pull request news arrives it queues it to the thread as one message, with the same lines `parawatch wait` prints, and takes it off the session's inbox. The thread runs it after the turn it is in, if any.
+
+- A session that runs `parawatch wait` itself is left to that wait.
+- A thread the Codex app has not loaded is left alone: it reads its inbox on its next turn. Opening it in the Codex app is enough; from then on it is woken.
+- If `codex queue` fails, the news stays in the inbox and the app tries again five minutes later; the app's log says why.
+- Settings > "Wake Codex sessions" turns it off. It needs macOS or Linux (it reads which files the Codex app holds open with `lsof`) and a `codex` command that has `queue` (codex-cli 0.170 does).
+
 ## Other runtimes
 
 Anything that can run a command and notice when it exits can use `wait`. `parawatch inbox` returns at once (add `--peek` to leave the cursor where it is), for runtimes that poll.
