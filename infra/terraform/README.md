@@ -57,14 +57,18 @@ gh api -X POST repos/penspanic/parawatch/environments/production/deployment-bran
 gh variable set AWS_ROLE_ARN --env production --body "<deploy_role_arn>"
 ```
 
+The roles trust the subject GitHub sends for this repository, which names it by ids (`repo:penspanic@13113921/parawatch@1449403714:environment:...`; see `gh api repos/penspanic/parawatch/actions/oidc/customization/sub`).
+
+Main is protected: changes go through pull requests that pass CI, and the ones touching `.github/CODEOWNERS` paths wait for the owner's review. The owner's own pull requests are merged with `gh pr merge --admin` once every check has finished.
+
 Both workflows run from main (a release's deploy is started by the npm publish, which runs the workflow file on main), so main is the only branch the environments allow.
 
 ### Moving the web app off the relay server (2026-11, once)
 
 Until 0.3.27 the relay server's Caddy served the web app. The move keeps the name answering throughout:
 
-1. Make the bucket and the distribution without touching DNS, and upload the app:
-   `terraform -chdir=infra/terraform/envs/prod apply -target=module.web.aws_cloudfront_distribution.web -target=module.web.aws_s3_bucket_policy.web`, then `node apps/web/build.mjs` and `aws s3 sync apps/web/dist s3://parawatch-web-penspanic --delete --cache-control no-cache`.
+1. Make the bucket and the distribution without touching DNS, and upload the app. Terraform refuses `-target` while a `moved` block is pending, so move the record's address in the state first (the record itself does not change):
+   `terraform -chdir=infra/terraform/envs/prod state mv 'module.relay.aws_route53_record.app[0]' module.web.aws_route53_record.app`, then `terraform -chdir=infra/terraform/envs/prod apply -target=module.web.aws_cloudfront_distribution.web -target=module.web.aws_s3_bucket_policy.web`, then `node apps/web/build.mjs` and `aws s3 sync apps/web/dist s3://parawatch-web-penspanic --delete --cache-control no-cache`.
 2. Check the app on the distribution's own name (`terraform output web_distribution_domain`).
 3. `terraform apply` the rest: the name moves to CloudFront in one Route 53 change.
 4. After the old record's five minutes are up, run `deploy/relay/setup.sh` on the server without `SERVE_WEB` (the Deploy workflow does), so Caddy stops serving the app and keeps only the relay and its CORS for the app.
