@@ -180,6 +180,10 @@ jobs:
         if: needs.plan.outputs.web == 'true'
         run: |
           npm ci
+          # the app icon comes from Icon Composer, which only a Mac has: keep the one the site has,
+          # and draw the flat one only for an empty bucket
+          mkdir -p apps/desktop/build
+          aws s3 cp "s3://$WEB_BUCKET/icon.png" apps/desktop/build/icon.png --only-show-errors || npm run icon -w @parawatch/desktop
           node apps/web/build.mjs
           # fixed names, so every file is asked for again; CloudFront follows this header
           aws s3 sync apps/web/dist "s3://$WEB_BUCKET" --delete --cache-control no-cache
