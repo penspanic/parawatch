@@ -60,7 +60,7 @@ parawatch sync setup ~/agent-sync/parawatch --device pc  --adapter syncthing
   <img src="docs/flow-light.svg" alt="에이전트가 parawatch ask 로 묻고 기다린다. 질문은 카드로 사용자에게 간다. 사용자의 답은 기다리던 에이전트에게 돌아가고, 에이전트는 다시 일한다." width="100%">
 </picture>
 
-Claude Code 는 답하는 순간 깨어납니다. `parawatch wait` 가 세션의 백그라운드 명령으로 돌기 때문입니다. 다른 런타임은 다음 턴에 답을 읽습니다.
+Claude Code 는 답하는 순간 깨어납니다. `parawatch wait` 가 세션의 백그라운드 명령으로 돌기 때문입니다. Codex 앱에 열린 Codex 세션도 깨어납니다. Parawatch 앱이 답을 그 스레드에 넣어 줍니다. 다른 런타임은 다음 턴에 답을 읽습니다.
 
 
 ## 보이는 것

@@ -89,6 +89,7 @@ export class SettingsView {
     this.row(look, "monitor", "Appearance", undefined, (c) => this.segmented(c, THEME_CHOICES, p.theme, (v) => this.change("theme", v)));
     this.row(look, "bell", "Notifications", "New cards and failed jobs", (c) => this.toggle(c, p.notify, (v) => this.change("notify", v)));
     this.row(look, "log-in", "Open at login", "Waits in the menu bar", (c) => this.toggle(c, p.openAtLogin, (v) => this.change("openAtLogin", v)));
+    this.row(look, "message-square", "Wake Codex sessions", "Passes your answers to threads loaded in the Codex app", (c) => this.toggle(c, p.wakeCodex, (v) => this.change("wakeCodex", v)));
 
     this.row(look, "bot", "Show service icons", "Fetched from each service's site", (c) => this.toggle(c, p.serviceIcons, (v) => this.change("serviceIcons", v)));
 

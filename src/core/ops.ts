@@ -754,6 +754,47 @@ export function listeners(now = Date.now()): Listener[] {
   return out;
 }
 
+/** The waits this process holds for others (`holdListeners`), by file. */
+const held = new Map<string, string>();
+
+/**
+ * Hold waits on behalf of sessions that cannot run one (see core/codexWake.ts), replacing the ones
+ * held before. Call it again within a minute to keep them fresh on other machines; they go when
+ * this process ends, or with `releaseListeners`.
+ */
+export function holdListeners(ls: Omit<Listener, "pid" | "since">[]): void {
+  const shared = !!sharedDir();
+  const now = new Date().toISOString();
+  const keep = new Set<string>();
+  try {
+    fs.mkdirSync(listenersDir(), { recursive: true });
+  } catch {
+    return;
+  }
+  for (const l of ls) {
+    const key = `${process.pid}-held-${(l.session ?? l.consumer).replace(/[^A-Za-z0-9._-]/g, "_")}.json`;
+    const file = path.join(listenersDir(), shared ? `${deviceName()}-${key}` : key);
+    keep.add(file);
+    const me: Listener = { ...l, pid: process.pid, since: held.get(file) ?? now, ...(shared ? { device: deviceName(), beat: now } : {}) };
+    try {
+      fs.writeFileSync(`${file}.tmp`, JSON.stringify(me) + "\n");
+      fs.renameSync(`${file}.tmp`, file);
+      held.set(file, me.since);
+    } catch {
+      // the folder may be busy syncing; the next call writes it again
+    }
+  }
+  for (const file of held.keys()) {
+    if (keep.has(file)) continue;
+    fs.rmSync(file, { force: true });
+    held.delete(file);
+  }
+}
+
+export function releaseListeners(): void {
+  holdListeners([]);
+}
+
 /**
  * The waits an answer to this card would wake right now. A card whose session has ended, or that
  * no session opened, reaches the project's lead only. A snapshot's card says so itself
@@ -850,6 +891,24 @@ export function bornAt(session: string, events = readEvents()): Position {
     }
   });
   return i < 0 ? {} : advance({}, events.slice(0, i));
+}
+
+/**
+ * Take what is in the inbox, as a wait does, with a way to put it back if it could not be passed
+ * on. Putting it back does nothing once the cursor has moved again.
+ */
+export function takeInbox(consumer: string, filter: InboxFilter): { items: InboxItem[]; undo: () => void } {
+  const pos = readCursor(consumer);
+  const items = inboxFrom(readEvents(), pos, filter);
+  if (!items.length) return { items, undo: () => {} };
+  const next = advance(pos, items);
+  writeCursor(consumer, next);
+  return {
+    items,
+    undo: () => {
+      if (JSON.stringify(readCursor(consumer)) === JSON.stringify(next)) writeCursor(consumer, pos);
+    },
+  };
 }
 
 export function readInbox(consumer: string, filter: InboxFilter, move: boolean): InboxItem[] {

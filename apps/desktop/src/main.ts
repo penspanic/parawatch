@@ -9,7 +9,8 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { app, autoUpdater as squirrel, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, Notification, protocol, shell, systemPreferences, Tray } from "electron";
 import { readClient, recordClient, versionSkew } from "../../../src/core/clients.js";
-import { answerCard, dismissCard, endedSessions, hideRun, makeLead, readState, setIssueAside, UserError } from "../../../src/core/ops.js";
+import { answerCard, dismissCard, endedSessions, hideRun, holdListeners, makeLead, readState, releaseListeners, setIssueAside, UserError } from "../../../src/core/ops.js";
+import { CodexWaker, thisMachine } from "../../../src/core/codexWake.js";
 import { cardContextLine, inAppUrl, resolveGoto } from "../../../src/core/desktop.js";
 import { followEvents } from "../../../src/core/follow.js";
 import { markThreadRead, syncGithub } from "../../../src/core/github.js";
@@ -41,7 +42,7 @@ interface Settings extends Omit<Prefs, "openAtLogin"> {
   bounds?: { x: number; y: number; width: number; height: number };
 }
 
-const DEFAULTS: Settings = { sinceHours: 6, notify: true, theme: "system", keepClosed: 20, checkUpdates: true, serviceIcons: true, updateCli: true, remoteChat: false, runTitles: "both" };
+const DEFAULTS: Settings = { sinceHours: 6, notify: true, theme: "system", keepClosed: 20, checkUpdates: true, serviceIcons: true, updateCli: true, remoteChat: false, runTitles: "both", wakeCodex: true };
 const REPO_URL = "https://github.com/penspanic/parawatch";
 /** builder.json's appId */
 const APP_ID = "io.github.penspanic.parawatch";
@@ -61,6 +62,7 @@ function loadSettings(): Settings {
     if (typeof s.serviceIcons !== "boolean") s.serviceIcons = DEFAULTS.serviceIcons;
     if (typeof s.updateCli !== "boolean") s.updateCli = DEFAULTS.updateCli;
     if (typeof s.remoteChat !== "boolean") s.remoteChat = DEFAULTS.remoteChat;
+    if (typeof s.wakeCodex !== "boolean") s.wakeCodex = DEFAULTS.wakeCodex;
     if (!RUN_TITLES.includes(s.runTitles)) s.runTitles = DEFAULTS.runTitles;
     return s;
   } catch {
@@ -150,7 +152,23 @@ let githubTimer: NodeJS.Timeout | undefined;
 
 // ------------------------------------------------------------------ data
 
+/** Passes news to Codex sessions loaded in the Codex app, which cannot run a wait of their own. */
+const codexWaker = new CodexWaker(thisMachine, (l) => logger.info(l));
+
+function wakeCodex(): void {
+  if (!settings.wakeCodex) {
+    releaseListeners();
+    return;
+  }
+  try {
+    holdListeners(codexWaker.tick(readState()).hold);
+  } catch (err) {
+    logger.warn("passing news to Codex sessions failed:", err instanceof Error ? err.message : String(err));
+  }
+}
+
 function refresh(): void {
+  wakeCodex();
   try {
     latest = takeSnapshot({ sinceHours: settings.sinceHours, closed: settings.keepClosed });
     lastError = undefined;
@@ -648,6 +666,7 @@ function prefs(): Prefs {
     updateCli: settings.updateCli,
     remoteChat: settings.remoteChat,
     runTitles: settings.runTitles,
+    wakeCodex: settings.wakeCodex,
   };
 }
 
@@ -662,7 +681,7 @@ function setPref<K extends keyof Prefs>(key: K, value: unknown): void {
     saveSettings();
   }
   if (key === "theme") nativeTheme.themeSource = value as Theme;
-  if (key === "sinceHours" || key === "keepClosed") refresh();
+  if (key === "sinceHours" || key === "keepClosed" || key === "wakeCodex") refresh();
   if (key === "checkUpdates") scheduleUpdates(settings.checkUpdates, onUpdate);
   if (key === "updateCli") keepCliInStep("turned on");
   if (win && !win.isDestroyed()) win.webContents.send("pw:prefs", prefs());
@@ -939,6 +958,7 @@ if (!app.requestSingleInstanceLock()) {
   });
   app.on("will-quit", () => {
     stopFollowing?.();
+    releaseListeners();
     remoteChats.dispose();
     if (relayTimer) clearInterval(relayTimer);
     relayMirror?.mirror.stop();

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Codex sessions in the Codex app wake when you answer. While the Parawatch app runs, it passes an answer, or news on a pull request the session owns, to the session's thread with `codex queue`, and the Codex app runs it at once, even while another thread is on screen. This works for threads the Codex app has loaded; others read their inbox on their next turn as before. Their cards say an answer reaches them. Settings > "Wake Codex sessions" turns it off.
 - `deploy/relay/setup.sh` can run again and again: it keeps the server's invite when `RELAY_INVITE` is not given, installs parawatch only when the version differs, restarts the relay only when something it runs with changed, and waits for it to answer. The web app is no longer served by the relay's Caddy unless `SERVE_WEB=1`; `APP_DOMAIN` alone now only lets the app call the relay.
 - The project's relay and phone web app are deployed from GitHub: after each release a Deploy workflow shows the Terraform plan, waits for the owner's approval, then applies it, brings the relay server to the release and uploads the web app, which now lives in S3 behind CloudFront.
 - CONTRIBUTING describes working from a fork and changing the infrastructure; CODEOWNERS asks for the owner's review on `infra/`, `deploy/` and `.github/`.

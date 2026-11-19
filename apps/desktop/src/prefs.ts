@@ -23,6 +23,8 @@ export interface Prefs {
   updateCli: boolean;
   /** let other machines send messages to this machine's Codex sessions, not only show them */
   remoteChat: boolean;
+  /** pass answers and news to Codex sessions loaded in the Codex app (see core/codexWake.ts) */
+  wakeCodex: boolean;
   /** call a session by its own name, by the work it claimed, or show both */
   runTitles: RunTitles;
 }
@@ -89,6 +91,7 @@ export function validPref<K extends keyof Prefs>(key: K, value: unknown): value 
     case "serviceIcons":
     case "updateCli":
     case "remoteChat":
+    case "wakeCodex":
       return typeof value === "boolean";
     case "sinceHours":
       return SINCE_HOURS.includes(value as number);
