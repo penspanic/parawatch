@@ -1,5 +1,5 @@
-# A parawatch relay on one Lightsail instance: the instance, a static IP, the open ports and the DNS
-# names. What runs inside the instance (Node, the relay service, Caddy) is set up by
+# A parawatch relay on one Lightsail instance: the instance, a static IP, the open ports and its DNS
+# name. The phone web app is served elsewhere (modules/web). What runs inside the instance (Node, the relay service, Caddy) is set up by
 # deploy/relay/setup.sh, not here.
 
 resource "aws_lightsail_instance" "relay" {
@@ -68,15 +68,6 @@ data "aws_route53_zone" "zone" {
 resource "aws_route53_record" "relay" {
   zone_id = data.aws_route53_zone.zone.zone_id
   name    = var.relay_domain
-  type    = "A"
-  ttl     = 300
-  records = [aws_lightsail_static_ip.relay.ip_address]
-}
-
-resource "aws_route53_record" "app" {
-  count   = var.app_domain == "" ? 0 : 1
-  zone_id = data.aws_route53_zone.zone.zone_id
-  name    = var.app_domain
   type    = "A"
   ttl     = 300
   records = [aws_lightsail_static_ip.relay.ip_address]

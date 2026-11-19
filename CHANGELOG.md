@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `deploy/relay/setup.sh` can run again and again: it keeps the server's invite when `RELAY_INVITE` is not given, installs parawatch only when the version differs, restarts the relay only when something it runs with changed, and waits for it to answer. The web app is no longer served by the relay's Caddy unless `SERVE_WEB=1`; `APP_DOMAIN` alone now only lets the app call the relay.
+- The project's relay and phone web app are deployed from GitHub: after each release a Deploy workflow shows the Terraform plan, waits for the owner's approval, then applies it, brings the relay server to the release and uploads the web app, which now lives in S3 behind CloudFront.
+- CONTRIBUTING describes working from a fork and changing the infrastructure; CODEOWNERS asks for the owner's review on `infra/`, `deploy/` and `.github/`.
+
 ## 0.3.27 (2026-11-19)
 
 - A desktop notification opens the window at what it was about: the pull request's row, the issue, the thread from a person, or the line under Recent for a pull request that is no longer open. Before, a click on pull request news showed the window with nothing to find. When the window does not show it, the page opens.

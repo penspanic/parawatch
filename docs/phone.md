@@ -41,9 +41,11 @@ The relay knows files only by a keyed hash of their path, so the phone learns wh
 npm run build -w @parawatch/web   # apps/web/dist: static files
 ```
 
-Serve `dist/` over HTTPS from any static host. The relay has to let the app's origin call it (CORS); `deploy/relay/setup.sh` with `APP_DOMAIN=<app domain>` serves both from one server, with Caddy:
+Serve `dist/` over HTTPS from any static host, with `Cache-Control: no-cache` on every file (the names are fixed, so a phone must ask each time whether one changed). The relay has to let the app's origin call it (CORS): run `deploy/relay/setup.sh` with `APP_DOMAIN=<app domain>`.
+
+The project's own app is in S3 behind CloudFront ([`infra/terraform/modules/web`](../infra/terraform/modules/web)), uploaded by the Deploy workflow on every release. For a single server of your own, `SERVE_WEB=1` makes the relay's Caddy serve it too:
 
 ```sh
-RELAY_DOMAIN=relay.example.com APP_DOMAIN=app.example.com RELAY_INVITE=<secret> bash setup.sh
+RELAY_DOMAIN=relay.example.com APP_DOMAIN=app.example.com SERVE_WEB=1 RELAY_INVITE=<secret> bash setup.sh
 scp -r apps/web/dist/* <server>:/var/www/parawatch-web/
 ```

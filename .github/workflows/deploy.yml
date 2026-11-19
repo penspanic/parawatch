@@ -1,0 +1,201 @@
+name: Deploy
+
+# Brings the relay and the phone web app to a release, after the owner approves.
+#
+#   1. plan    (GitHub environment "plan"): reads AWS with a read-only role and writes the Terraform
+#              plan for infra/terraform/envs/prod into the run's summary.
+#   2. deploy  (GitHub environment "production", which waits for the owner's approval): plans again,
+#              stops if the plan differs from the one approved, applies it, runs
+#              deploy/relay/setup.sh on the relay server at the release's version, uploads the web
+#              app to S3, and checks both answer.
+#
+# It runs by itself once a release is on npm (the relay installs parawatch from npm). Run it by hand
+# from main after a change to infra/ or deploy/ only; "web" also uploads the web app built from main.
+#
+# One-time setup by the owner: infra/terraform/README.md, "Deploying from GitHub". Forks get no
+# credentials: the roles trust only jobs of this repository in these two environments.
+
+on:
+  workflow_run:
+    workflows: ["Publish to npm"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      web:
+        description: "Also build and upload the phone web app from this branch"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-northeast-2
+  TF_DIR: infra/terraform/envs/prod
+  TF_VERSION: "1.15.5"
+
+jobs:
+  plan:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: plan
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      sha: ${{ steps.what.outputs.sha }}
+      version: ${{ steps.version.outputs.version }}
+      web: ${{ steps.what.outputs.web }}
+      changes: ${{ steps.plan.outputs.changes }}
+      digest: ${{ steps.plan.outputs.digest }}
+    steps:
+      - name: What to deploy
+        id: what
+        env:
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          WEB_INPUT: ${{ inputs.web }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = workflow_run ]; then
+            echo "sha=$RUN_SHA" >> "$GITHUB_OUTPUT"
+            echo "web=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+            echo "web=${WEB_INPUT:-false}" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.what.outputs.sha }}
+      - name: Version the relay runs
+        id: version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          # the server installs it from npm
+          npm view "parawatch@$version" version >/dev/null
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "### parawatch $version" >> "$GITHUB_STEP_SUMMARY"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - run: terraform -chdir="$TF_DIR" init -input=false
+      - name: Plan
+        id: plan
+        run: |
+          set +e
+          # read-only: the plan role cannot take the state lock
+          terraform -chdir="$TF_DIR" plan -input=false -lock=false -detailed-exitcode -out=tfplan
+          code=$?
+          set -e
+          [ "$code" = 1 ] && exit 1
+          echo "changes=$([ "$code" = 2 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          terraform -chdir="$TF_DIR" show -json tfplan | jq -c '[.resource_changes[]? | select(.change.actions != ["no-op"]) | {address, actions: .change.actions, after: .change.after}]' | sha256sum | cut -c1-64 > digest
+          echo "digest=$(cat digest)" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Infrastructure"
+            if [ "$code" = 2 ]; then
+              echo '```'
+              terraform -chdir="$TF_DIR" show -no-color tfplan
+              echo '```'
+            else
+              echo "No changes."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: plan
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - run: terraform -chdir="$TF_DIR" init -input=false
+      - name: Apply the plan that was approved
+        if: needs.plan.outputs.changes == 'true'
+        env:
+          APPROVED: ${{ needs.plan.outputs.digest }}
+        run: |
+          terraform -chdir="$TF_DIR" plan -input=false -out=tfplan
+          now=$(terraform -chdir="$TF_DIR" show -json tfplan | jq -c '[.resource_changes[]? | select(.change.actions != ["no-op"]) | {address, actions: .change.actions, after: .change.after}]' | sha256sum | cut -c1-64)
+          if [ "$now" != "$APPROVED" ]; then
+            echo "::error::the infrastructure changed since the plan was approved; run the workflow again"
+            exit 1
+          fi
+          terraform -chdir="$TF_DIR" apply -input=false tfplan
+      - name: Read where things are
+        run: |
+          terraform -chdir="$TF_DIR" output -json > "$RUNNER_TEMP/out.json"
+          for k in instance_name relay_domain app_domain web_bucket web_distribution_id; do
+            echo "$(echo "$k" | tr '[:lower:]' '[:upper:]')=$(jq -r ".$k.value" "$RUNNER_TEMP/out.json")" >> "$GITHUB_ENV"
+          done
+      - name: Set up the relay server
+        run: |
+          umask 077
+          dir="$RUNNER_TEMP/ssh"
+          mkdir -p "$dir"
+          # a certificate that lives for minutes, for this instance only; the host keys come from
+          # Lightsail itself, so the server is checked rather than trusted on first sight
+          aws lightsail get-instance-access-details --instance-name "$INSTANCE_NAME" --protocol ssh --output json > "$dir/access.json"
+          jq -r .accessDetails.privateKey "$dir/access.json" > "$dir/key"
+          jq -r .accessDetails.certKey "$dir/access.json" > "$dir/key-cert.pub"
+          ip=$(jq -r .accessDetails.ipAddress "$dir/access.json")
+          user=$(jq -r .accessDetails.username "$dir/access.json")
+          jq -r --arg ip "$ip" '.accessDetails.hostKeys[] | "\($ip) \(.algorithm) \(.publicKey)"' "$dir/access.json" > "$dir/known_hosts"
+          rm "$dir/access.json"
+          [ -s "$dir/known_hosts" ]
+          ssh_opts=(-i "$dir/key" -o CertificateFile="$dir/key-cert.pub" -o UserKnownHostsFile="$dir/known_hosts" -o StrictHostKeyChecking=yes -o BatchMode=yes)
+          scp "${ssh_opts[@]}" deploy/relay/setup.sh "$user@$ip:/tmp/parawatch-relay-setup.sh"
+          # shellcheck disable=SC2029 # the values are meant to expand here, on the runner
+          ssh "${ssh_opts[@]}" "$user@$ip" \
+            "sudo RELAY_DOMAIN='$RELAY_DOMAIN' APP_DOMAIN='$APP_DOMAIN' PARAWATCH_VERSION='$VERSION' bash /tmp/parawatch-relay-setup.sh && rm /tmp/parawatch-relay-setup.sh"
+          rm -rf "$dir"
+      - uses: actions/setup-node@v4
+        if: needs.plan.outputs.web == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - name: Upload the web app
+        if: needs.plan.outputs.web == 'true'
+        run: |
+          npm ci
+          node apps/web/build.mjs
+          # fixed names, so every file is asked for again; CloudFront follows this header
+          aws s3 sync apps/web/dist "s3://$WEB_BUCKET" --delete --cache-control no-cache
+          aws cloudfront create-invalidation --distribution-id "$WEB_DISTRIBUTION_ID" --paths "/*" --query Invalidation.Id --output text
+      - name: Check
+        env:
+          WEB: ${{ needs.plan.outputs.web }}
+        run: |
+          curl -fsS --retry 5 --retry-all-errors "https://$RELAY_DOMAIN/healthz"
+          echo
+          if [ "$WEB" = true ]; then
+            # the service worker carries the version it was built from
+            for _ in $(seq 30); do
+              curl -fsS "https://$APP_DOMAIN/sw.js" | grep -q "parawatch-web-$VERSION" && break
+              sleep 10
+            done
+            curl -fsS "https://$APP_DOMAIN/sw.js" | grep -q "parawatch-web-$VERSION"
+          fi
+          echo "### Deployed parawatch $VERSION" >> "$GITHUB_STEP_SUMMARY"

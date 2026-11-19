@@ -30,12 +30,6 @@ variable "relay_domain" {
   type        = string
 }
 
-variable "app_domain" {
-  description = "Name the phone web app is served at; empty for none."
-  type        = string
-  default     = ""
-}
-
 variable "auto_snapshot" {
   description = "Keep daily automatic snapshots of the instance (Lightsail keeps the last seven)."
   type        = bool
