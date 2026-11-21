@@ -32,6 +32,7 @@ const api = {
   hideRun: (id: string) => ipcRenderer.invoke("pw:hide-run", id),
   issueAside: (key: string, aside: boolean) => ipcRenderer.invoke("pw:issue-aside", key, aside),
   inboxDone: (key: string) => ipcRenderer.invoke("pw:inbox-done", key),
+  deployDecide: (key: string, decision: "approved" | "rejected") => ipcRenderer.invoke("pw:deploy-decide", key, decision),
   dismiss: (card: string) => ipcRenderer.invoke("pw:dismiss", card),
   lead: (project: string, session: string) => ipcRenderer.invoke("pw:lead", project, session),
   open: (target: string) => ipcRenderer.invoke("pw:open", target),

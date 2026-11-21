@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { deployViews } from "./deployViews.js";
 import { inboxViews, issueViews, newsViews, prViews, keyOf, parsePrRef, readCache, githubConfig, githubFailing } from "./github.js";
 import { endedSessions, leadOf, linkPr, listeners, readState } from "./ops.js";
 import { collectRuns } from "./runs.js";
@@ -50,6 +51,8 @@ export function snapshot(opts: { sinceHours?: number; project?: string; closed?:
   if (issues && opts.project) issues = issues.filter((i) => i.project === opts.project);
   let inbox = enabled ? inboxViews(cache, state) : undefined;
   if (inbox && opts.project) inbox = inbox.filter((t) => t.project === opts.project);
+  let deploys = enabled ? deployViews(state) : undefined;
+  if (deploys && opts.project) deploys = deploys.filter((d) => d.project === opts.project);
   let news = newsViews(state, new Date(Date.now() - 24 * 3_600_000).toISOString(), runs);
   if (opts.project) news = news.filter((n) => n.project === opts.project);
   return {
@@ -61,6 +64,7 @@ export function snapshot(opts: { sinceHours?: number; project?: string; closed?:
     prs,
     issues,
     inbox,
+    deploys,
     news,
     github: { enabled, fetchedAt: cache.fetchedAt, error: cache.error, failing: githubFailing(cache) || undefined, failedBy: cache.failedBy, failedAt: cache.failedAt },
     listeners: listeners(),

@@ -1,4 +1,4 @@
-import type { Answer, Card, Claim, DeclaredRun, PrLink, Project, PwEvent } from "./types.js";
+import type { Answer, Card, Claim, DeclaredRun, DeployChange, DeployRef, PrLink, Project, PwEvent } from "./types.js";
 
 /** How many pull request and issue news events the state keeps for the recent news list. */
 const NEWS_KEPT = 300;
@@ -8,6 +8,21 @@ export function sessionTitle(claims: Claim[], session: string | undefined): stri
   if (!session) return undefined;
   const c = claims.find((x) => session.startsWith(x.session) || x.session.startsWith(session));
   return c?.title;
+}
+
+/** A deployment that waited for the human, and what became of it. */
+export interface DeployState {
+  ref: DeployRef;
+  status: DeployChange;
+  /** when it started waiting */
+  since: string;
+  /** when its status last changed */
+  at: string;
+  by?: string;
+  /** the machine that read it waiting from GitHub */
+  dev?: string;
+  ask?: { decision: "approved" | "rejected"; to: string; at: string };
+  error?: string;
 }
 
 export interface State {
@@ -26,7 +41,9 @@ export interface State {
   /** GitHub notifications the human marked read, by thread key, with when */
   readThreads: Map<string, string>;
   /** the latest pull request and issue news, oldest first */
-  news: Extract<PwEvent, { type: "pr.change" | "issue.change" }>[];
+  news: Extract<PwEvent, { type: "pr.change" | "issue.change" | "deploy.change" }>[];
+  /** deployments that waited for the human, by run key */
+  deploys: Map<string, DeployState>;
   lastSeq: number;
 }
 
@@ -42,7 +59,7 @@ function mapAll(xs: string[] | undefined, map: PathMap | undefined, from: string
 
 /** Rebuild current state from the event log. `map` makes other machines' paths local. */
 export function fold(events: PwEvent[], map?: PathMap): State {
-  const s: State = { projects: new Map(), cards: new Map(), runs: new Map(), claims: [], hidden: new Map(), prLinks: new Map(), unlinked: new Set(), aside: new Map(), readThreads: new Map(), news: [], lastSeq: 0 };
+  const s: State = { projects: new Map(), cards: new Map(), runs: new Map(), claims: [], hidden: new Map(), prLinks: new Map(), unlinked: new Set(), aside: new Map(), readThreads: new Map(), news: [], deploys: new Map(), lastSeq: 0 };
   for (const ev of events) {
     s.lastSeq = Math.max(s.lastSeq, ev.seq);
     switch (ev.type) {
@@ -161,6 +178,32 @@ export function fold(events: PwEvent[], map?: PathMap): State {
       case "inbox.read":
         s.readThreads.set(ev.thread, ev.ts);
         break;
+      case "deploy.change": {
+        const was = s.deploys.get(ev.deploy.key);
+        const waiting = ev.change === "waiting";
+        s.deploys.set(ev.deploy.key, {
+          ref: waiting || !was ? ev.deploy : { ...was.ref, project: was.ref.project ?? ev.deploy.project },
+          status: ev.change,
+          since: waiting || !was ? ev.ts : was.since,
+          at: ev.ts,
+          by: ev.by,
+          dev: waiting ? ev.dev : was?.dev,
+        });
+        if (waiting) break;
+        s.news.push(ev);
+        if (s.news.length > NEWS_KEPT * 2) s.news = s.news.slice(-NEWS_KEPT);
+        break;
+      }
+      case "deploy.ask": {
+        const d = s.deploys.get(ev.deploy);
+        if (d?.status === "waiting") s.deploys.set(ev.deploy, { ...d, ask: { decision: ev.decision, to: ev.to, at: ev.ts }, error: undefined });
+        break;
+      }
+      case "deploy.fail": {
+        const d = s.deploys.get(ev.deploy);
+        if (d?.status === "waiting") s.deploys.set(ev.deploy, { ...d, ask: undefined, error: ev.error });
+        break;
+      }
       case "pr.change":
       case "issue.change":
         s.news.push(ev);

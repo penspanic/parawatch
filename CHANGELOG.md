@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Deployments waiting for you. A GitHub Actions job that deploys to an environment with required reviewers waits until one approves it, and GitHub does not tell the person who started it. Parawatch now finds such runs in the repositories of registered projects and shows the ones you can approve: under "Deploys to approve" in the app, DEPLOYS WAITING FOR YOU in `status`, and `parawatch deploy list`. The desktop app notifies when one starts waiting. Approve or Reject on the row, with a second press that names the environment, or `parawatch deploy approve <run>`; from the phone, the machine that read it carries it out. Who decided and how the run ended show under Recent, and a failed deployment is notified.
+
 ## 0.3.29 (2026-11-19)
 
 - Codex wake no longer queues news to a thread in the middle of a turn. A turn that loops on `parawatch wait --timeout` lost the news to the Codex queue in the moment between two waits, and the queue runs only after the turn, so the messages piled up unread. Now the session's own wait takes the news during a turn, and what is left when the turn ends is passed then.

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Panel, spanLabel } from "../src/panel";
-import type { Backend, Card, InboxThread, IssueView, NewsItem, PrView, Run, Snapshot } from "../src/types";
+import type { Backend, Card, DeployView, InboxThread, IssueView, NewsItem, PrView, Run, Snapshot } from "../src/types";
 
 /**
  * The panel as the human sees it: a snapshot goes in, and the sections, counts and buttons that
@@ -441,6 +441,53 @@ describe("opening a session", () => {
     expect(back.title).toBe("Bring back");
     back.click();
     expect(backend.issueAside).toHaveBeenCalledWith("github.com/kim/game#18", false);
+  });
+
+  it("a deployment waiting for the human is approved with a second press that names where it goes", async () => {
+    let done!: () => void;
+    backend.deployDecide = vi.fn(() => new Promise<void>((r) => (done = r)));
+    const d: DeployView = { key: "github.com/kim/game/actions/runs/7", url: "https://github.com/kim/game/actions/runs/7", repo: "kim/game", run: 7, workflow: "Deploy", title: "Release 0.3.29", environments: ["production"], startedBy: "me", since: ago(90) };
+    mount(snapshot({ deploys: [d] }));
+    expect(badgeIn(head(), "rocket")).toBe("1");
+    const row = () => sec("deploys")!.querySelector<HTMLElement>(".pw-deploy")!;
+    expect(row().querySelector(".pw-pr-label")?.textContent).toBe("game production");
+    expect(row().querySelector(".pw-pr-wait")?.textContent).toBe("Deploy by me");
+    const buttons = () => [...row().querySelectorAll<HTMLButtonElement>(".pw-deploy-btn")];
+    expect(buttons().map((b) => b.textContent)).toEqual(["Approve", "Reject"]);
+    buttons()[0]!.click();
+    expect(backend.deployDecide).not.toHaveBeenCalled();
+    expect(buttons().map((b) => b.textContent)).toEqual(["Deploy to production", "Cancel"]);
+    buttons()[1]!.click();
+    expect(buttons().map((b) => b.textContent)).toEqual(["Approve", "Reject"]);
+    buttons()[0]!.click();
+    buttons()[0]!.click();
+    expect(backend.deployDecide).toHaveBeenCalledWith(d.key, "approved");
+    expect(row().textContent).toContain("Approving…");
+    done();
+    // the next snapshot no longer has it
+    await Promise.resolve();
+    mount(snapshot({ deploys: [] }));
+    expect(sec("deploys")).toBeNull();
+  });
+
+  it("a deployment that comes or goes redraws the list", () => {
+    const d: DeployView = { key: "k", url: "https://x", repo: "kim/game", run: 7, workflow: "Deploy", title: "R", environments: ["production"], since: ago(5) };
+    const p = mount(snapshot());
+    expect(sec("deploys")).toBeNull();
+    p.update(snapshot({ deploys: [d] }));
+    expect(sec("deploys")).not.toBeNull();
+    p.update(snapshot({ deploys: [] }));
+    expect(sec("deploys")).toBeNull();
+  });
+
+  it("a deployment the phone asked about says which machine carries it out, and why it could not", () => {
+    const d: DeployView = { key: "k", url: "https://x", repo: "kim/game", run: 7, workflow: "Deploy", title: "R", environments: ["production"], since: ago(5) };
+    backend.deployDecide = vi.fn(async () => {});
+    mount(snapshot({ deploys: [{ ...d, asking: { decision: "approved", to: "mac", at: ago(1) } }] }));
+    expect(sec("deploys")!.textContent).toContain("Approving on mac…");
+    expect(sec("deploys")!.querySelector(".pw-deploy-btn")).toBeNull();
+    mount(snapshot({ deploys: [{ ...d, error: "HTTP 422" }] }));
+    expect(sec("deploys")!.textContent).toContain("Not done: HTTP 422");
   });
 
   it("a host that cannot set issues aside shows them without the button", () => {

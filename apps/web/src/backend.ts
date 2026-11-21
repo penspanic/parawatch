@@ -5,6 +5,7 @@
  */
 import type { Backend, Reply, Run } from "@parawatch/panel";
 import type { Space } from "./space";
+import { askDeploy } from "../../../src/core/deployViews.js";
 
 const MIME: Record<string, string> = {
   png: "image/png",
@@ -63,6 +64,10 @@ export function phoneBackend(space: Space, openUrl: (url: string) => void, notic
       const c = card(id);
       if (c.status === "closed") throw new Error(`Card ${id} is already closed`);
       await space.append({ type: "card.close", card: id, dismissed: true });
+    },
+
+    async deployDecide(key: string, decision: "approved" | "rejected") {
+      await space.append(askDeploy(space.state(), key, decision));
     },
 
     async hideRun(id: string) {

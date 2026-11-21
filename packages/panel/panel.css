@@ -1711,6 +1711,40 @@ button.pw-round.pw-send:disabled {
 .pw-issue.is-aside .pw-pr-title {
   color: var(--text-faint);
 }
+.pw-deploy-acts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+button.pw-deploy-btn {
+  height: auto;
+  padding: 4px 12px;
+  border: 1px solid var(--pw-line);
+  border-radius: 7px;
+  background: var(--pw-surface);
+  box-shadow: none;
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+}
+button.pw-deploy-btn:hover {
+  background: var(--pw-hover);
+}
+button.pw-deploy-btn.is-go {
+  background: var(--pw-accent);
+  border-color: transparent;
+  color: var(--text-on-accent, #fff);
+}
+button.pw-deploy-btn.is-stop {
+  border-color: var(--color-red);
+  color: var(--color-red);
+}
+.pw-deploy-error {
+  margin-top: 4px;
+  color: var(--color-red);
+  font-size: var(--font-ui-smaller);
+}
 .pw-news {
   display: flex;
   align-items: baseline;

@@ -33,6 +33,7 @@ import {
   waitInbox,
   type CardInput,
 } from "../core/ops.js";
+import { decideDeploy, deployLabel, deployViews } from "../core/deploys.js";
 import { githubConfig, inboxViews, issueViews, markThreadRead, newsViews, parseIssueRef, readCache, resolvePrRef, syncGithub, prViews } from "../core/github.js";
 import { recordPrompt, type PromptHookInput } from "../core/prompts.js";
 import { callingSubagent } from "../adapters/claudeCode.js";
@@ -44,7 +45,7 @@ import { syncText } from "../core/format.js";
 import { RelayClient, RelayMirror, joinCode, newKey, readJoinCode, relayConfig, takeMirrorLock, type RelayConfig } from "../core/relay.js";
 import { createRelayServer } from "../relay/server.js";
 import { collectRuns, shareRunsDue } from "../core/runs.js";
-import { askRows, cardDetail, cardLine, cardRows, inboxLine, inboxRows, issueRows, newsRows, prRows, runsTree, view } from "../core/format.js";
+import { askRows, cardDetail, cardLine, cardRows, deployRows, inboxLine, inboxRows, issueRows, newsRows, prRows, runsTree, view } from "../core/format.js";
 import { hookContext, notify, removeInstructions, writeInstructions } from "../core/integrate.js";
 import { installSkill, skillSource, skillTargets, uninstallSkill } from "../core/skill.js";
 import { recordClient, runningDesktop, versionSkew } from "../core/clients.js";
@@ -499,6 +500,33 @@ issue
   .description("bring back an issue you set aside")
   .action((ref: string) => setIssueAside(issueKey(ref), false));
 
+const deploy = program.command("deploy").description("GitHub Actions deployments waiting for your approval, in the repositories of registered projects");
+deploy
+  .command("list", { isDefault: true })
+  .description("deployments waiting for you: where to, what, who started it and how long it waits")
+  .option("-p, --project <name>", "only this project")
+  .option("--offline", "do not read GitHub, show the last reading")
+  .option("--json", "JSON output")
+  .action(async (o) => {
+    if (!o.offline) await refreshGithub();
+    let deploys = deployViews(readState());
+    if (o.project) deploys = deploys.filter((d) => d.project === o.project);
+    if (o.json) print({ v: SCHEMA_VERSION, deploys });
+    else process.stdout.write(deploys.length ? deployRows(deploys, view()).join("\n") + "\n" + "  approve: parawatch deploy approve <run id>   reject: parawatch deploy reject <run id>\n" : githubNote() ?? "No deployments wait for you.\n");
+  });
+for (const [name, decision, what] of [
+  ["approve", "approved", "approve"],
+  ["reject", "rejected", "reject"],
+] as const) {
+  deploy
+    .command(`${name} <run>`)
+    .description(`${what} a waiting deployment with your gh (the run id, owner/repo#id or its URL)`)
+    .action(async (ref: string) => {
+      const d = await decideDeploy(readState(), ref, decision);
+      process.stdout.write(`${decision === "approved" ? "Approved" : "Rejected"}: ${deployLabel(d.ref)} run ${d.ref.run} (${d.ref.url})\n`);
+    });
+}
+
 const news = program.command("news").description("GitHub news: notifications from other people, and what changed on pull requests and issues lately");
 news
   .command("list", { isDefault: true })
@@ -625,6 +653,10 @@ program
     if (reviews.length) {
       out.push("", head("REVIEWS ASKED OF YOU", reviews.length));
       out.push(...prRows(reviews, v, now, "  "));
+    }
+    if (snap.deploys?.length) {
+      out.push("", head("DEPLOYS WAITING FOR YOU", snap.deploys.length, "  (parawatch deploy approve <run>)"));
+      out.push(...deployRows(snap.deploys, v, now, "  "));
     }
     if (snap.inbox?.length) {
       out.push("", head("FROM PEOPLE ON GITHUB", snap.inbox.length, "  (parawatch news)"));

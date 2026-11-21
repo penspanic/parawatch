@@ -41,6 +41,10 @@ const NEWS_WORDS: Record<string, string> = {
   closed: "closed",
   note: "note",
   assigned: "assigned to you",
+  rejected: "rejected",
+  ended: "stopped waiting",
+  succeeded: "deployed",
+  failed: "deploy failed",
 };
 
 /** What happened, in a few words: "merged", "CI failed", "changes requested by kim". */
