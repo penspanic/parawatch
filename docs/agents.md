@@ -37,7 +37,7 @@ The human can dismiss a card that no longer matters, with the x on the card in t
 
 [`skills/parawatch/SKILL.md`](../skills/parawatch/SKILL.md) teaches an agent the whole protocol: claiming its session, writing a good card, keeping one background wait armed, closing cards, declaring long jobs, and who asks the human when a lead runs workers. Install it with `parawatch skill install` (see [Install](../README.md#install)); `parawatch skill path` prints where it lives, for runtimes that load skills from elsewhere.
 
-`claim`, `run start` and every card command pick up the calling session from `$CLAUDE_CODE_SESSION_ID` (or `$CODEX_THREAD_ID`), so an agent can put itself on the board without knowing its id.
+`claim`, `run start` and every card command pick up the calling session from `$CLAUDE_CODE_SESSION_ID` (or `$CODEX_THREAD_ID`), so an agent can put itself on the board without knowing its id. A process one agent starts inherits its variables, so a `codex exec` worker launched by a Claude Code session has both. Then the command belongs to the nearer agent, found by walking up the process tree from the command (Claude Code names its process in `$CLAUDE_PID`). When the tree cannot be read, as inside Codex's sandbox, the Codex thread wins: a Claude Code session launching Codex workers is the usual way both are set.
 
 ## Waking a Claude Code session
 
