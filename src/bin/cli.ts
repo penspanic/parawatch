@@ -33,6 +33,7 @@ import {
   waitInbox,
   type CardInput,
 } from "../core/ops.js";
+import { callingSession } from "../core/caller.js";
 import { decideDeploy, deployLabel, deployViews } from "../core/deploys.js";
 import { githubConfig, inboxViews, issueViews, markThreadRead, newsViews, parseIssueRef, readCache, resolvePrRef, syncGithub, prViews } from "../core/github.js";
 import { recordPrompt, type PromptHookInput } from "../core/prompts.js";
@@ -65,9 +66,11 @@ const int = (v: string) => {
 };
 const print = (x: unknown) => process.stdout.write(JSON.stringify(x) + "\n");
 
-/** The agent session running this command, when its runtime says so. */
+let caller: { id: string | undefined } | undefined;
+/** The agent session running this command, when its runtime says so; the innermost when two do. */
 function currentSession(): string | undefined {
-  return process.env.CLAUDE_CODE_SESSION_ID || process.env.CODEX_THREAD_ID || undefined;
+  caller ??= { id: callingSession() };
+  return caller.id;
 }
 
 const VERSION = packageVersion();
