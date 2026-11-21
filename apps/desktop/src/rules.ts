@@ -8,9 +8,9 @@ import type { AboutInfo, UpdateState } from "./prefs.js";
 
 const KIND_WORD: Record<Card["kind"], string> = { decide: "Decide", try: "Try", block: "Blocked", todo: "To do" };
 
-/** Cards that need the human now: open, and not a to-do. */
+/** What needs the human now: open cards that are not to-dos, and deployments waiting for approval. */
 export function needsYou(s: Snapshot | undefined): number {
-  return s?.cards.filter((c) => c.status === "open" && c.kind !== "todo").length ?? 0;
+  return (s?.cards.filter((c) => c.status === "open" && c.kind !== "todo").length ?? 0) + (s?.deploys?.length ?? 0);
 }
 
 export function toDo(s: Snapshot | undefined): number {
@@ -103,6 +103,18 @@ export function alertFor(ev: PwEvent, state: AlertContext): Alert | undefined {
     const where = `${ev.issue.repo.split("/")[1]}#${ev.issue.number}`;
     const what = ev.change === "assigned" ? `assigned to you${ev.by ? ` by ${ev.by}` : ""}` : `${ev.by ?? "someone"} commented`;
     return { title: `${where} · ${what}`, body: ev.title ?? ev.issue.url, focus: `issue:${ev.issue.key}`, url: ev.issue.url, dedupe: ev.issue.url };
+  }
+  if (ev.type === "deploy.change" && (ev.change === "waiting" || ev.change === "failed")) {
+    if (ev.late) return undefined;
+    const d = ev.deploy;
+    const where = `${d.repo.split("/")[1]} ${d.environments.map((e) => e.name).join(", ")}`;
+    return {
+      title: `${where} · ${ev.change === "waiting" ? "deploy waits for you" : "deploy failed"}`,
+      body: `${d.workflow}: ${d.title}`.trim(),
+      focus: `deploy:${d.key}`,
+      url: d.url,
+      dedupe: `${d.url}|${ev.change}`,
+    };
   }
   if (ev.type === "inbox.new") {
     if (ev.late) return undefined;

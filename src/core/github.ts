@@ -9,7 +9,9 @@ import path from "node:path";
 import { UserError } from "./ops.js";
 import type { State } from "./state.js";
 import { appendLocked, deviceName, homeDir, withLock } from "./store.js";
-import type { EventBody, InboxThread, IssueChange, IssueRef, IssueView, NewsItem, PrChange, PrRef, PrView, PwEvent, Run } from "./types.js";
+import { dropSeenDeploys, readDeploys } from "./deploys.js";
+import { deployLabel } from "./deployViews.js";
+import type { DeployRef, EventBody, InboxThread, IssueChange, IssueRef, IssueView, NewsItem, PrChange, PrRef, PrView, PwEvent, Run } from "./types.js";
 
 // ------------------------------------------------------------------ config
 
@@ -825,6 +827,15 @@ export async function syncGithub(opts: SyncOptions): Promise<GithubCache> {
         inbox.push(...(prev.inbox ?? []).filter((t) => t.host === host));
       }
     }
+    // deployments waiting for the human: read by REST, a few calls in repositories with reviewers
+    let deploys: EventBody[] = [];
+    try {
+      const got = await readDeploys(opts.state, hosts, gh);
+      deploys = got.events;
+      errors.push(...got.errors);
+    } catch (err) {
+      errors.push(`deployments: ${(err as Error).message}`);
+    }
     return withLock(() => {
       const latest = readCache();
       if (latest.fetchedAt && latest.fetchedAt > started) return latest; // someone else was faster
@@ -838,13 +849,14 @@ export async function syncGithub(opts: SyncOptions): Promise<GithubCache> {
       cache.inbox = inbox.map((t) => ({ ...t, project: repos.get(`${t.host}/${t.repo}`.toLowerCase()) }));
       events.push(...nextIssues(latest.issues, issues, latest.fetchedAt));
       events.push(...nextInbox(latest.inbox, cache.inbox, opts.state.readThreads));
+      events.push(...deploys);
       // a reading long after the previous one finds old news: it still goes to the agents and the
       // news list, but is not notified as if it had just happened
       if (latest.fetchedAt && Date.parse(started) - Date.parse(latest.fetchedAt) > LATE_MS) {
-        for (const e of events) if (e.type === "pr.change" || e.type === "issue.change" || e.type === "inbox.new") e.late = true;
+        for (const e of events) if (e.type === "pr.change" || e.type === "issue.change" || e.type === "inbox.new" || e.type === "deploy.change") e.late = true;
       }
       if (errors.length) cache.error = errors.join("; ");
-      appendLocked((log) => dropReported(events, log, latest.fetchedAt));
+      appendLocked((log) => dropSeenDeploys(dropReported(events, log, latest.fetchedAt), log));
       writeCache(cache);
       return cache;
     });
@@ -934,6 +946,28 @@ export function newsViews(state: State, since: string, runs: Run[] = []): NewsIt
   const merged = new Set(state.news.filter((e) => e.type === "pr.change" && e.change === "merged" && e.ts >= since).map((e) => (e.type === "pr.change" ? e.pr.key : "")));
   for (const e of state.news) {
     if (e.ts < since) continue;
+    if (e.type === "deploy.change") {
+      const d = e.deploy;
+      const id = `${d.key}|${e.change}`;
+      const t = Date.parse(e.ts);
+      const before = seen.get(id);
+      if (before !== undefined && Math.abs(t - before) < 15 * 60_000) continue;
+      seen.set(id, t);
+      out.push({
+        at: e.ts,
+        kind: "deploy",
+        label: deployLabel(d),
+        key: d.key,
+        url: d.url,
+        repo: d.repo,
+        number: d.run,
+        title: d.title,
+        change: e.change,
+        by: e.by,
+        project: d.project,
+      });
+      continue;
+    }
     const ref = e.type === "pr.change" ? e.pr : e.issue;
     if (e.change === "ci_passed" && merged.has(ref.key)) continue;
     const id = `${ref.key}|${e.change}|${e.by ?? ""}|${e.type === "pr.change" ? (e.text ?? "") : ""}`;

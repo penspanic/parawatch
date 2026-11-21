@@ -1,7 +1,7 @@
 import { settingsLine } from "./model.js";
 import type { InboxItem } from "./ops.js";
 import type { SyncStatus } from "./sync.js";
-import type { Card, InboxThread, IssueView, NewsItem, PrView, Run } from "./types.js";
+import type { Card, DeployView, InboxThread, IssueView, NewsItem, PrView, Run } from "./types.js";
 import { inboxReason, newsWords } from "./words.js";
 
 export function ago(iso: string | undefined, now = Date.now()): string {
@@ -274,6 +274,30 @@ export function prRows(prs: PrView[], v: View = PLAIN, now = Date.now(), indent 
   });
 }
 
+/** Deployments waiting for the human: where to, what, who started it and how long it waits. */
+export function deployRows(deploys: DeployView[], v: View = PLAIN, now = Date.now(), indent = ""): string[] {
+  const label = (d: DeployView) => `${d.repo.split("/")[1]} ${d.environments.join(", ")}`;
+  const note = (d: DeployView) =>
+    d.error ? `failed: ${d.error}` : d.asking ? `${d.asking.decision === "approved" ? "approving" : "rejecting"} on ${d.asking.to}` : [d.workflow, d.startedBy ? `by ${d.startedBy}` : ""].filter(Boolean).join(" ");
+  const idW = Math.max(4, ...deploys.map((d) => textWidth(label(d))));
+  const noteW = Math.min(36, Math.max(0, ...deploys.map((d) => textWidth(note(d)))));
+  const fixed = textWidth(indent) + idW + 2 + 4 + 2 + (noteW ? noteW + 2 : 0);
+  const titleW = Math.max(8, v.width - fixed);
+  return deploys.map((d) =>
+    [
+      indent,
+      paint(v, pad(label(d), idW), "bold"),
+      "  ",
+      paint(v, ago(d.since, now).padStart(4), "dim"),
+      "  ",
+      noteW ? paint(v, pad(fit(note(d), noteW), noteW), ...(d.error ? (["red"] as Paint[]) : (["dim"] as Paint[]))) + "  " : "",
+      fit(d.title, titleW),
+    ]
+      .join("")
+      .trimEnd(),
+  );
+}
+
 /** Issues assigned to the human: who assigned each and when, and the latest word from someone else. */
 export function issueRows(issues: IssueView[], v: View = PLAIN, now = Date.now(), indent = ""): string[] {
   const label = (i: IssueView) => `${i.repo.split("/")[1]}#${i.number}`;
@@ -328,13 +352,13 @@ export function inboxRows(threads: InboxThread[], v: View = PLAIN, now = Date.no
 
 /** Recent changes on pull requests and issues, newest first. */
 export function newsRows(news: NewsItem[], v: View = PLAIN, now = Date.now(), indent = ""): string[] {
-  const label = (n: NewsItem) => `${n.repo.split("/")[1]}#${n.number}`;
+  const label = (n: NewsItem) => n.label ?? `${n.repo.split("/")[1]}#${n.number}`;
   const idW = Math.max(4, ...news.map((n) => textWidth(label(n))));
   const whatW = Math.min(30, Math.max(0, ...news.map((n) => textWidth(newsWords(n)))));
   const fixed = textWidth(indent) + 4 + 2 + idW + 2 + whatW + 2;
   const restW = Math.max(8, v.width - fixed);
   return news.map((n) => {
-    const tone: Paint[] = /^(ci_failed|conflict|changes_requested|queue_removed)$/.test(n.change) ? ["red"] : /^(merged|approved|ci_passed)$/.test(n.change) ? ["green"] : [];
+    const tone: Paint[] = /^(ci_failed|conflict|changes_requested|queue_removed|rejected|failed)$/.test(n.change) ? ["red"] : /^(merged|approved|ci_passed|succeeded)$/.test(n.change) ? ["green"] : [];
     const owner = n.sessionTitle ?? n.project;
     return [
       indent,

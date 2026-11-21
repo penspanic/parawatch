@@ -32,6 +32,8 @@ parawatch pr list                # open pull requests: what each waits on, since
 parawatch issue list             # open issues assigned to you: who gave each, the latest word from someone else (-a: with the ones set aside)
 parawatch issue aside <issue>    # fold an issue away (URL or owner/repo#N) until someone else comments on it
 parawatch issue back <issue>
+parawatch deploy list            # GitHub Actions deployments waiting for your approval, in registered projects' repositories
+parawatch deploy approve <run>   # approve one with your gh (run id, owner/repo#id or URL); deploy reject <run> rejects it
 parawatch news                   # GitHub notifications other people caused, then what changed on pull requests and issues today (--hours, -p, --json)
 parawatch news done <key>        # mark a notification read, here and on GitHub (the host:id `news` shows)
 parawatch goto api#88            # open the session that owns a pull request

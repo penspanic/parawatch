@@ -203,6 +203,33 @@ export interface IssueRef {
 /** What happened on an issue assigned to the human: it was assigned, or someone else commented. */
 export type IssueChange = "assigned" | "commented";
 
+/** A GitHub Actions run that waits for the human to approve a deployment, as read from GitHub. */
+export interface DeployRef {
+  /** `host/owner/repo/actions/runs/<id>` */
+  key: string;
+  host: string;
+  repo: string;
+  run: number;
+  url: string;
+  /** the workflow's name ("Deploy") */
+  workflow: string;
+  /** the run's title: the commit message or what started it */
+  title: string;
+  /** the environments it waits on that the human can approve */
+  environments: { id: number; name: string }[];
+  /** who started the run */
+  startedBy?: string;
+  /** the registered project whose repository this is */
+  project?: string;
+}
+
+/**
+ * What became of a deployment waiting for approval: approved or rejected (by whom), left waiting
+ * another way (`ended`: cancelled, or approved for an environment the human cannot see), and how
+ * an approved run ended.
+ */
+export type DeployChange = "waiting" | "approved" | "rejected" | "ended" | "succeeded" | "failed";
+
 /**
  * A GitHub notification someone else caused: a mention, a review request, an assignment, a comment
  * by another person. What the human's own account did (which includes everything its agents did)
@@ -272,6 +299,15 @@ export type EventBody =
   | { type: "inbox.new"; thread: Omit<InboxThread, "project">; late?: boolean }
   /** the human marked it read, here or on GitHub; it comes back when it gets news */
   | { type: "inbox.read"; thread: string }
+  /** a deployment waits for the human's approval, or what became of one; read from GitHub, it wakes no agent */
+  | { type: "deploy.change"; deploy: DeployRef; change: DeployChange; by?: string; source: "github"; late?: boolean }
+  /**
+   * The human decided on a waiting deployment somewhere that cannot reach GitHub itself (the
+   * phone): `to` is the machine that reported it, which carries it out.
+   */
+  | { type: "deploy.ask"; deploy: string; decision: "approved" | "rejected"; to: string }
+  /** carrying out a decision failed; the deployment still waits */
+  | { type: "deploy.fail"; deploy: string; error: string }
   /** the human set an issue aside: it folds away until someone else comments on it */
   | { type: "issue.aside"; issue: string }
   | { type: "issue.back"; issue: string }
@@ -293,6 +329,8 @@ export interface Snapshot {
   issues?: IssueView[];
   /** unread GitHub notifications from other people; absent when GitHub is not set up */
   inbox?: InboxThread[];
+  /** deployments waiting for the human to approve them */
+  deploys?: DeployView[];
   /** what happened on pull requests and issues in the last day, newest first */
   news?: NewsItem[];
   github?: GithubInfo;
@@ -369,17 +407,40 @@ export interface PrView {
   unrouted?: boolean;
 }
 
-/** One thing that happened on a pull request or an issue, for the recent news list. */
+/** A deployment waiting for the human, as `status` and the panels show it. */
+export interface DeployView {
+  key: string;
+  url: string;
+  repo: string;
+  run: number;
+  workflow: string;
+  title: string;
+  environments: string[];
+  startedBy?: string;
+  /** waiting since */
+  since: string;
+  project?: string;
+  /** the machine that read it from GitHub, which carries out a decision made on the phone */
+  device?: string;
+  /** a decision sent to that machine and not carried out yet */
+  asking?: { decision: "approved" | "rejected"; to: string; at: string };
+  /** why the last decision could not be carried out */
+  error?: string;
+}
+
+/** One thing that happened on a pull request, an issue or a deployment, for the recent news list. */
 export interface NewsItem {
   at: string;
-  kind: "pr" | "issue";
+  kind: "pr" | "issue" | "deploy";
+  /** what to call it when not `repo#number` (a deployment: `repo production`) */
+  label?: string;
   /** `host/owner/repo#12` */
   key: string;
   url: string;
   repo: string;
   number: number;
   title?: string;
-  change: PrChange | IssueChange;
+  change: PrChange | IssueChange | DeployChange;
   by?: string;
   text?: string;
   session?: string;

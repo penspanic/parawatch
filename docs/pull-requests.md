@@ -18,6 +18,16 @@ The same reading asks for the open issues assigned to you, on every repository `
 - **News.** The desktop app notifies once when an issue is assigned to you, and when someone else comments on one. Clicking the notification shows the issue's row in the window. Issues you assign to yourself, and the ones already assigned when parawatch first reads them, are not news.
 - **Set aside.** The archive button on a row, or `parawatch issue aside <issue>`, folds an issue away. It comes back when someone else comments on it, or with `parawatch issue back <issue>`. An issue that is closed or no longer yours drops out on its own.
 
+## Deployments waiting for you
+
+A GitHub Actions job that deploys to an environment with required reviewers stops until a reviewer approves it, and GitHub does not notify the person who started the run, even when that person is the reviewer. So the same reading looks at the repositories of registered projects (the ones their folders push to), once a day finds those with such an environment, and in those asks which runs wait (`actions/runs?status=waiting`) and which of their environments you can approve. With no such repository, nothing more is read; with one, one call per reading.
+
+- **Where.** `status` lists them under DEPLOYS WAITING FOR YOU, `parawatch deploy list` too, and the app under "Deploys to approve" at the top of the human's part, with a count in the header. Each shows the repository and environments, the workflow, who started it, the run's title and how long it waits. They count in the menu bar badge with the cards that need you.
+- **Approve.** Approve or Reject on the row, then a second press that names where it goes ("Deploy to production"). `parawatch deploy approve <run id>` and `parawatch deploy reject <run id>` do the same. It uses your `gh`, for every waiting environment you can approve, with the comment "Approved in Parawatch".
+- **From the phone.** The phone has no `gh`: its decision goes to the machine that read the deployment, which carries it out and shows "Approving on mac…" until then. If that fails, the row says why and the deployment still waits.
+- **News.** The desktop app notifies once when a deployment starts waiting, on every machine, and when an approved one fails. Who approved or rejected it (here or on GitHub) and how the run ended go to Recent.
+- The list lives in the event log, not in each machine's GitHub reading, so the phone and other machines see it too. A run that stops waiting another way (cancelled) leaves it.
+
 ## From people
 
 GitHub's own notifications are mostly the human's own account at work, because agents use it too: every comment and push an agent makes notifies the human as "author". The same reading asks GitHub for the unread notifications (one more call, plus at most 50 small ones to see who wrote a comment) and keeps the ones another person caused:

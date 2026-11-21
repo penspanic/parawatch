@@ -17,7 +17,8 @@ import { markThreadRead, syncGithub } from "../../../src/core/github.js";
 import { desktopPidPath } from "../../../src/core/integrate.js";
 import { allowedSite, siteForPr } from "../../../src/core/sites.js";
 import { snapshot as takeSnapshot } from "../../../src/core/snapshot.js";
-import { attachmentsDir, deviceName, homeDir, sharedDir } from "../../../src/core/store.js";
+import { appendEvent, attachmentsDir, deviceName, homeDir, sharedDir } from "../../../src/core/store.js";
+import { asksFor, decideDeploy } from "../../../src/core/deploys.js";
 import { readDevice, syncStatus, touchDevice } from "../../../src/core/sync.js";
 import { RelayMirror, relayConfig, takeMirrorLock } from "../../../src/core/relay.js";
 import type { PwEvent, Snapshot } from "../../../src/core/types.js";
@@ -167,8 +168,40 @@ function wakeCodex(): void {
   }
 }
 
+const deciding = new Set<string>();
+
+/** Carry out the decisions on deployments the phone sent to this machine. */
+function serveDeployAsks(): void {
+  let asks;
+  try {
+    asks = asksFor(readState());
+  } catch {
+    return;
+  }
+  for (const d of asks) {
+    if (deciding.has(d.ref.key)) continue;
+    deciding.add(d.ref.key);
+    void decideDeploy(readState(), d.ref.key, d.ask!.decision)
+      .then(() => logger.info(`${d.ask!.decision} ${d.ref.key}, as asked from ${d.ask!.at}`))
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.warn(`could not carry out the decision on ${d.ref.key}:`, msg);
+        try {
+          appendEvent(() => ({ type: "deploy.fail", deploy: d.ref.key, error: msg.split("\n").pop()!.slice(0, 200) }));
+        } catch {
+          // the store is busy; the ask stays and is tried again
+        }
+      })
+      .finally(() => {
+        deciding.delete(d.ref.key);
+        refresh();
+      });
+  }
+}
+
 function refresh(): void {
   wakeCodex();
+  serveDeployAsks();
   try {
     latest = takeSnapshot({ sinceHours: settings.sinceHours, closed: settings.keepClosed });
     lastError = undefined;
@@ -216,7 +249,8 @@ function watchGithub(): void {
 }
 
 function onEvent(ev: PwEvent): void {
-  // every machine reads GitHub itself, so news another machine logged is told here already
+  // every machine reads GitHub itself, so news another machine logged is told here already. A
+  // deployment is logged once, by whichever machine read it first, so every machine tells it.
   const echo = (ev.type === "pr.change" || ev.type === "issue.change" || ev.type === "inbox.new") && !!ev.dev && ev.dev !== deviceName();
   const alert = settings.notify && !echo
     ? alertFor(ev, {
@@ -842,6 +876,11 @@ function registerIpc(): void {
   });
   ipcMain.handle("pw:issue-aside", (_e, key: string, aside: boolean) => {
     setIssueAside(key, aside);
+    refresh();
+  });
+  ipcMain.handle("pw:deploy-decide", async (_e, key: string, decision: "approved" | "rejected") => {
+    if (decision !== "approved" && decision !== "rejected") throw new UserError("Approve or reject");
+    await decideDeploy(readState(), key, decision);
     refresh();
   });
   ipcMain.handle("pw:inbox-done", async (_e, key: string) => {

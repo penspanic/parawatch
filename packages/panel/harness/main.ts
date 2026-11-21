@@ -4,7 +4,7 @@ import { Marked } from "marked";
 import { Panel } from "../src/panel";
 import { setIcon } from "../src/icons";
 import { makeToast } from "../src/toast";
-import type { Backend, Card, ChatItem, ChatState, InboxThread, IssueView, NewsItem, Reply, Snapshot } from "../src/types";
+import type { Backend, Card, ChatItem, ChatState, DeployView, InboxThread, IssueView, NewsItem, Reply, Snapshot } from "../src/types";
 
 const markdown = new Marked({ gfm: true, breaks: true });
 const now = Date.now();
@@ -303,6 +303,7 @@ async function load(): Promise<Snapshot> {
         ],
     issues: useReal ? real!.issues : fakeIssues,
     inbox: useReal ? real!.inbox : fakeInbox,
+    deploys: useReal ? real!.deploys : fakeDeploys,
     news: useReal ? real!.news : fakeNews,
     // ?github=failing shows the banner for a reader that cannot run gh
     github: useReal
@@ -314,6 +315,11 @@ async function load(): Promise<Snapshot> {
     devices: useReal ? real!.devices : { me: "mac", others: ["winpc"] },
   };
 }
+
+/** A deployment waiting for the human's approval. */
+const fakeDeploys: DeployView[] = [
+  { key: "github.com/example/app/actions/runs/4450", url: "https://github.com/example/app/actions/runs/4450", repo: "example/app", run: 4450, workflow: "Deploy", title: "Release 1.4.0", environments: ["production"], startedBy: "you", since: at(25), project: "app" },
+];
 
 /** Issues assigned to the human; one set aside. */
 const fakeInbox: InboxThread[] = [
@@ -434,6 +440,12 @@ const backend: Backend = {
     log(`${aside ? "aside" : "back"} ${key}`);
     const i = fakeIssues.find((x) => x.key === key);
     if (i) i.aside = aside;
+  },
+  deployDecide: async (key, decision) => {
+    log(`${decision} ${key}`);
+    await new Promise((r) => setTimeout(r, 800));
+    const i = fakeDeploys.findIndex((d) => d.key === key);
+    if (i >= 0) fakeDeploys.splice(i, 1);
   },
   inboxDone: async (key) => {
     log(`read ${key}`);

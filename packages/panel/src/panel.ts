@@ -3,7 +3,7 @@ import { settingsFull, settingsLine } from "../../../src/core/model.js";
 import { serviceName, siteForPr, siteForRun } from "../../../src/core/sites.js";
 import { inboxReason, newsWords } from "../../../src/core/words.js";
 import { ago, clean, groupRuns, OTHER, type FoldNode, type Group, type RunNode } from "./tree";
-import type { Backend, Card, InboxThread, IssueView, Listener, NewsItem, PrView, Reply, Run, Snapshot } from "./types";
+import type { Backend, Card, DeployView, InboxThread, IssueView, Listener, NewsItem, PrView, Reply, Run, Snapshot } from "./types";
 import { openViewer } from "./viewer";
 import { runLabel, runLabelText, type RunTitles } from "./runTitle";
 import { ChatPane } from "./chat";
@@ -39,7 +39,7 @@ const KIND_ORDER: Card["kind"][] = ["block", "decide", "try", "todo"];
 const DAY = 24 * 60 * 60 * 1000;
 /** Lines the recent news shows at most. */
 const NEWS_SHOWN = 40;
-const NEWS_TONE: Partial<Record<string, string>> = { ci_failed: "bad", conflict: "bad", changes_requested: "bad", queue_removed: "bad", merged: "good", approved: "good", ci_passed: "good" };
+const NEWS_TONE: Partial<Record<string, string>> = { ci_failed: "bad", conflict: "bad", changes_requested: "bad", queue_removed: "bad", rejected: "bad", failed: "bad", merged: "good", approved: "good", ci_passed: "good", succeeded: "good" };
 
 /** When the matter came up: `since` when it is older than the card, else when the card opened. */
 function cardStart(c: Card): string {
@@ -218,6 +218,9 @@ export class Panel {
   private dragging = false;
   /** the issues set aside show under the ones assigned */
   private showAside = false;
+  /** deployments whose Approve or Reject was pressed once and waits for the second press */
+  private deployConfirm = new Map<string, "approved" | "rejected">();
+  private deploySending = new Set<string>();
   private cardsSig = "";
   private head: HTMLElement;
   private cardsEl: HTMLElement;
@@ -503,6 +506,8 @@ export class Panel {
     if (strandedN) this.jumpTo(this.badge(row, "life-buoy", strandedN, `${strandedN} with no session to act on ${strandedN === 1 ? "it" : "them"}: pick a lead`, "pw-asks"), '[data-sec="stranded"]');
     const reviews = s?.prs?.filter((p) => p.reviewRequested && !p.mine).length ?? 0;
     if (reviews) this.jumpTo(this.badge(row, "eye", reviews, `${reviews} pull request${reviews === 1 ? "" : "s"} asking for your review`, "pw-chip-review"), '[data-sec="reviews"]');
+    const deploys = s?.deploys?.length ?? 0;
+    if (deploys) this.jumpTo(this.badge(row, "rocket", deploys, `${deploys} deployment${deploys === 1 ? "" : "s"} waiting for your approval`, "pw-asks"), '[data-sec="deploys"]');
     const fromPeople = s?.inbox?.length ?? 0;
     if (fromPeople) this.jumpTo(this.badge(row, "bell", fromPeople, `${fromPeople} GitHub notification${fromPeople === 1 ? "" : "s"} from other people`, "pw-chip-review"), '[data-sec="inbox"]');
     const assigned = s?.issues?.filter((i) => !i.aside).length ?? 0;
@@ -554,10 +559,11 @@ export class Panel {
     const ls = (s?.listeners ?? []).map((l) => [l.pid, l.project, l.card]);
     const issues = (s?.issues ?? []).map((i) => [i.key, i.title, i.aside, i.assignedAt, i.lastOther?.at, i.project]);
     const inbox = (s?.inbox ?? []).map((t) => [t.key, t.at, t.by]);
+    const deploys = (s?.deploys ?? []).map((d) => [d.key, d.title, d.environments, d.asking?.at, d.error]);
     const news = (s?.news ?? []).slice(0, NEWS_SHOWN).map((n) => [n.key, n.change, n.at, n.sessionTitle]);
     // the lead help lists the project's sessions
     const leaders = this.helpOpen.size ? (s?.runs ?? []).filter((r) => r.kind === "session").map((r) => [r.id, this.nameOf(r), r.state, r.project]) : [];
-    return JSON.stringify([cards.map((c) => [c.id, c.status, c.kind, c.title, c.since, c.from, c.session, c.answers.length, c.comments.length, c.closedAt, c.lead, c.unrouted]), asks, prs, ls, [...this.busy], [...this.reopened], [...this.helpOpen], leaders, issues, this.showAside, inbox, news]);
+    return JSON.stringify([cards.map((c) => [c.id, c.status, c.kind, c.title, c.since, c.from, c.session, c.answers.length, c.comments.length, c.closedAt, c.lead, c.unrouted]), asks, prs, ls, [...this.busy], [...this.reopened], [...this.helpOpen], leaders, issues, this.showAside, inbox, news, deploys, [...this.deployConfirm], [...this.deploySending]]);
   }
 
   private renderCards(now: number): void {
@@ -637,6 +643,16 @@ export class Panel {
     const strandedPrs = prs.filter((p) => p.unrouted && !(p.reviewRequested && !p.mine));
     const waiting = prs.filter((p) => !(p.reviewRequested && !p.mine) && !p.unrouted);
     const inbox = this.snapshot?.inbox ?? [];
+    const deploys = this.snapshot?.deploys ?? [];
+    if (deploys.length) {
+      const body = this.foldGroup(root, "deploys", "", false, {
+        tile: "rocket",
+        tone: "asks",
+        count: deploys.length,
+        label: `Deploys to approve: ${deploys.length} waiting for you`,
+      });
+      for (const d of deploys) body.appendChild(this.deployRow(d, now));
+    }
     if (inbox.length) {
       const body = this.foldGroup(root, "inbox", "", false, {
         tile: "bell",
@@ -1867,7 +1883,7 @@ export class Panel {
     const tone = NEWS_TONE[n.change] ?? "";
     const row = el("div", `pw-news${tone ? ` is-${tone}` : ""}`);
     el("span", "pw-news-age", ago(n.at, now), row).title = new Date(n.at).toLocaleString();
-    const label = el("a", "pw-pr-label", `${n.repo.split("/")[1]}#${n.number}`, row);
+    const label = el("a", "pw-pr-label", n.label ?? `${n.repo.split("/")[1]}#${n.number}`, row);
     (label as HTMLAnchorElement).href = "#";
     label.title = `Open ${n.url}`;
     label.onclick = (e) => {
@@ -1887,6 +1903,82 @@ export class Panel {
       own.onclick = (e) => {
         e.preventDefault();
         void this.backend.goto(n.session!).catch((err) => this.host.notice(err instanceof Error ? err.message : String(err)));
+      };
+    }
+    return row;
+  }
+
+  /**
+   * A deployment waiting for the human: where it goes, what, who started it. Approve and Reject
+   * each take a second press that names what happens, so a stray tap deploys nothing.
+   */
+  private deployRow(d: DeployView, now: number): HTMLElement {
+    const row = el("div", "pw-pr pw-deploy");
+    row.dataset.focus = `deploy:${d.key}`;
+    const top = el("div", "pw-pr-top", undefined, row);
+    this.siteSlot(this.icon(top, "rocket", "pw-pr-icon"), siteForPr(d));
+    const where = `${d.repo.split("/")[1]} ${d.environments.join(", ")}`;
+    const label = el("a", "pw-pr-label", where, top);
+    (label as HTMLAnchorElement).href = "#";
+    label.title = `Open ${d.url}`;
+    label.onclick = (e) => {
+      e.preventDefault();
+      this.backend.open(d.url);
+    };
+    this.withMenu(label, d.url);
+    el("span", "pw-pr-wait", d.startedBy ? `${d.workflow} by ${d.startedBy}` : d.workflow, top);
+    el("span", "pw-meta", ago(d.since, now), top).title = `Waiting since ${new Date(d.since).toLocaleString()}`;
+    el("div", "pw-pr-title", d.title, row);
+    const acts = el("div", "pw-deploy-acts", undefined, row);
+    if (d.error) el("div", "pw-deploy-error", `Not done: ${d.error}`, row);
+    if (d.asking || this.deploySending.has(d.key)) {
+      const verb = (d.asking?.decision ?? this.deployConfirm.get(d.key)) === "rejected" ? "Rejecting" : "Approving";
+      el("span", "pw-meta", d.asking ? `${verb} on ${d.asking.to}…` : `${verb}…`, acts);
+      return row;
+    }
+    if (!this.backend.deployDecide) {
+      el("span", "pw-meta", "Approve it on GitHub, or from the Parawatch app", acts);
+      return row;
+    }
+    const again = () => {
+      this.cardsSig = "";
+      this.update(undefined, this.error);
+    };
+    const asked = this.deployConfirm.get(d.key);
+    if (asked) {
+      const go = el("button", `pw-deploy-btn ${asked === "approved" ? "is-go" : "is-stop"}`, asked === "approved" ? `Deploy to ${d.environments.join(", ")}` : "Reject it", acts);
+      go.onclick = () => {
+        this.deploySending.add(d.key);
+        again();
+        void this.backend.deployDecide!(d.key, asked).then(
+          () => {
+            this.deploySending.delete(d.key);
+            this.deployConfirm.delete(d.key);
+            this.host.refresh();
+          },
+          (err) => {
+            this.deploySending.delete(d.key);
+            this.deployConfirm.delete(d.key);
+            again();
+            this.host.notice(err instanceof Error ? err.message : String(err));
+          },
+        );
+      };
+      const no = el("button", "pw-deploy-btn", "Cancel", acts);
+      no.onclick = () => {
+        this.deployConfirm.delete(d.key);
+        again();
+      };
+      return row;
+    }
+    for (const [text, decision] of [
+      ["Approve", "approved"],
+      ["Reject", "rejected"],
+    ] as const) {
+      const b = el("button", `pw-deploy-btn${decision === "approved" ? " is-go" : ""}`, text, acts);
+      b.onclick = () => {
+        this.deployConfirm.set(d.key, decision);
+        again();
       };
     }
     return row;

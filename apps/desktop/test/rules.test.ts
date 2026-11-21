@@ -200,3 +200,22 @@ describe("npmPrefix", () => {
     expect(npmBin("C:\\npm", "win32")).toBe("C:\\npm\\npm.cmd");
   });
 });
+
+describe("deployments waiting for the human", () => {
+  const KEY = "github.com/kim/game/actions/runs/4450";
+  const deploy = { key: KEY, host: "github.com", repo: "kim/game", run: 4450, url: "https://x", workflow: "Deploy", title: "Release", environments: [{ id: 77, name: "production" }] };
+  const ev = (change: "waiting" | "failed" | "approved", late?: boolean) => ({ type: "deploy.change", deploy, change, source: "github", late, v: 2, seq: 1, ts: "t" }) as PwEvent;
+  const ctx = { runTitle: () => undefined };
+
+  it("notifies when one waits or fails, not when a late reading finds it", () => {
+    expect(alertFor(ev("waiting"), ctx)).toEqual(expect.objectContaining({ title: "game production · deploy waits for you", body: "Deploy: Release", url: "https://x" }));
+    expect(alertFor(ev("failed"), ctx)?.title).toBe("game production · deploy failed");
+    expect(alertFor(ev("approved"), ctx)).toBeUndefined();
+    expect(alertFor(ev("waiting", true), ctx)).toBeUndefined();
+  });
+
+  it("counts one waiting as needing the human", () => {
+    expect(needsYou({ cards: [], deploys: [{}] } as never)).toBe(1);
+    expect(needsYou({ cards: [] } as never)).toBe(0);
+  });
+});

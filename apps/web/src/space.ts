@@ -10,6 +10,7 @@
  */
 import { mergeLogs, parseEventLines, stampFor } from "../../../src/core/log.js";
 import { fold, type State } from "../../../src/core/state.js";
+import { deployViews } from "../../../src/core/deployViews.js";
 import type { Card, Listener, PwEvent, Run, Snapshot } from "../../../src/core/types.js";
 import { keysOf, open, seal, sealedName, type Keys, type RelayConfig } from "./seal";
 
@@ -487,6 +488,7 @@ export class Space {
       projects: [...state.projects.values()],
       cards,
       runs: withoutHidden(runs, state),
+      deploys: deployViews(state),
       listeners,
       devices: { me: this.device, others: this.devices().filter((d) => d !== this.device && this.text.has(`events/${d}.jsonl`)) },
     };
