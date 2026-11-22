@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.30 (2026-11-22)
 
 - A machine that lost power no longer loses its unsent cards when it starts again. The relay mirror remembers which version of each shared file it has seen, and a crash while writing that record left it as zeros. Starting with no record, the mirror took the relay's copy of every file that differed, so events written on that machine and not yet sent (cards, answers, claims) were overwritten. Now an event log with no record is joined line by line with the relay's copy and sent up, the record and pulled files are flushed to disk before they replace the old ones, and an event log with zeros in it is not sent.
 - A `codex exec` worker launched from a Claude Code session is its own session. It inherits the Claude session's `CLAUDE_CODE_SESSION_ID`, and `claim`, `pr link`, `ask` and `wait` used that, so a worker's task, its done line and its pull requests landed on the director's session (#64). With both ids set, parawatch now takes the nearer agent from the process tree, and the Codex thread when the tree cannot be read (Codex's sandbox).
