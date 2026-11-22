@@ -190,6 +190,16 @@ export function withRemote(runs: Run[], dir: string | string[] = desktopSessions
   return runs;
 }
 
+/** Codex names its threads with version 7 UUIDs; Claude Code names its sessions with version 4. */
+export function isCodexThread(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+}
+
+/** The Codex app's link to one of its threads. */
+export function codexThreadUrl(id: string): string {
+  return `codex://threads/${encodeURIComponent(id)}`;
+}
+
 export interface GotoTarget {
   /** the name to show: the claimed title, else the app's title, else the id */
   name: string;
@@ -199,6 +209,8 @@ export interface GotoTarget {
   device?: string;
   /** set when the session lives in the Claude desktop app */
   desktop?: DesktopSession;
+  /** a Codex thread: `url` opens it in the Codex app */
+  codex?: boolean;
   url?: string;
 }
 
@@ -232,10 +244,12 @@ export function resolveGoto(target: string, state: State, runs: Run[] = []): Got
   let run = runs.find((r) => r.id === session || (session!.length >= 6 && r.id.startsWith(session!)));
   for (let i = 0; run?.parent && byId.has(run.parent) && i < 8; i++) run = byId.get(run.parent);
   if (run) session = run.id;
-  const desktop = run?.device ? undefined : findDesktopSession(session);
+  // a session seen in no log (it ended long ago) is still known by its id
+  const codex = run ? run.runtime === "codex" : isCodexThread(session);
+  const desktop = run?.device || codex ? undefined : findDesktopSession(session);
   const name = sessionTitle(state.claims, session) ?? run?.title ?? desktop?.title ?? session.slice(0, 8);
-  const url = desktop ? desktopSessionUrl(desktop) : run?.remote;
-  return { name, session, card, desktop, device: run?.device, url };
+  const url = codex ? (run?.device ? undefined : codexThreadUrl(session)) : desktop ? desktopSessionUrl(desktop) : run?.remote;
+  return { name, session, card, desktop, device: run?.device, url, ...(codex ? { codex } : {}) };
 }
 
 /** A line to paste into the session so it knows which card the human means. */
