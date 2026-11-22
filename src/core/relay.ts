@@ -195,7 +195,8 @@ export function readMirrorState(space: string, file = mirrorStatePath()): Mirror
     const s = JSON.parse(fs.readFileSync(file, "utf8")) as MirrorState;
     if (s.v === 1 && s.space === space && s.files) return s;
   } catch {
-    // none yet
+    // none yet, or unreadable (a machine that lost power while writing it leaves zeros); the
+    // mirror then starts with no record of any file, which pull() treats with care
   }
   return { v: 1, space, cursor: 0, files: {} };
 }
@@ -211,6 +212,35 @@ function safeRel(rel: string): boolean {
 }
 
 const hashOf = (b: Buffer) => crypto.createHash("sha256").update(b).digest("hex");
+
+/**
+ * Write a file whole or not at all, and on disk before it takes the old one's place. Without the
+ * flush, a machine that loses power can keep the new name with nothing behind it: zeros where the
+ * file was.
+ */
+export function writeDurable(file: string, data: Buffer | string): void {
+  const tmp = path.join(path.dirname(file), `.${path.basename(file)}.relay.tmp`);
+  const fd = fs.openSync(tmp, "w");
+  try {
+    fs.writeSync(fd, typeof data === "string" ? Buffer.from(data) : data);
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  fs.renameSync(tmp, file);
+}
+
+/**
+ * Every line of both copies of an event log: the server's in its order, then the lines only this
+ * machine has, in theirs. Event logs only grow, so neither copy loses an event.
+ */
+export function mergeLines(server: Buffer, here: Buffer): Buffer {
+  const split = (b: Buffer) => b.toString("utf8").split("\n").filter((l) => l.length);
+  const theirs = split(server);
+  const seen = new Set(theirs);
+  const extra = split(here).filter((l) => !seen.has(l));
+  return Buffer.from([...theirs, ...extra].map((l) => `${l}\n`).join(""));
+}
 
 export interface MirrorOptions {
   dir: string;
@@ -241,8 +271,7 @@ export class RelayMirror {
     try {
       const file = this.o.stateFile ?? mirrorStatePath();
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(`${file}.tmp`, JSON.stringify(this.state) + "\n");
-      fs.renameSync(`${file}.tmp`, file);
+      writeDurable(file, JSON.stringify(this.state) + "\n");
     } catch {
       // kept in memory; the next save writes it
     }
@@ -330,15 +359,26 @@ export class RelayMirror {
       const hereHash = here ? hashOf(here) : undefined;
       // a change made here that has not gone up yet wins; it goes up on the next push
       if (here && k && hereHash !== k.hash && hereHash !== hash) continue;
-      if (hereHash !== hash) {
+      let mergedHere = false;
+      if (here && !k && hereHash !== hash && rel.endsWith(".jsonl")) {
+        // No record of this log here, and it differs: the record was lost (a crash) or this
+        // machine joins with a folder of its own. Taking the server's copy would drop the events
+        // only this machine has, so keep both. The merged log goes up on the next push.
+        const merged = mergeLines(data, here);
+        if (!merged.equals(here)) {
+          writeDurable(p, merged);
+          n++;
+        }
+        mergedHere = !merged.equals(data);
+        this.log(`kept ${rel} from both this machine and the relay`);
+      } else if (hereHash !== hash) {
         fs.mkdirSync(path.dirname(p), { recursive: true });
-        const tmp = path.join(path.dirname(p), `.${path.basename(p)}.relay.tmp`);
-        fs.writeFileSync(tmp, data);
-        fs.renameSync(tmp, p);
+        writeDurable(p, data);
         n++;
       }
       const st = fs.statSync(p);
-      this.state.files[rel] = { hash, size: st.size, mtime: st.mtimeMs };
+      // a merged log is newer than the server's copy: a size no file has makes push() send it
+      this.state.files[rel] = { hash, size: mergedHere ? -1 : st.size, mtime: st.mtimeMs };
       this.names.set(ch.name, rel);
     }
     this.state.cursor = head;
@@ -369,6 +409,11 @@ export class RelayMirror {
         try {
           data = fs.readFileSync(path.join(this.o.dir, ...rel.split("/")));
         } catch {
+          continue;
+        }
+        // an event log is text; zeros in it are what a power loss leaves, not events to send
+        if (rel.endsWith(".jsonl") && data.includes(0)) {
+          if (!skipped.includes(rel)) skipped.push(rel);
           continue;
         }
         const hash = hashOf(data);
