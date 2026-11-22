@@ -192,7 +192,7 @@ program
 
 program
   .command("goto <target>")
-  .description("open the agent session behind a card, a pull request (URL, owner/repo#N, repo#N) or a session id in the Claude desktop app")
+  .description("open the agent session behind a card, a pull request (URL, owner/repo#N, repo#N) or a session id in the Claude desktop app, or the Codex app for a Codex thread")
   .option("--copy", "also put a line about the card on the clipboard, to paste into that session")
   .option("--print", "print the link instead of opening it")
   .action((target: string, o) => {
@@ -206,10 +206,21 @@ program
         process.stderr.write(`parawatch: could not copy to the clipboard; the line is: ${line}\n`);
       }
     }
+    if (g.codex && !g.url) throw new UserError(`${g.name} runs on ${g.device}. Open it there in the Codex app.`);
     if (!g.url && g.device) throw new UserError(`${g.name} runs on ${g.device}. Open it there, or turn on Remote Control for it in the Claude app to open it from here.`);
     if (!g.url) throw new UserError(`${g.name} is not a Claude desktop session. In a terminal: claude --resume ${g.session}`);
     if (o.print) {
       process.stdout.write(g.url + "\n");
+      return;
+    }
+    if (g.codex) {
+      try {
+        if (process.platform === "win32") execFileSync("rundll32", ["url.dll,FileProtocolHandler", g.url], { stdio: "ignore" });
+        else execFileSync(process.platform === "darwin" ? "open" : "xdg-open", [g.url], { stdio: "ignore" });
+      } catch {
+        throw new UserError(`${g.name} is a Codex session, and no Codex app opened it. In a terminal: codex resume ${g.session}`);
+      }
+      process.stdout.write(`Opened ${g.name}\n`);
       return;
     }
     // a session on another machine opens in the Claude app when macOS has it, else in a browser

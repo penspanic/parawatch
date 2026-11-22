@@ -894,6 +894,15 @@ function registerIpc(): void {
   ipcMain.handle("pw:goto", async (_e, target: string) => {
     const g = resolveGoto(target, readState(), latest?.runs);
     if (g.card) clipboard.writeText(cardContextLine(g.card));
+    if (g.codex) {
+      if (!g.url) throw new UserError(`${g.name} runs on ${g.device}. Open it there in the Codex app.`);
+      if (app.getApplicationNameForProtocol("codex://")) {
+        await shell.openExternal(g.url);
+        return `Opened ${g.name}`;
+      }
+      clipboard.writeText(`codex resume ${g.session}`);
+      throw new UserError(`${g.name} is a Codex session. The command to resume it in a terminal is on your clipboard.`);
+    }
     if (!g.url && g.device) throw new UserError(`${g.name} runs on ${g.device}. Open it there, or turn on Remote Control for it in the Claude app to open it from here.`);
     if (!g.url) {
       clipboard.writeText(`claude --resume ${g.session}`);

@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { beforeEach, describe, expect, it } from "vitest";
 import { answerCard, claimSession, closeCard, commentCard, editCard, openCard, readInbox, storedPath, UserError, waitInbox } from "../src/core/ops.js";
-import { desktopSessionsDirs, desktopSessionUrl, findDesktopSession, inAppUrl, resolveGoto, withRemote } from "../src/core/desktop.js";
+import { codexThreadUrl, desktopSessionsDirs, desktopSessionUrl, findDesktopSession, inAppUrl, isCodexThread, resolveGoto, withRemote } from "../src/core/desktop.js";
 import type { Run } from "../src/core/types.js";
 import { attribute } from "../src/core/runs.js";
 import { recentlyClosed, snapshot } from "../src/core/snapshot.js";
@@ -286,6 +286,25 @@ describe("desktop sessions", () => {
     ];
     expect(resolveGoto("agent-206", state, runs)).toMatchObject({ session: "pc-lead-0001", name: "Spill Director", device: "winpc", url: "https://claude.ai/code/session_01ABC" });
     expect(resolveGoto("pc-other-0002", state, runs)).toMatchObject({ device: "winpc", url: undefined });
+  });
+});
+
+describe("goto a Codex thread", () => {
+  const thread = "01a1f831-cff1-74c2-bf0b-d6463f079c98";
+  it("opens it in the Codex app, from its run or from its id alone", () => {
+    const state = fold([]);
+    const runs = [{ id: thread, runtime: "codex", kind: "session", title: "Host velocity API", state: "idle" } as Run];
+    expect(resolveGoto(thread, state, runs)).toMatchObject({ codex: true, url: "codex://threads/01a1f831-cff1-74c2-bf0b-d6463f079c98", desktop: undefined });
+    expect(resolveGoto(thread, state, [])).toMatchObject({ codex: true, url: codexThreadUrl(thread) });
+  });
+  it("leaves a Codex thread on another machine to that machine", () => {
+    const runs = [{ id: thread, runtime: "codex", kind: "session", title: "x", state: "idle", device: "winpc" } as Run];
+    expect(resolveGoto(thread, fold([]), runs)).toMatchObject({ codex: true, device: "winpc", url: undefined });
+  });
+  it("tells Codex ids from Claude Code ids", () => {
+    expect(isCodexThread(thread)).toBe(true);
+    expect(isCodexThread("7fb2b866-824b-443c-aac7-f12055489674")).toBe(false);
+    expect(isCodexThread("agent-206")).toBe(false);
   });
 });
 

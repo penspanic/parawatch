@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Going to the session behind a card opens a Codex thread in the Codex app (`codex://threads/<id>`). It said the thread was "not a Claude desktop session" and put `claude --resume <id>` on the clipboard, which cannot resume a Codex thread. Without the Codex app, the clipboard gets `codex resume <id>`.
+
 ## 0.3.30 (2026-11-22)
 
 - A machine that lost power no longer loses its unsent cards when it starts again. The relay mirror remembers which version of each shared file it has seen, and a crash while writing that record left it as zeros. Starting with no record, the mirror took the relay's copy of every file that differed, so events written on that machine and not yet sent (cards, answers, claims) were overwritten. Now an event log with no record is joined line by line with the relay's copy and sent up, the record and pulled files are flushed to disk before they replace the old ones, and an event log with zeros in it is not sent.
