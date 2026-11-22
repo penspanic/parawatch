@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.31 (2026-11-22)
 
 - Going to the session behind a card opens a Codex thread in the Codex app (`codex://threads/<id>`). It said the thread was "not a Claude desktop session" and put `claude --resume <id>` on the clipboard, which cannot resume a Codex thread. Without the Codex app, the clipboard gets `codex resume <id>`.
 
