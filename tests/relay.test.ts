@@ -179,6 +179,60 @@ describe("two machines through a relay", () => {
     expect(pc.read("events/mac.jsonl")).toBe("x\n");
   });
 
+  it("keeps the events only this machine has when its record of the relay is lost", async () => {
+    const c = await space();
+    const mac = machine("mac", c);
+    const pc = machine("pc", c);
+    pc.write("events/pc.jsonl", '{"seq":1}\n{"seq":2}\n');
+    await pc.m.once();
+    await mac.m.once();
+    // the PC writes an event, then loses power before it goes up: its record reads as zeros
+    pc.write("events/pc.jsonl", '{"seq":1}\n{"seq":2}\n{"seq":3,"title":"only on the pc"}\n');
+    fs.writeFileSync(path.join(root, "pc-state.json"), Buffer.alloc(4096));
+    const again = new RelayMirror({ dir: pc.dir, config: c, stateFile: path.join(root, "pc-state.json") });
+    await again.once();
+    expect(pc.read("events/pc.jsonl")).toContain("only on the pc");
+    await mac.m.once();
+    expect(mac.read("events/pc.jsonl")).toBe('{"seq":1}\n{"seq":2}\n{"seq":3,"title":"only on the pc"}\n');
+  });
+
+  it("joins two copies of a log that went apart, every line once", async () => {
+    const c = await space();
+    const mac = machine("mac", c);
+    const pc = machine("pc", c);
+    mac.write("events/pc.jsonl", "a\nb\n");
+    await mac.m.once();
+    pc.write("events/pc.jsonl", "a\nc\n");
+    await pc.m.once();
+    expect(pc.read("events/pc.jsonl")).toBe("a\nb\nc\n");
+    await mac.m.once();
+    expect(mac.read("events/pc.jsonl")).toBe("a\nb\nc\n");
+  });
+
+  it("a file other than a log still comes from the relay when this machine has no record of it", async () => {
+    const c = await space();
+    const mac = machine("mac", c);
+    const pc = machine("pc", c);
+    mac.write("devices/mac.json", "from mac");
+    await mac.m.once();
+    pc.write("devices/mac.json", "stale");
+    await pc.m.once();
+    expect(pc.read("devices/mac.json")).toBe("from mac");
+  });
+
+  it("does not send a log with zeros in it", async () => {
+    const c = await space();
+    const mac = machine("mac", c);
+    const pc = machine("pc", c);
+    pc.write("events/pc.jsonl", "a\n");
+    await pc.m.once();
+    await mac.m.once();
+    fs.writeFileSync(path.join(pc.dir, "events/pc.jsonl"), Buffer.alloc(64));
+    await pc.m.once();
+    await mac.m.once();
+    expect(mac.read("events/pc.jsonl")).toBe("a\n");
+  });
+
   it("does not write a file outside the folder whatever path a sealed file names", async () => {
     const c = await space();
     const k = keysFor(c.key);
