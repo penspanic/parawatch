@@ -129,7 +129,7 @@ site
 parawatch init -f AGENTS.md -p game     # or CLAUDE.md
 ```
 
-This writes a short block that tells the agents in that project to say what they work on, ask on cards and keep one `parawatch wait` armed. The details are in [Agents](docs/agents.md).
+This writes a short block that tells the agents in that project which parawatch project it is, that the human answers on cards, and to take the commands from `parawatch guide` or the skill. The block holds no commands, so it stays right when parawatch is updated. The details are in [Agents](docs/agents.md).
 
 ## Docs
 

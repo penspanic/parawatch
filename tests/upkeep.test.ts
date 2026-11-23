@@ -23,6 +23,16 @@ beforeEach(() => {
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "parawatch-upkeep-"));
 
+/** A block as written before 0.3.32, with the commands spelled out. */
+const OLD_BLOCK = `<!-- parawatch:begin -->
+## Parawatch
+
+The human follows this work through \`parawatch\` and answers there, not in chat.
+
+- When you know what you work on: \`parawatch claim --project game --task <ticket> --title "<what you do>"\`.
+- Never answer a card yourself.
+<!-- parawatch:end -->`;
+
 describe("versions", () => {
   it("reads its own version from package.json", () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8")) as { version: string };
@@ -142,9 +152,12 @@ describe("taking it out again", () => {
 
   it("tells an old block from the current one", () => {
     const f = path.join(tmp(), "CLAUDE.md");
-    fs.writeFileSync(f, instructions("game").replace("Never answer a card yourself", "Never answer cards") + "\n");
+    fs.writeFileSync(f, OLD_BLOCK + "\n");
     expect(instructionState(f)).toBe("outdated");
     writeInstructions(f, "game");
+    expect(instructionState(f)).toBe("current");
+    // a later release that words the block differently does not make it older
+    fs.writeFileSync(f, instructions("game").replace("Never answer a card yourself", "Never answer cards") + "\n");
     expect(instructionState(f)).toBe("current");
     fs.writeFileSync(f, instructions() + "\n");
     expect(instructionState(f)).toBe("current");
@@ -179,7 +192,7 @@ describe("doctor", () => {
     fs.mkdirSync(t.home, { recursive: true });
     recordClient({ name: "desktop", version: "0.2.2", pid: process.pid, log: "/logs/main.log" });
     const cwd = tmp();
-    fs.writeFileSync(path.join(cwd, "AGENTS.md"), instructions("game").replace("Never answer a card yourself", "Never answer cards") + "\n");
+    fs.writeFileSync(path.join(cwd, "AGENTS.md"), OLD_BLOCK + "\n");
     const checks = await doctor({
       version: "0.2.1",
       update: { current: "0.2.1", latest: "0.2.2", newer: true },

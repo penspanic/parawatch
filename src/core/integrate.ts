@@ -10,18 +10,28 @@ import { insidePath } from "./paths.js";
 export const BEGIN = "<!-- parawatch:begin -->";
 export const END = "<!-- parawatch:end -->";
 
+/**
+ * Words every block written from now on carries. A block with them points to the installed version
+ * for how to use parawatch, so it stays right across releases and is never reported as older.
+ */
+const POINTS_TO_GUIDE = "not from this file";
+
+/**
+ * The block for a project's instruction file. It holds only what belongs to the project and does
+ * not change with a release: the project's name, that the human answers on cards, and where the
+ * commands are explained. The commands themselves come from the installed version (the skill,
+ * `parawatch guide`, `--help`), so a release never leaves this block behind.
+ */
 export function instructions(project?: string): string {
   const p = project ?? "<project>";
   return `${BEGIN}
 ## Parawatch
 
-The human follows this work through \`parawatch\` and answers there, not in chat. Follow the \`parawatch\` skill if you have one; \`parawatch guide\` prints the same for the installed version.
+This repository is the parawatch project \`${p}\`. The human follows this work through \`parawatch\` and answers there, not in chat.
 
-- When you know what you work on: \`parawatch claim --project ${p} --task <ticket, PR or short name> --title "<what you do>"\`. When you open a pull request: \`parawatch pr link <url>\`. When the work is finished: \`parawatch claim --done "<one line on how it ended>"\`. A worker a lead started needs nothing more.
-- Anything you need from the human goes on a card, never only in your reply: \`parawatch ask\`, \`try\`, \`block\` or \`todo\` with \`--project ${p}\` (examples in \`parawatch ask --help\`). Caption each picture: \`--attach "Now=/abs/now.png"\`.
-- After opening a card or linking a pull request, keep one background \`parawatch wait\` armed. Act on what it prints, \`parawatch close <card> --note "what you did"\`, and arm it again.
-- A long job with no agent log (CI, a bake, a benchmark): \`parawatch run watch "title" --project ${p} -- <command>\`.
-- Never answer a card yourself.
+- Before your first parawatch command in a session, run \`parawatch guide\` or follow the \`parawatch\` skill. Both match the installed version: take commands and flags from there, ${POINTS_TO_GUIDE}.
+- Claims and cards take \`--project ${p}\`.
+- Anything you need from the human goes on a card, never only in your reply. Never answer a card yourself.
 ${END}`;
 }
 
@@ -79,11 +89,14 @@ function readBlock(file: string): { block: string; project?: string } | undefine
   return { block, project: project === "<project>" ? undefined : project };
 }
 
-/** Whether a file has the parawatch block, and whether it is the one this version writes. */
+/**
+ * Whether a file has the parawatch block, and whether it is an older one that still spells out
+ * commands (written before 0.3.32) and so falls behind each release.
+ */
 export function instructionState(file: string): "current" | "outdated" | "absent" {
   const found = readBlock(file);
   if (!found) return "absent";
-  return found.block === instructions(found.project) ? "current" : "outdated";
+  return found.block.includes(POINTS_TO_GUIDE) ? "current" : "outdated";
 }
 
 /** The `init` command that rewrites a file's block for this version, keeping the project it names. */

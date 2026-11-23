@@ -6,7 +6,7 @@ Add the agent protocol to a project's instruction file:
 parawatch init -f AGENTS.md -p game     # or CLAUDE.md
 ```
 
-It writes a short block between `<!-- parawatch:begin -->` and `<!-- parawatch:end -->` and replaces it in place on later runs. The protocol in short:
+It writes a short block between `<!-- parawatch:begin -->` and `<!-- parawatch:end -->` and replaces it in place on later runs. The block names the project, says the human answers on cards, and sends agents to `parawatch guide` or the skill for the commands. It holds no commands itself, so an update of parawatch does not leave it behind; only a block written before 0.3.32, which spelled the commands out, needs `parawatch init -f <file> -p <project>` once, and `parawatch doctor` names it. The protocol in short:
 
 ```
 parawatch claim -p api -t ABC-1234 --title "Fix the login redirect"   # as soon as the work is clear
