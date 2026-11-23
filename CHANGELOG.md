@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Pictures on a card say what they are. `--attach "Now=/path/now.png"` puts a caption under the picture in the panel and the viewer, `--option-attach "2=Outline"` ties pictures to a choice (its number shows on them, and pointing at the choice lights them and flips comparisons to them), `--compare "Now,Outline"` shows several pictures or videos as one with a tab for each (the viewer keeps the zoom while flipping, and videos keep their moment), and `--grid 3` lays them out in columns of one width. `edit` changes all of these while nobody has answered. Cards stay readable by older copies, which show the files as before.
+- A card with several pictures and no captions, or whose body points at pictures by their place ("first picture", "left to right"), prints a hint with the edit to make.
+- `parawatch guide [topic]` prints how agents work with parawatch for the installed version. The skill is now a short core (a worker's three commands come first) with reference pages for cards, attachments, pull requests, long jobs, leads and machines, and the AGENTS.md block is shorter and points to the guide. `parawatch init -f <file>` brings an older block up to date; `doctor` says when one is older.
+- `parawatch run watch "<title>" -p <project> -- <command>` runs a command as a declared run: it starts with the command, its output counts as beats, and it ends with the command's exit code.
+- Commands agents got wrong now answer with what to do: `parawatch link` names `pr link`, `todo` and `block` given choices name `ask`, `digest` takes `-p`, `sync root` with no name lists the named folders, and `lead <project>` without a session picks the calling one. `ask`, `try`, `edit`, `claim`, `run watch` and `pr link` end their help with examples.
+- The desktop app keeps the command line up to date on Windows too. It looked for npm only inside the global prefix (`%APPDATA%\npm`), where Windows has none, so the command line stayed at the version first installed. It now also uses the npm beside node (Program Files, nvm) or on the PATH, still installing into the same prefix. When it cannot update the command line it says so once, in its log and in a notification with the command to run.
+
 ## 0.3.31 (2026-11-22)
 
 - Going to the session behind a card opens a Codex thread in the Codex app (`codex://threads/<id>`). It said the thread was "not a Claude desktop session" and put `claude --resume <id>` on the clipboard, which cannot resume a Codex thread. Without the Codex app, the clipboard gets `codex resume <id>`.

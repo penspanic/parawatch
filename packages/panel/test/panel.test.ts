@@ -138,6 +138,56 @@ describe("panel", () => {
     expect(look?.textContent).toBe("1) the camera\n2) the hand\n3) the pocket");
   });
 
+  it("pictures carry their captions and choices; a comparison is one cell with a tab for each", async () => {
+    backend.mediaUrl.mockImplementation(async (f: string) => `blob:${f}`);
+    const attach = ["/c/now.png", "/c/ring.png", "/c/outline.png", "/c/plain.png"];
+    mount(
+      snapshot({
+        cards: [
+          card({
+            id: "c1",
+            title: "Which halo?",
+            options: ["Outline", "Ring removed"],
+            attach,
+            media: { captions: ["Now", "Ring removed", "Outline", null], options: [null, 2, 1, null], compare: [[0, 1, 2]], grid: 2 },
+          }),
+        ],
+      }),
+    );
+    const row = root.querySelector<HTMLElement>(".pw-media")!;
+    expect(row.classList.contains("is-grid")).toBe(true);
+    const cells = [...row.querySelectorAll<HTMLElement>(":scope > .pw-media-item")];
+    // the comparison takes the place of its first picture; the plain one has no strip
+    expect(cells.length).toBe(2);
+    const tabs = [...cells[0]!.querySelectorAll<HTMLButtonElement>(".pw-media-tab")];
+    expect(tabs.map((t) => t.textContent)).toEqual(["Now", "2Ring removed", "1Outline"]);
+    expect(cells[1]!.querySelector(".pw-media-foot")).toBeNull();
+    await vi.waitFor(() => expect(cells[0]!.querySelectorAll("img").length).toBe(3));
+    const shown = () => [...cells[0]!.querySelectorAll("img")].findIndex((i) => !i.hidden);
+    expect(shown()).toBe(0);
+    tabs[2]!.click();
+    expect(shown()).toBe(2);
+    // pointing at a choice lights its pictures and flips the comparison to it, and back after
+    tabs[0]!.click();
+    const opts = [...root.querySelectorAll<HTMLButtonElement>(".pw-option")];
+    expect(opts.map((o) => o.classList.contains("has-media"))).toEqual([true, true]);
+    opts[1]!.dispatchEvent(new Event("mouseenter"));
+    expect(shown()).toBe(1);
+    expect(cells[0]!.classList.contains("is-lit")).toBe(true);
+    expect(cells[1]!.classList.contains("is-dim")).toBe(true);
+    opts[1]!.dispatchEvent(new Event("mouseleave"));
+    expect(shown()).toBe(0);
+    expect(cells[1]!.classList.contains("is-dim")).toBe(false);
+  });
+
+  it("a single picture with a caption shows it under the picture, with its choice", async () => {
+    backend.mediaUrl.mockImplementation(async (f: string) => `blob:${f}`);
+    mount(snapshot({ cards: [card({ id: "c1", title: "Ending?", options: ["Side", "Top"], attach: ["/c/side.png", "/c/top.png"], media: { captions: ["Side tank", "Top box"], options: [1, 2] } })] }));
+    const feet = [...root.querySelectorAll(".pw-media-foot")].map((f) => f.textContent);
+    expect(feet).toEqual(["1Side tank", "2Top box"]);
+    await vi.waitFor(() => expect(root.querySelector<HTMLImageElement>(".pw-media-img")?.alt).toBe("Side tank"));
+  });
+
   it("a file the card names says whether it is on its way or stays on the machine that asked", () => {
     const shared = "/Users/me/agent-sync/parawatch/attachments/a.png";
     const pc = "E:\\dev\\game\\run.cmd";

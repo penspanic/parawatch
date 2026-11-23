@@ -15,21 +15,13 @@ export function instructions(project?: string): string {
   return `${BEGIN}
 ## Parawatch
 
-The human follows this work through \`parawatch\`. Use it instead of asking in chat. If a \`parawatch\` skill is available, follow it.
+The human follows this work through \`parawatch\` and answers there, not in chat. Follow the \`parawatch\` skill if you have one; \`parawatch guide\` prints the same for the installed version.
 
-- As soon as you know what you are working on, say so, even when this folder is not where the code lives: \`parawatch claim --project ${p} --task <ticket, PR or short name> --title "<what you do>"\`. Claim again when you move to other work.
-- When you open a pull request: \`parawatch pr link <url>\`. Reviews, CI results and merges on it then wake your wait.
-- When the work is finished: \`parawatch claim --done "<one line on how it ended>"\`.
-
-- Need a decision: \`parawatch ask --project ${p} "question" --option "..." --option "..." --recommend N --body "two or three lines"\`
-- Need approval for a step you have prepared (a merge, a message, a status change): \`parawatch ask --project ${p} "title" --action "<exact command>" [--preview <file with the text>]\`
-- Need the human to try something (a build, a video, a screen): \`parawatch try --project ${p} "title" --open <app or file> --attach <video or image> --look "what to look at"\`
-- Stuck until the human does something only they can do (install, sudo, sign in): \`parawatch block --project ${p} "what to do"\`
-- Something only the human can do, but nothing waits on it now: \`parawatch todo --project ${p} "what to do"\`
-- Put every question for the human on a card, not only in your reply: a question left in chat is easy to miss.
-- After opening a card or linking a pull request, keep a background wait armed: \`parawatch wait\`. It prints the human's answers to your cards and news on your pull requests and exits; act on them, \`parawatch close <card> --note "what you did"\`, then arm it again. A lead waits the same way; answers on another live session's cards go to that session. What no session owns goes to the lead (\`parawatch claim --project ${p} --role lead\`).
-- A long job with no agent log (a bake, a benchmark): \`parawatch run start --project ${p} "title" --heartbeat <seconds> [--log <file>]\`, \`parawatch run note <id> "..."\`, \`parawatch run end <id>\`.
-- Never answer a card yourself. \`parawatch status\` shows everything that is open.
+- When you know what you work on: \`parawatch claim --project ${p} --task <ticket, PR or short name> --title "<what you do>"\`. When you open a pull request: \`parawatch pr link <url>\`. When the work is finished: \`parawatch claim --done "<one line on how it ended>"\`. A worker a lead started needs nothing more.
+- Anything you need from the human goes on a card, never only in your reply: \`parawatch ask\`, \`try\`, \`block\` or \`todo\` with \`--project ${p}\` (examples in \`parawatch ask --help\`). Caption each picture: \`--attach "Now=/abs/now.png"\`.
+- After opening a card or linking a pull request, keep one background \`parawatch wait\` armed. Act on what it prints, \`parawatch close <card> --note "what you did"\`, and arm it again.
+- A long job with no agent log (CI, a bake, a benchmark): \`parawatch run watch "title" --project ${p} -- <command>\`.
+- Never answer a card yourself.
 ${END}`;
 }
 

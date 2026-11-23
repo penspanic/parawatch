@@ -2,6 +2,8 @@
  * A viewer over the whole window for a card's pictures and videos: the page dims, the picture
  * fits the window, and it zooms (wheel, pinch, double click, + and -) and pans (drag). Arrows go
  * to the card's other pictures. Esc, the close button or a click beside the picture closes it.
+ * Pictures of one comparison keep the zoom and the spot between them, so a difference stays in
+ * view while the human flips; their captions sit under the picture as buttons.
  */
 
 export interface ViewerItem {
@@ -9,6 +11,12 @@ export interface ViewerItem {
   /** a URL the page can load */
   src: string;
   video: boolean;
+  /** the name the card gives it */
+  caption?: string;
+  /** the comparison it belongs to, if any: items of one group are side by side in the list */
+  group?: number;
+  /** the choice it belongs to */
+  option?: number;
 }
 
 export interface ViewerHost {
@@ -55,6 +63,7 @@ export function openViewer(doc: Document, items: ViewerItem[], start: number, ho
   const prev = button(root, "chevron-left", "Previous (←)", "pw-viewer-prev");
   const next = button(root, "chevron-right", "Next (→)", "pw-viewer-next");
   const caption = el("div", "pw-viewer-caption", root);
+  const tabs = el("div", "pw-viewer-tabs", root);
 
   let index = start;
   let media: HTMLImageElement | HTMLVideoElement | undefined;
@@ -107,8 +116,12 @@ export function openViewer(doc: Document, items: ViewerItem[], start: number, ho
   };
 
   const show = (i: number) => {
+    const before = items[index];
+    const kept = { nw, nh, scale, tx, ty };
     index = (i + items.length) % items.length;
     const item = items[index]!;
+    // flipping inside a comparison keeps the zoom and the spot when the pictures are the same size
+    const same = before !== item && before?.group !== undefined && before.group === item.group && !item.video && media instanceof HTMLImageElement;
     stage.replaceChildren();
     root.classList.toggle("is-video", item.video);
     root.classList.remove("is-zoomed");
@@ -126,14 +139,29 @@ export function openViewer(doc: Document, items: ViewerItem[], start: number, ho
       img.addEventListener("load", () => {
         nw = img.naturalWidth;
         nh = img.naturalHeight;
-        toFit();
+        if (same && nw === kept.nw && nh === kept.nh) {
+          fit = fitScale();
+          ({ scale, tx, ty } = kept);
+          draw();
+        } else toFit();
         img.classList.add("is-ready");
       });
       img.src = item.src;
       media = img;
     }
-    caption.textContent = items.length > 1 ? `${basename(item.file)}  ·  ${index + 1} / ${items.length}` : basename(item.file);
+    const name = item.caption ? `${item.option ? `${item.option} · ` : ""}${item.caption}` : basename(item.file);
+    caption.textContent = items.length > 1 ? `${name}  ·  ${index + 1} / ${items.length}` : name;
     caption.title = item.file;
+    tabs.replaceChildren();
+    if (item.group !== undefined) {
+      items.forEach((x, k) => {
+        if (x.group !== item.group) return;
+        const b = el("button", k === index ? "pw-viewer-tab is-on" : "pw-viewer-tab", tabs, x.caption ?? basename(x.file));
+        b.title = x.file;
+        b.onclick = () => show(k);
+      });
+    }
+    tabs.hidden = !tabs.childElementCount;
     prev.hidden = next.hidden = items.length < 2;
   };
 

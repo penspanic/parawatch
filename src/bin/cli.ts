@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import {
   UserError,
   addProject,
@@ -41,20 +41,22 @@ import { callingSubagent } from "../adapters/claudeCode.js";
 import { digest, digestText, localDate } from "../core/digest.js";
 import { everywhere, readConfig, readEvents, sharedDir, writeConfig } from "../core/store.js";
 import { followEvents } from "../core/follow.js";
-import { adapterNames, setRoot, setupSync, syncAdapter, syncStatus, touchDevice } from "../core/sync.js";
+import { adapterNames, namedRoots, setRoot, setupSync, syncAdapter, syncStatus, touchDevice } from "../core/sync.js";
 import { syncText } from "../core/format.js";
 import { RelayClient, RelayMirror, joinCode, newKey, readJoinCode, relayConfig, takeMirrorLock, type RelayConfig } from "../core/relay.js";
 import { createRelayServer } from "../relay/server.js";
 import { collectRuns, shareRunsDue } from "../core/runs.js";
 import { askRows, cardDetail, cardLine, cardRows, deployRows, inboxLine, inboxRows, issueRows, newsRows, prRows, runsTree, view } from "../core/format.js";
 import { hookContext, notify, removeInstructions, writeInstructions } from "../core/integrate.js";
-import { installSkill, skillSource, skillTargets, uninstallSkill } from "../core/skill.js";
+import { guideText, guideTopics, installSkill, skillSource, skillTargets, uninstallSkill } from "../core/skill.js";
 import { recordClient, runningDesktop, versionSkew } from "../core/clients.js";
 import { doctor, doctorText } from "../core/doctor.js";
 import { checkUpdate, updateLine } from "../core/update.js";
 import { packageVersion } from "../core/version.js";
 import { cardContextLine, inAppUrl, resolveGoto } from "../core/desktop.js";
 import { snapshot } from "../core/snapshot.js";
+import { mediaHints } from "../core/media.js";
+import { watchCommand } from "../core/watch.js";
 import { CODEX_APP } from "../core/codexWake.js";
 import { SCHEMA_VERSION, type Card } from "../core/types.js";
 
@@ -111,7 +113,9 @@ function cardCommand(kind: Card["kind"], name: string, summary: string) {
     .requiredOption("-p, --project <name>", "project this card belongs to")
     .option("-t, --task <task>", "task within the project")
     .option("-b, --body <text>", "two or three lines of context")
-    .option("--attach <file>", "image, video or file to look at (repeatable)", collect)
+    .option("--attach <[caption=]file>", "image, video or file to look at, with a short caption shown on it (repeatable)", collect)
+    .option("--compare <attachments>", "show these attachments as one comparison the human flips between, by caption, file name or place: \"Before,After\" (repeatable)", collect)
+    .option("--grid <columns>", "lay the attachments out in this many columns of one size", int)
     .option("--from <who>", "who is asking (defaults to the calling session's claimed title)")
     .option("--session <id>", "the agent session asking (defaults to the calling session)")
     .option("--since <date>", "when the matter first came up, if earlier (YYYY-MM-DD)")
@@ -125,6 +129,9 @@ function common(o: Record<string, string | string[] | undefined>) {
     task: o.task as string | undefined,
     body: o.body as string | undefined,
     attach: o.attach as string[] | undefined,
+    compare: o.compare as string[] | undefined,
+    optionAttach: o.optionAttach as string[] | undefined,
+    grid: o.grid as unknown as number | undefined,
     from: o.from as string | undefined,
     session: (o.session as string | undefined) ?? currentSession(),
     since: o.since as string | undefined,
@@ -136,6 +143,7 @@ function finishCard(input: CardInput, json?: boolean) {
   notify(card);
   if (json) print(card);
   else process.stdout.write(`${card.id}\n`);
+  for (const h of mediaHints(card)) process.stderr.write(h + "\n");
 }
 
 cardCommand("decide", "ask", "ask the human to decide, or to approve a prepared action")
@@ -143,6 +151,7 @@ cardCommand("decide", "ask", "ask the human to decide, or to approve a prepared 
   .option("-r, --recommend <n>", "the recommended choice, 1-based", int)
   .option("--action <text>", "the exact command or step that runs on yes (options default to Do it / Don't)")
   .option("--preview <file>", "a file with the text the action sends or changes (a message, a diff)")
+  .option("--option-attach <choice=attachments>", "show attachments beside a choice: \"2=After\" (repeatable)", collect)
   .action((title: string, o) =>
     finishCard({ kind: "decide", title, ...common(o), options: o.option, recommend: o.recommend, action: o.action, preview: o.preview }, o.json),
   );
@@ -152,11 +161,24 @@ cardCommand("try", "try", "ask the human to try a build, watch a video or look a
   .option("-l, --look <text>", "what to look at")
   .action((title: string, o) => finishCard({ kind: "try", title, ...common(o), open: o.open, look: o.look }, o.json));
 
+/** block and todo take no choices; an agent that gives some is told where they go */
+function noChoices(kind: string, o: { option?: string[] }): void {
+  if (o.option?.length) throw new UserError(`${kind} has no choices: it is something only the human can do. To ask them to pick, use parawatch ask -p <project> "<question>" -o "<choice>" -o "<choice>"`);
+}
+
 cardCommand("block", "block", "something only the human can do, and you are stuck until they do it")
-  .action((title: string, o) => finishCard({ kind: "block", title, ...common(o) }, o.json));
+  .addOption(new Option("-o, --option <text>").hideHelp().argParser(collect))
+  .action((title: string, o) => {
+    noChoices("block", o);
+    finishCard({ kind: "block", title, ...common(o) }, o.json);
+  });
 
 cardCommand("todo", "todo", "something only the human can do, but nothing waits on it now")
-  .action((title: string, o) => finishCard({ kind: "todo", title, ...common(o) }, o.json));
+  .addOption(new Option("-o, --option <text>").hideHelp().argParser(collect))
+  .action((title: string, o) => {
+    noChoices("todo", o);
+    finishCard({ kind: "todo", title, ...common(o) }, o.json);
+  });
 
 program
   .command("edit <card>")
@@ -170,8 +192,11 @@ program
   .option("--since <date>", "when the matter first came up (YYYY-MM-DD)")
   .option("--action <text>", "the exact command or step that runs on yes (only before anyone answered)")
   .option("--preview <file>", "a file with the text the action sends; its text is read again (only before anyone answered)")
-  .option("--attach <file>", "replace the attachments with these files (repeatable; only before anyone answered)", collect)
+  .option("--attach <[caption=]file>", "replace the attachments with these, captions included (repeatable; only before anyone answered)", collect)
   .option("--no-attach", "remove the attachments (only before anyone answered)")
+  .option("--compare <attachments>", "show these attachments as one comparison (repeatable; replaces the comparisons)", collect)
+  .option("--option-attach <choice=attachments>", "show attachments beside a choice (repeatable; replaces the ties)", collect)
+  .option("--grid <columns>", "lay the attachments out in this many columns (0 for the usual rows)", int)
   .option("--json", "print the card as JSON")
   .action((id: string, o) => {
     const card = editCard(id, {
@@ -185,9 +210,13 @@ program
       action: o.action,
       preview: o.preview,
       attach: o.attach === false ? [] : o.attach,
+      compare: o.compare,
+      optionAttach: o.optionAttach,
+      grid: o.grid,
     });
     if (o.json) print(card);
     else process.stdout.write(cardLine(card) + "\n");
+    for (const h of mediaHints(card)) process.stderr.write(h + "\n");
   });
 
 program
@@ -280,10 +309,12 @@ program
   });
 
 program
-  .command("lead <project> <session>")
-  .description("make a session the project's lead: it gets what no session owns there, and what ended sessions left")
-  .action((project: string, session: string) => {
-    const r = makeLead(project, session);
+  .command("lead <project> [session]")
+  .description("make a session the project's lead: it gets what no session owns there, and what ended sessions left (defaults to the calling session)")
+  .action((project: string, session: string | undefined) => {
+    const id = session ?? currentSession();
+    if (!id) throw new UserError("no session id given and none found in the environment (CLAUDE_CODE_SESSION_ID, CODEX_THREAD_ID)");
+    const r = makeLead(project, id);
     process.stdout.write(`${r.session.slice(0, 8)} leads ${project}${r.handed.length ? `; handed ${r.handed.join(", ")}` : ""}\n`);
   });
 
@@ -410,6 +441,21 @@ run
   .option("--log <file>", "a log file the job writes; each change counts as a beat")
   .action((title: string, o) => {
     process.stdout.write(startRun({ title, project: o.project, task: o.task, parent: o.parent ?? currentSession(), heartbeat: o.heartbeat, log: o.log }) + "\n");
+  });
+run
+  .command("watch <title>")
+  .description("run a command as a declared run: it starts now, stays alive while the command runs, and ends with the command's exit code")
+  .requiredOption("-p, --project <name>", "project")
+  .option("-t, --task <task>", "task")
+  .option("--parent <id>", "the run that started this one (defaults to the calling session)")
+  .option("--heartbeat <seconds>", "count the run as stalled after this long without output from the command", int)
+  .allowExcessArguments(false)
+  .argument("<command...>", "the command and its arguments, after --")
+  .action(async (title: string, command: string[], o) => {
+    const id = startRun({ title, project: o.project, task: o.task, parent: o.parent ?? currentSession(), heartbeat: o.heartbeat });
+    process.stderr.write(`parawatch: run ${id} started\n`);
+    const code = await watchCommand(id, command, o.heartbeat);
+    process.exit(code);
   });
 run.command("note <id> <text>").description("say how it is going (also counts as a beat)").action((id: string, text: string) => noteRun(id, text));
 run.command("beat <id>").description("say it is still alive").action((id: string) => beatRun(id));
@@ -610,9 +656,11 @@ program
   .command("digest")
   .description("what each session did on a day: work claimed, cards, jobs, pull request news, how it ended")
   .option("-d, --date <YYYY-MM-DD>", "the day (default: today)")
+  .option("-p, --project <name>", "only this project")
   .option("--json", "JSON output")
   .action((o) => {
     const d = digest(o.date ?? localDate());
+    if (o.project) d.sessions = d.sessions.filter((x) => x.project === o.project);
     if (o.json) print({ v: SCHEMA_VERSION, ...d });
     else process.stdout.write(digestText(d) + "\n");
   });
@@ -723,6 +771,14 @@ program
 
 // ------------------------------------------------------------------ skill
 
+program
+  .command("guide [topic]")
+  .description("how agents work with parawatch, for this version: the core, or a topic (cards, attachments, prs, runs, lead, machines)")
+  .action((topic: string | undefined) => {
+    process.stdout.write(guideText(topic));
+    if (!topic) process.stdout.write(`\nTopics: ${guideTopics().join(", ")}\n`);
+  });
+
 const skill = program.command("skill").description("the agent skill that teaches agents to use parawatch");
 skill
   .command("path")
@@ -826,9 +882,14 @@ sync
   });
 
 sync
-  .command("root <name> [folder]")
-  .description("name a folder on this machine (a cloud drive, say) so paths under it open on the others; no folder removes it")
-  .action((name: string, folder: string | undefined) => {
+  .command("root [name] [folder]")
+  .description("name a folder on this machine (a cloud drive, say) so paths under it open on the others; no folder removes it, no name lists them")
+  .action((name: string | undefined, folder: string | undefined) => {
+    if (!name) {
+      const roots = Object.entries(namedRoots());
+      process.stdout.write(roots.length ? roots.map(([k, v]) => `${k}  ${v}`).join("\n") + "\n" : "No named folders. Name one: parawatch sync root <name> <folder>\n");
+      return;
+    }
     const d = setRoot(name, folder, VERSION);
     process.stdout.write(Object.entries(d.roots ?? {}).map(([k, v]) => `${k}  ${v}`).join("\n") + (d.roots ? "\n" : "No named folders.\n"));
   });
@@ -954,6 +1015,91 @@ program
     if (input.hook_event_name) print({ hookSpecificOutput: { hookEventName: input.hook_event_name, additionalContext: text } });
     else process.stdout.write(text + "\n");
   });
+
+// ------------------------------------------------------------------ examples and near misses
+
+/**
+ * Examples at the end of `--help`: agents read the help right before a command, and a whole
+ * command teaches more than a list of flags. Keyed by the command's path.
+ */
+const EXAMPLES: Record<string, string[]> = {
+  ask: [
+    `parawatch ask -p game "Ship the top-box ending?" -o "Side tank" -o "Top box" -r 2 -b "The ending decides what the player sees last." \\`,
+    `  --attach "Side tank=/abs/side.png" --attach "Top box=/abs/top.png" --option-attach "1=Side tank" --option-attach "2=Top box"`,
+    `parawatch ask -p game "Switch the halo to the outline?" -o "Outline" -o "Keep it" \\`,
+    `  --attach "Now=/abs/now.png" --attach "Outline=/abs/outline.png" --compare "Now,Outline"`,
+    `parawatch ask -p api "Merge #88 now?" --action "gh pr merge 88 --squash" --preview /abs/pr88-notes.md`,
+  ],
+  try: [
+    `parawatch try -p game "Does the glass read as glass?" --open /Applications/Game.app -l "the tank walls at the top right" \\`,
+    `  --attach "Full=/abs/full.mp4" --attach "Empty=/abs/empty.mp4" --compare "Full,Empty"`,
+    `parawatch try -p game "Three bottles after the fix" --grid 3 \\`,
+    `  --attach "Candy jar=/abs/a.png" --attach "Piggy bank=/abs/b.png" --attach "Perfume=/abs/c.png"`,
+  ],
+  edit: [`parawatch edit c12 --attach "Now=/abs/now.png" --attach "After=/abs/after.png" --compare "Now,After"`, `parawatch edit c12 --grid 2`],
+  claim: [
+    `parawatch claim -p api -t ABC-123 --title "Fix login on Safari"`,
+    `parawatch claim -p game --role lead --title "Game Director"`,
+    `parawatch claim --done "Merged #88; login works on staging"`,
+  ],
+  "run watch": [`parawatch run watch "CI for #88" -p api -- gh run watch 123 --exit-status`, `parawatch run watch "Nightly bench" -p game --heartbeat 600 -- ./bench.sh`],
+  "pr link": [`parawatch pr link https://github.com/acme/api/pull/88`, `parawatch pr link #88        # inside the repository`],
+  wait: [`parawatch wait               # in the background; it exits with the answer and wakes you`],
+};
+
+/** Notes under the examples: what the help alone does not say. */
+const NOTES: Record<string, string> = {
+  ask: "Caption every picture (caption=file) instead of pointing at pictures by their place in the body. More: parawatch guide attachments",
+  try: "Caption every picture (caption=file) instead of pointing at pictures by their place in the body. More: parawatch guide attachments",
+  claim: "A worker a lead started needs only claim, pr link and claim --done. More: parawatch guide",
+  run: "Prefer run watch: one call that starts, keeps alive and ends the run with the command. More: parawatch guide runs",
+};
+
+function commandPath(c: Command): string {
+  const names: string[] = [];
+  for (let x: Command | null = c; x && x.parent; x = x.parent) names.unshift(x.name());
+  return names.join(" ");
+}
+
+function allCommands(c: Command): Command[] {
+  return c.commands.flatMap((x) => [x, ...allCommands(x)]);
+}
+
+for (const c of allCommands(program)) {
+  const key = commandPath(c);
+  const ex = EXAMPLES[key];
+  const note = NOTES[key];
+  if (ex || note) c.addHelpText("after", [ex ? `\nExamples:\n${ex.map((l) => `  ${l}`).join("\n")}` : "", note ? `\n\n${note}` : ""].join("") + "\n");
+}
+
+// every command and its flags as JSON, for the test that checks the docs name only what exists
+program
+  .command("commands", { hidden: true })
+  .action(() => {
+    print(
+      allCommands(program).map((c) => ({
+        path: commandPath(c),
+        options: c.options.flatMap((o) => [o.long, o.short].filter(Boolean)),
+        sub: c.commands.length > 0,
+        examples: EXAMPLES[commandPath(c)],
+      })),
+    );
+  });
+
+/** A first word that is no command here but is one a level down (`link` for `pr link`). */
+function nearMiss(argv: string[]): string | undefined {
+  const first = argv[0];
+  if (!first || first.startsWith("-") || first === "help") return undefined;
+  if (program.commands.some((c) => c.name() === first || c.aliases().includes(first))) return undefined;
+  const found = allCommands(program).filter((c) => c.parent !== program && c.name() === first).map(commandPath);
+  return found.length ? `unknown command '${first}'. Did you mean ${found.map((f) => `parawatch ${f}`).join(" or ")}?` : undefined;
+}
+
+const miss = nearMiss(process.argv.slice(2));
+if (miss) {
+  process.stderr.write(`parawatch: ${miss}\n`);
+  process.exit(1);
+}
 
 program.parseAsync().catch((err: unknown) => {
   if (err instanceof UserError) {

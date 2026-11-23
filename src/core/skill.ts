@@ -9,6 +9,35 @@ export function skillSource(): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "skills", "parawatch");
 }
 
+/** The topics `parawatch guide` prints: the skill's reference pages. */
+export function guideTopics(): string[] {
+  try {
+    return fs
+      .readdirSync(path.join(skillSource(), "references"))
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => f.slice(0, -3))
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The skill's text for the installed version: the core page without its front matter, or one
+ * reference page. Agents read this instead of a copy that may belong to another version.
+ */
+export function guideText(topic?: string): string {
+  const src = skillSource();
+  if (!topic) {
+    const text = fs.readFileSync(path.join(src, "SKILL.md"), "utf8");
+    return text.replace(/^---\n[\s\S]*?\n---\n+/, "");
+  }
+  const t = topic.trim().toLowerCase().replace(/\.md$/, "");
+  const topics = guideTopics();
+  if (!topics.includes(t)) throw new UserError(`no guide "${topic}". Topics: ${topics.join(", ")}`);
+  return fs.readFileSync(path.join(src, "references", `${t}.md`), "utf8");
+}
+
 export interface SkillTarget {
   runtime: string;
   /** the folder that holds skills, e.g. ~/.claude/skills */

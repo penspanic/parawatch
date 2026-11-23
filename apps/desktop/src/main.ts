@@ -27,7 +27,7 @@ import { logger, logPath } from "./logger.js";
 import { siteIcon } from "./siteIcons.js";
 import { KEEP_CLOSED, RUN_TITLES, SINCE_HOURS, THEMES, validPref, type AboutInfo, type Prefs, type Theme, type UpdateState } from "./prefs.js";
 import { alertFor, agentsWorking, combineAlerts, issueUrl, needsYou, newlyStuck, summary, type Alert } from "./rules.js";
-import { cliState, onCliChange, updateCli } from "./cliUpdate.js";
+import { cliState, onCliChange, onCliStuck, updateCli } from "./cliUpdate.js";
 import type { ChatState } from "../../../src/core/chatTypes.js";
 import { Chats } from "./chat.js";
 import { ChatHost, REMOTE_OWNER } from "./chatHost.js";
@@ -1064,6 +1064,9 @@ if (!app.requestSingleInstanceLock()) {
     keepRelay();
     scheduleUpdates(settings.checkUpdates, onUpdate);
     onCliChange(sendAbout);
+    onCliStuck((title, body) => {
+      if (settings.notify && Notification.isSupported()) new Notification({ title, body }).show();
+    });
     setTimeout(() => keepCliInStep("the app is newer"), 20_000);
     Notification.isSupported(); // touch the API early so macOS asks for permission on first run
   });

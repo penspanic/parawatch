@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { UserError } from "./errors.js";
+import { buildMedia, parseAttach, type AttachSpec, type MediaFlags } from "./media.js";
 import { advance, appendEvent, deviceName, eventsDir, homeDir, isAfter, readCursor, readEvents, sharedDir, writeCursor, type Position } from "./store.js";
 import { archivedSessions } from "./desktop.js";
 import { findId, fold, nextId, sessionTitle, type State } from "./state.js";
@@ -59,6 +60,11 @@ function absPaths(xs: string[] | undefined): string[] | undefined {
   return cleanList(xs)?.map(storedPath);
 }
 
+/** `--attach` values as files with their captions, in order, empty ones left out. */
+function attachSpecs(xs: string[] | undefined): AttachSpec[] {
+  return (cleanList(xs) ?? []).map(parseAttach);
+}
+
 export function addProject(name: string, paths: string[]): void {
   if (!/^[A-Za-z0-9._-]+$/.test(name)) throw new UserError(`project name "${name}" may only use letters, digits, . _ -`);
   appendEvent(() => ({
@@ -73,7 +79,7 @@ export function removeProject(name: string): void {
   appendEvent(() => ({ type: "project.remove", name }));
 }
 
-export interface CardInput {
+export interface CardInput extends MediaFlags {
   kind: CardKind;
   project: string;
   task?: string;
@@ -81,6 +87,7 @@ export interface CardInput {
   body?: string;
   options?: string[];
   recommend?: number;
+  /** files, each optionally `caption=file` */
   attach?: string[];
   open?: string[];
   look?: string;
@@ -139,6 +146,8 @@ export function openCard(input: CardInput): Card {
   }
   checkKind(input.kind);
   const since = input.since?.trim() ? parseWhen(input.since) : undefined;
+  const specs = attachSpecs(input.attach);
+  const media = buildMedia(specs, input, options?.length ?? 0);
   let id = "";
   appendEvent((events) => {
     id = nextId(events, "c", idDevice());
@@ -155,7 +164,8 @@ export function openCard(input: CardInput): Card {
         body: input.body?.trim() || undefined,
         options,
         recommend: input.recommend,
-        attach: absPaths(input.attach),
+        attach: absPaths(specs.map((x) => x.file)),
+        media,
         open: absPaths(input.open),
         look: input.look?.trim() || undefined,
         from,
@@ -222,7 +232,7 @@ export function commentCard(id: string, text: string, by: string): void {
   appendEvent(() => ({ type: "card.comment", card: id, by, text: text.trim() }));
 }
 
-export function editCard(id: string, set: CardEditInput): Card {
+export function editCard(id: string, set: CardEditInput & MediaFlags): Card {
   const card = requireCard(id);
   id = card.id;
   const clean: Extract<PwEvent, { type: "card.edit" }>["set"] = {};
@@ -238,7 +248,8 @@ export function editCard(id: string, set: CardEditInput): Card {
   if (set.from !== undefined) clean.from = set.from.trim() || cleared;
   if (set.session !== undefined) clean.session = set.session.trim() || cleared;
   if (set.since !== undefined) clean.since = set.since.trim() ? parseWhen(set.since) : cleared;
-  const approval = set.action !== undefined || set.preview !== undefined || set.attach !== undefined;
+  const layout = set.compare !== undefined || set.optionAttach !== undefined || set.grid !== undefined;
+  const approval = set.action !== undefined || set.preview !== undefined || set.attach !== undefined || layout;
   if (approval && card.answers.length) {
     throw new UserError(`card ${id} was already answered; close it and open a new one (a yes must not apply to text the human did not see)`);
   }
@@ -248,7 +259,27 @@ export function editCard(id: string, set: CardEditInput): Card {
     clean.preview = pv?.preview ?? cleared;
     clean.previewFile = pv?.previewFile ?? cleared;
   }
-  if (set.attach !== undefined) clean.attach = absPaths(set.attach) ?? cleared;
+  if (set.attach !== undefined || layout) {
+    // new files bring new captions; a layout flag alone keeps the files and captions there are
+    const specs =
+      set.attach !== undefined
+        ? attachSpecs(set.attach)
+        : (card.attach ?? []).map((file, i) => ({ file, caption: card.media?.captions?.[i] ?? undefined }));
+    // --grid 0 goes back to the usual rows
+    const grid = set.grid === 0 ? undefined : set.grid;
+    const keep: MediaFlags =
+      set.attach !== undefined
+        ? { ...set, grid }
+        : {
+            compare: set.compare ?? card.media?.compare?.map((g) => g.map((i) => String(i + 1)).join(",")),
+            optionAttach:
+              set.optionAttach ??
+              card.media?.options?.flatMap((o, i) => (o ? [`${o}=${i + 1}`] : [])),
+            grid: set.grid === 0 ? undefined : grid ?? card.media?.grid,
+          };
+    if (set.attach !== undefined) clean.attach = absPaths(specs.map((x) => x.file)) ?? cleared;
+    clean.media = buildMedia(specs, keep, card.options?.length ?? 0) ?? cleared;
+  }
   if (!Object.keys(clean).length) throw new UserError("nothing to change");
   appendEvent(() => ({ type: "card.edit", card: id, set: clean }));
   return requireCard(id);

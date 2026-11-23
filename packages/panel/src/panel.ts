@@ -118,6 +118,10 @@ function basename(p: string): string {
 }
 
 const MEDIA_GAP = 6;
+/** the caption strip under a picture */
+const MEDIA_FOOT = 24;
+/** the narrowest a grid cell gets before the grid drops a column */
+const GRID_MIN = 170;
 
 /**
  * A justified gallery: items keep their aspect ratio and share rows of one height that fill the
@@ -127,6 +131,12 @@ const MEDIA_GAP = 6;
  */
 export function layoutMedia(row: HTMLElement): void {
   const width = row.clientWidth;
+  if (row.classList.contains("is-grid")) {
+    // the columns the card asked for, fewer when the panel is too narrow for them to be read
+    const want = Number(row.dataset.cols) || 2;
+    if (width) row.style.setProperty("--pw-grid-cols", String(Math.max(1, Math.min(want, Math.floor((width + MEDIA_GAP) / (GRID_MIN + MEDIA_GAP))))));
+    return;
+  }
   const items = Array.from(row.children) as HTMLElement[];
   if (!width || !items.length) return;
   const target = Math.max(200, Math.min(300, width * 0.55));
@@ -154,7 +164,8 @@ export function layoutMedia(row: HTMLElement): void {
     const h = Math.min(height(line), cap);
     for (const i of line) {
       i.style.width = `${Math.floor(ratio(i) * h)}px`;
-      i.style.height = `${Math.floor(h)}px`;
+      // a caption strip sits under the picture, outside its shape
+      i.style.height = `${Math.floor(h) + (i.dataset.foot ? MEDIA_FOOT : 0)}px`;
       row.appendChild(i); // rows are placed in order, so a pulled-forward item moves up
     }
   }
@@ -205,6 +216,8 @@ export class Panel {
   });
   /** loadable URLs of the pictures and videos shown on cards, for the viewer */
   private mediaUrls = new Map<string, string>();
+  /** per comparison cell: show the picture of a choice, or (undefined) the one shown before */
+  private choiceFlip = new WeakMap<HTMLElement, (n: number | undefined) => void>();
   /** site icons by site; "" when there is none, so it is not asked for again */
   private siteIcons = new Map<string, string>();
   /** which of a session's name and its claimed work the lists show */
@@ -1081,7 +1094,7 @@ export class Panel {
     for (const f of media.filter((x) => away.has(x))) refs.appendChild(this.missingLink(f, c));
     if (!refs.childElementCount) refs.remove();
     const here = media.filter((x) => !away.has(x));
-    if (here.length) this.media(here, el("div", "pw-media", undefined, box));
+    if (here.length) this.media(here, el("div", "pw-media", undefined, box), c);
     // what the human wrote without choosing reads as part of the conversation on a card still open
     const said = c.status === "open" ? c.answers.filter((a) => a.by === "human" && a.choice === undefined && a.comment).map((a) => ({ seq: a.seq, by: "human", text: a.comment! })) : [];
     const thread = [...c.comments, ...said].sort((a, b) => a.seq - b.seq);
@@ -1203,6 +1216,9 @@ export class Panel {
           b.title = "Recommended";
         }
         b.onclick = () => send({ choice: n });
+        b.onmouseenter = b.onfocus = () => this.lightChoice(box, n);
+        b.onmouseleave = b.onblur = () => this.lightChoice(box, undefined);
+        if (c.media?.options?.includes(n)) b.classList.add("has-media");
         buttons.push(b);
       });
     }
@@ -1394,56 +1410,165 @@ export class Panel {
     return box;
   }
 
-  /** Pictures and videos at their own shape, in rows that fill the card (see layoutMedia). */
-  private media(files: string[], row: HTMLElement): void {
-    this.mediaSize.observe(row);
+  /**
+   * Pictures and videos at their own shape, in rows that fill the card (see layoutMedia), or in a
+   * grid of one size when the card asks for one. Each carries its caption and the number of the
+   * choice it belongs to; a comparison is one cell that switches between its pictures.
+   */
+  private media(files: string[], row: HTMLElement, c?: Card): void {
+    const m = c?.media;
+    const all = c?.attach ?? files;
+    const at = (f: string) => all.indexOf(f);
+    const caption = (f: string) => m?.captions?.[at(f)] || undefined;
+    const option = (f: string) => m?.options?.[at(f)] || undefined;
+    // cells in the order of their first attachment: a comparison takes the place of its first picture
+    const cells: string[][] = [];
+    const done = new Set<string>();
     for (const f of files) {
-      const item = el("div", "pw-media-item", undefined, row);
-      item.title = f;
-      this.withMenu(item, f);
+      if (done.has(f)) continue;
+      const group = m?.compare?.find((g) => g.includes(at(f)));
+      const members = group ? group.map((i) => all[i]!).filter((x) => files.includes(x) && !done.has(x)) : [f];
+      for (const x of members) done.add(x);
+      cells.push(members);
+    }
+    const order = cells.flat();
+    const grid = m?.grid && m.grid > 0 ? Math.min(m.grid, cells.length) : 0;
+    if (grid) {
+      row.classList.add("is-grid");
+      row.dataset.cols = String(grid);
+      row.style.setProperty("--pw-grid-cols", String(grid));
+    }
+    this.mediaSize.observe(row);
+    const chosen = c?.answers.find((a) => a.by === "human" && a.choice !== undefined && !a.late)?.choice;
+
+    for (const members of cells) {
+      const item = el("div", members.length > 1 ? "pw-media-item pw-compare" : "pw-media-item", undefined, row);
+      const frame = el("div", "pw-media-frame", undefined, item);
+      const opts = [...new Set(members.map(option).filter((o): o is number => !!o))];
+      if (opts.length) item.dataset.option = opts.join(" ");
+      if (chosen && opts.includes(chosen)) item.classList.add("is-chosen");
       const fit = (w: number, h: number) => {
-        if (!(w > 0 && h > 0)) return;
+        if (!(w > 0 && h > 0) || item.dataset.ar) return;
         item.dataset.ar = String(w / h);
-        layoutMedia(row);
+        if (grid) frame.style.aspectRatio = `${w} / ${h}`;
+        else layoutMedia(row);
       };
-      if (IMAGE.test(f) || VIDEO.test(f)) {
+      const layers: (HTMLImageElement | HTMLVideoElement)[] = [];
+      const tabs: HTMLButtonElement[] = [];
+      let current = 0;
+      const select = (k: number) => {
+        if (k === current || !layers[k]) return;
+        const was = layers[current];
+        current = k;
+        layers.forEach((l, j) => (l.hidden = j !== k));
+        tabs.forEach((b, j) => b.classList.toggle("is-on", j === k));
+        item.title = members[k]!;
+        // a video comparison keeps the same moment, and keeps playing if it was
+        const now = layers[k];
+        if (was instanceof HTMLVideoElement && now instanceof HTMLVideoElement) {
+          const playing = !was.paused;
+          was.pause();
+          if (Number.isFinite(was.currentTime)) now.currentTime = was.currentTime;
+          if (playing) void now.play().catch(() => {});
+        }
+      };
+
+      // the strip under the picture: its caption, or a comparison's pictures as tabs
+      const caps = members.map(caption);
+      if (members.length > 1 || caps[0] || option(members[0]!)) {
+        item.dataset.foot = "1";
+        const foot = el("div", members.length > 1 ? "pw-media-foot pw-media-tabs" : "pw-media-foot", undefined, item);
+        members.forEach((f, k) => {
+          const o = option(f);
+          const label = caps[k] ?? (members.length > 1 ? String(k + 1) : undefined);
+          const part = members.length > 1 ? el("button", k === 0 ? "pw-media-tab is-on" : "pw-media-tab", undefined, foot) : foot;
+          if (o) el("span", "pw-media-opt", String(o), part).title = `Choice ${o}`;
+          if (label) el("span", "pw-media-cap-text", label, part);
+          part.title = `${caps[k] ?? basename(f)}${members.length > 1 ? ` (${k + 1} of ${members.length})` : ""}\n${f}`;
+          if (part instanceof HTMLButtonElement) {
+            tabs.push(part);
+            part.onclick = (e) => {
+              e.stopPropagation();
+              select(k);
+            };
+          }
+        });
+      }
+      // a choice the pointer is on shows its own picture in a comparison, and the one before comes back after
+      let resting = 0;
+      this.choiceFlip.set(item, (n) => {
+        if (n === undefined) return select(resting);
+        resting = current;
+        const k = members.findIndex((f) => option(f) === n);
+        if (k >= 0) select(k);
+      });
+      item.title = members[0]!;
+      this.withMenu(item, members[0]!);
+
+      members.forEach((f, k) => {
+        if (!(IMAGE.test(f) || VIDEO.test(f))) {
+          frame.appendChild(this.fileLink(f));
+          return;
+        }
         const video = VIDEO.test(f);
-        const m = video ? el("video", "pw-media-video", undefined, item) : el("img", "pw-media-img", undefined, item);
-        if (video) m.addEventListener("loadedmetadata", () => fit((m as HTMLVideoElement).videoWidth, (m as HTMLVideoElement).videoHeight));
-        else m.addEventListener("load", () => fit((m as HTMLImageElement).naturalWidth, (m as HTMLImageElement).naturalHeight));
+        const media = video ? el("video", "pw-media-video", undefined, frame) : el("img", "pw-media-img", undefined, frame);
+        layers[k] = media;
+        media.hidden = k !== 0;
+        if (video) media.addEventListener("loadedmetadata", () => fit((media as HTMLVideoElement).videoWidth, (media as HTMLVideoElement).videoHeight));
+        else media.addEventListener("load", () => fit((media as HTMLImageElement).naturalWidth, (media as HTMLImageElement).naturalHeight));
         if (video) {
-          (m as HTMLVideoElement).controls = true;
-          (m as HTMLVideoElement).preload = "metadata";
+          (media as HTMLVideoElement).controls = true;
+          (media as HTMLVideoElement).preload = "metadata";
           // the file is already on this machine; its own menu (right click) has the file actions
-          m.setAttribute("controlslist", "nodownload noremoteplayback");
-        } else (m as HTMLImageElement).alt = basename(f);
+          media.setAttribute("controlslist", "nodownload noremoteplayback");
+        } else (media as HTMLImageElement).alt = caption(f) ?? basename(f);
         void this.backend.mediaUrl(f).then((url) => {
           if (url) {
-            m.src = url;
+            media.src = url;
             this.mediaUrls.set(f, url);
-          } else item.replaceChildren(this.fileLink(f));
+          } else media.replaceWith(this.fileLink(f));
         });
-        // a picture opens in the viewer over the window; a video plays where it is and has a button for it
-        if (video) {
-          const b = el("button", "pw-media-expand", undefined, item);
-          this.host.icon(b, "maximize-2");
-          b.title = "View larger";
-          b.setAttribute("aria-label", `View ${basename(f)} larger`);
-          b.onclick = (e) => {
-            e.stopPropagation();
-            (m as HTMLVideoElement).pause();
-            this.view(files, f);
-          };
-        } else m.onclick = () => this.view(files, f);
-      } else item.appendChild(this.fileLink(f));
+        if (!video) media.onclick = () => this.view(order, f, c);
+      });
+      // a picture opens in the viewer over the window; a video plays where it is and has a button for it
+      if (layers.some((l) => l instanceof HTMLVideoElement)) {
+        const b = el("button", "pw-media-expand", undefined, frame);
+        this.host.icon(b, "maximize-2");
+        b.title = "View larger";
+        b.setAttribute("aria-label", `View ${caption(members[0]!) ?? basename(members[0]!)} larger`);
+        b.onclick = (e) => {
+          e.stopPropagation();
+          const l = layers[current];
+          if (l instanceof HTMLVideoElement) l.pause();
+          this.view(order, members[current]!, c);
+        };
+      }
     }
   }
 
+  /** Lights the pictures that belong to choice `n` and dims the rest, while the pointer is on that choice. */
+  private lightChoice(box: HTMLElement, n: number | undefined): void {
+    const items = box.querySelectorAll<HTMLElement>(".pw-media-item[data-option]");
+    if (!items.length) return;
+    box.querySelectorAll<HTMLElement>(".pw-media-item").forEach((i) => {
+      const on = n !== undefined && (i.dataset.option ?? "").split(" ").includes(String(n));
+      i.classList.toggle("is-lit", on);
+      i.classList.toggle("is-dim", n !== undefined && !on);
+      this.choiceFlip.get(i)?.(n);
+    });
+  }
+
   /** Opens the viewer on `file`, with the other pictures and videos of the same card beside it. */
-  private view(files: string[], file: string): void {
+  private view(files: string[], file: string, c?: Card): void {
+    const all = c?.attach ?? files;
+    const at = (f: string) => all.indexOf(f);
     const items = files
       .filter((f) => (IMAGE.test(f) || VIDEO.test(f)) && this.mediaUrls.has(f))
-      .map((f) => ({ file: f, src: this.mediaUrls.get(f)!, video: VIDEO.test(f) }));
+      .map((f) => {
+        const g = c?.media?.compare?.findIndex((x) => x.includes(at(f))) ?? -1;
+        const o = c?.media?.options?.[at(f)] || undefined;
+        return { file: f, src: this.mediaUrls.get(f)!, video: VIDEO.test(f), caption: c?.media?.captions?.[at(f)] || undefined, group: g >= 0 ? g : undefined, option: o };
+      });
     const start = items.findIndex((x) => x.file === file);
     if (start < 0) {
       this.backend.open(file);

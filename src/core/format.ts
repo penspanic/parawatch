@@ -1,3 +1,4 @@
+import { attachLines } from "./media.js";
 import { settingsLine } from "./model.js";
 import type { InboxItem } from "./ops.js";
 import type { SyncStatus } from "./sync.js";
@@ -160,7 +161,8 @@ export function cardDetail(c: Card): string {
   if (c.preview) out.push("", `Preview${c.action ? "" : changed}${c.previewFile ? ` of ${c.previewFile}` : ""}:`, ...c.preview.split("\n").map((l) => `  ${l}`));
   if (c.look) out.push("", `Look at: ${c.look}`);
   for (const o of c.open ?? []) out.push(`Open: ${o}`);
-  for (const a of c.attach ?? []) out.push(`Attached: ${a}`);
+  for (const a of attachLines(c.attach, c.media)) out.push(`Attached: ${a}`);
+  if (c.media?.grid) out.push(`Laid out in ${c.media.grid} columns`);
   if (c.from || c.session) out.push(`From: ${[c.from, c.session ? `session ${c.session.slice(0, 8)}` : ""].filter(Boolean).join(", ")}`);
   out.push(`Opened: ${new Date(c.openedAt).toLocaleString()}${c.since ? `, first came up ${new Date(c.since).toLocaleDateString()}` : ""}`);
   if (c.dev) out.push(`Machine: ${c.dev}`);
