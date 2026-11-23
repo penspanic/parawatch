@@ -7,6 +7,10 @@ description: How an agent works with a human through parawatch. Use whenever you
 
 The human watches every project and agent from `parawatch status` and a side panel, and answers there. Anything you need from them goes through parawatch, not through chat or a document they have to remember to check. Their answer wakes you.
 
+**A worker a lead started** (a subagent, a `codex exec` job, a session with a brief) needs only three commands, unless the brief says otherwise: `parawatch claim -p <project> -t <task> --title "<what you do>"` when you start, `parawatch pr link <url>` when you open a pull request, and `parawatch claim --done "<how it ended>"` at the end. Report everything else to the lead. You can stop reading here.
+
+This page is the core. The rest prints with `parawatch guide <topic>` from the installed parawatch, so it always matches the command you run: `cards` (writing a good card), `attachments` (captions, comparisons, pictures tied to choices), `prs`, `runs` (long jobs), `lead` (leads and workers), `machines`. The same pages are in this skill's `references/` folder.
+
 ## 1. Say what you work on, as soon as you know
 
 The human sees agents grouped by project and task. Parawatch can only guess from the folder a session started in, and many people start every session in the same home or notes folder. So say it yourself, the moment the work is clear (from the first message, or once you have read enough to know):
@@ -35,49 +39,24 @@ parawatch inbox -p <project> --peek
 
 ## 2. Asking the human
 
-One question per card. Pick the kind by what the human has to do:
-
-| Need | Command |
-|--|--|
-| A choice | `parawatch ask -p <project> "<the question>" -o "<option>" -o "<option>" -r <n> -b "<why it matters now>"` |
-| Approval of a step you have prepared (merge, post, move a ticket, send a message, force-push) | `parawatch ask -p <project> "<what and why, as a question>" --action "<the exact command or step>" --preview <file with the text it sends>` |
-| An open answer | `parawatch ask -p <project> "<the question>" -b "<context>"` |
-| Try a build, watch a video, look at a screen | `parawatch try -p <project> "<what to try>" --open <app, file or URL> --attach <image or video> -l "<what to look at>"` |
-| Something only they can do, and you are stuck until they do | `parawatch block -p <project> "<what to do>" -b "<exact steps>"` |
-| Something only they can do, but nothing waits on it now | `parawatch todo -p <project> "<what to do>" -b "<exact steps, and by when>"` |
-
-A good card:
-
-- **The title is the question or the request**, readable alone in a list: "Ship the top-box ending?" not "Ending".
-- **The body is two or three lines**: what changed, what it affects, what happens if they do not answer. It renders as Markdown.
-- **Write in the human's words**: what they will see or feel in the product, not ticket numbers, metrics, engine terms or internal ids. Put those in an attachment or a link at the end of the body.
-- **Options are exclusive and concrete, and each says what happens if picked.** Recommend one with `-r` when you have a view; say why in the body.
-- **`-l` on a `try` card is one short line: where to look.** Several things to check go in the body as a numbered list, one item per line, so they read as a list in the panel.
-- **Attach evidence** with absolute paths: screenshots, short videos, logs. `--open` takes what they should launch (an `.app`, a file, a URL), never a command: parawatch does not run it and refuses one. A command to run goes in the body as a code block, which the human can copy.
-- **Add `-t <task>`** when the project runs several tasks at once, so the human can tell them apart.
-- **`block` is red and counts as needing them now.** Use it only when your work stops until they act. Errands for later (a bill, a registration, a policy check, a measurement whenever the machine is free) are `todo`; they wait folded in the panel and do not pop up.
-- **Moving items from a board or a note:** pass `--since <YYYY-MM-DD>` with the date the item first came up, so the card does not look new. `parawatch edit <card>` fixes a card's kind, wording or date later.
-- **`--action` is the exact command, one line if possible.** Steps and reasons go in the body, and `--preview` is the file with the text it sends (the human can open that file from the card). Change `--action`, `--preview` or `--attach` with `parawatch edit` while the card is unanswered; once answered, close it and open a new one.
-- **An approval shows exactly what runs.** With `--action` the human sees the command and the preview and answers Do it or Don't, without opening your session. Run exactly that on yes; say in the close note that you ran it.
-- **Never leave a question only in your reply.** If your turn ends needing the human, the question goes on a card. Parawatch flags questions it finds at the end of a turn as "asked in chat, no card", but that is a guess and easy to miss.
-- Do not open a card for something you can decide yourself, or that the project's own rules already settle.
-
-## 3. Pull requests
-
-When you open a pull request, link it to yourself:
+One question per card, in the human's words:
 
 ```
-parawatch pr link <url>          # or #88 inside the repository
+parawatch ask -p <project> "<the question>" -o "<choice>" -o "<choice>" -r <n> -b "<two or three lines: why it matters now>"
+parawatch ask -p <project> "<what and why, as a question>" --action "<the exact command that runs on yes>" --preview <file>
+parawatch try -p <project> "<what to try>" --open <app, file or URL> --attach "<caption>=<image or video>" -l "<where to look>"
+parawatch block -p <project> "<what only they can do>" -b "<exact steps>"    # you are stuck until they do it
+parawatch todo -p <project> "<what only they can do>" -b "<exact steps, by when>"   # nothing waits on it now
 ```
 
-A pull request you open with `gh pr create` is linked from your log on its own, but say it anyway; it costs nothing and survives a long session. When `gh` is installed and signed in, parawatch reads your pull requests from GitHub (GitHub Enterprise too). New reviews, requested changes, approvals, CI failures, conflicts, a drop from the merge queue and the merge itself arrive at your wait like an answer. The human sees the PR, what it waits on and for how long, next to your session.
+- **The title is the question**, readable alone in a list. Options are exclusive, and each says what happens if picked.
+- **Caption every picture** (`--attach "Now=/abs/now.png"`) and tie pictures to their choices (`--option-attach "2=Outline"`); show before and after with `--compare`. Do not point at pictures by their place in the body. `parawatch guide attachments`.
+- **Never leave a question only in your reply.** If your turn ends needing the human, the question goes on a card.
+- More on cards, approvals and when not to ask: `parawatch guide cards`.
 
-News from somewhere GitHub does not show (a merge bot, a ticket system) can be recorded by any tool: `parawatch pr event <url> <change> -m "<what happened>"`.
+When you open a pull request, link it to yourself so its reviews, CI results and merge wake you: `parawatch pr link <url>` (`parawatch guide prs`).
 
-- **Taking over a pull request another session opened** (its session ended, and you continue the work): run `parawatch pr link <url>` when you start. The latest link wins, so its news comes to you from then on instead of to the lead.
-- **A pull request set aside on purpose** (a draft parked until later): `parawatch pr unlink <url>`. Its news then wakes no one, not even the session that opened it, until someone links it again. A conflict on a PR that stays in conflict is reported once, not again each time main moves.
-
-## 4. Waiting for the answer
+## 3. Waiting for the answer
 
 Right after opening cards or linking a pull request, keep exactly one wait armed:
 
@@ -85,7 +64,7 @@ Right after opening cards or linking a pull request, keep exactly one wait armed
 - **Codex**: check `parawatch inbox` at the start of every turn. In the Codex app you are also woken: while the Parawatch app runs, an answer or pull request news arrives in your thread as a message starting "parawatch: news for this session", with the same lines a wait prints. Handle it like a wait's output; it is already off your inbox.
 - **Other runtimes**: check `parawatch inbox` at the start of every turn.
 
-Inside your session, `wait` and `inbox` read only what is yours: answers on cards you opened and news on pull requests linked to you. Other sessions in the same project are not woken by your news and cannot take it from you, and you are not woken by theirs. What no session owns, and what a session that has ended left open, goes to the project's lead (section 8); with no lead it waits in parawatch until the human picks one. `-p <project>` only names a project other than the one you claimed.
+Inside your session, `wait` and `inbox` read only what is yours: answers on cards you opened and news on pull requests linked to you. Other sessions in the same project are not woken by your news and cannot take it from you, and you are not woken by theirs. What no session owns, and what a session that has ended left open, goes to the project's lead (`parawatch guide lead`); with no lead it waits in parawatch until the human picks one. `-p <project>` only names a project other than the one you claimed.
 
 If the human hands you a card or a pull request (`parawatch hand`), your wait prints `[project] c4 "..." handed to you by the human; the answer: ...`. It is yours from then on: act on it and close it like your own.
 
@@ -93,7 +72,7 @@ Re-arming the wait after each wake is the intended use; the wake is what costs, 
 
 Keep working on other things meanwhile. A wait with `--timeout <seconds>` exits with code 2 when nothing came; re-arm it if you still need the answer. While no wait runs, an answer is kept, and the card tells the human that no agent is waiting; it reaches you on your next turn or your next wait.
 
-## 5. Handling an answer
+## 4. Handling an answer
 
 The output looks like `[project] c4 "Ship the top-box ending?" chose 2 (Top box); said: fill it to the rim; attached: /path/shot.png`, or for a pull request `[project] PR acme/api#88 "Fix login": changes requested by alice (https://…)`.
 
@@ -106,22 +85,17 @@ A card can also come back as `[project] c4 "…" dismissed by the human: no long
 
 To add information to a card without waking anyone, use `parawatch comment <card> "<text>"`. Never answer a card yourself: `answer` is the human's.
 
-## 6. Long jobs that leave no agent log
+## 5. Long jobs that leave no agent log
 
-A render, a benchmark, an editor build, a deploy you are waiting on:
+A CI run, a render, a benchmark, a deploy you wait on: run it through parawatch, so it shows under your session and ends with the command.
 
 ```
-id=$(parawatch run start -p <project> "overnight bench" --heartbeat 600 --log /path/bench.log)
-parawatch run note $id "scene 3 of 8"   # also counts as a beat
-parawatch run beat $id                  # still alive, nothing to say
-parawatch run end $id                   # or: parawatch run end $id --failed -n "editor stopped ticking"
+parawatch run watch "CI for #88" -p <project> -- gh run watch 123 --exit-status
 ```
 
-The run shows under your session. With `--heartbeat`, it turns stalled when no beat, note or log change comes in that many seconds, so a job that hangs silently (a locked screen, App Nap) shows at once. End it when it ends, or it keeps showing as working. Do not poll a job with sleep loops; declare it and arm a wait.
+A job you cannot wrap in one command is declared with `run start`, `run note` and `run end`: `parawatch guide runs`. Claude Code sessions, subagents and `codex exec` jobs show up by themselves; do not declare runs for them.
 
-Do not declare runs for things parawatch already sees in their own logs: Claude Code sessions and subagents, and `codex exec` jobs, show up by themselves. A declared run on top of them is a duplicate.
-
-## 7. Finishing
+## 6. Finishing
 
 When your work is finished, say so with one line on how it ended:
 
@@ -131,19 +105,7 @@ parawatch claim --done "Merged #88; login works on staging"
 
 The session then shows as done, not as idle, and the line goes into the human's daily digest (`parawatch digest`). It stays done until someone writes to the session again. Close the cards you handled first: cards still open and pull requests not yet merged pass to the project's lead, or wait in parawatch when there is none. News on your pull requests that are already merged or closed wakes no one else.
 
-## 8. Leads and workers
-
-- A lead claims with `--role lead` and waits like any session, with a plain `parawatch wait`. Besides its own news it gets what no session owns in its project and what sessions that have ended left open, and on claiming it is handed the answers that waited for a lead. One lead per project: a new lead replaces the old one. The human can also pick the lead in the panel, or with `parawatch lead <project> <session>`.
-- The lead owns the cards for the work it hands out. Workers (subagents, `codex exec` jobs, other sessions you start) report back to the lead instead of opening cards, unless the lead told them to ask the human directly.
-- A session the human started on their own asks the human directly. Its cards and pull requests are its own: answers and news on them go to it, not to the lead. When that work belongs in the lead's queue, the session tells the lead, not the other way round.
-- Tell workers in their brief what to return to you, so the lead can turn it into one clear card.
-- When a worker continues a pull request that an earlier, ended worker opened, put `parawatch pr link <url>` in its brief (or run `parawatch hand <pr> <session>` once it runs). Until then that PR's news, CI failures included, comes to you. A PR you park for later: `parawatch pr unlink <url>`.
-- **A lead that finishes one task claims its next work, not `--done`** (`parawatch claim -p <project> -t <next> --role lead`). `--done` ends the session as lead too: from then on what no session owns in the project goes nowhere until a session claims the lead. When you do a worker's task yourself, its brief's rules for workers (such as "do not use parawatch") are not yours.
-- Before ending a session, close cards you handled, end runs you started, and claim `--done`.
-
-## On more than one machine
-
-When `parawatch sync` shows other machines, the human may answer from any of them. Nothing changes in how you ask or wait. Ids then carry the machine (`pc-c3`); use the id the command printed. Attach files under your home folder or the shared folder (or a folder named with `parawatch sync root`), so the human's machine can open them. An app path given to `try --open` only opens on the machine that has it, so say in the body which machine to try it on.
+Leading other agents: `parawatch guide lead`. Working across machines: `parawatch guide machines`.
 
 ## Quick reference
 
@@ -155,4 +117,5 @@ parawatch pr list                    # open pull requests and what each waits on
 parawatch digest                     # what each session did today
 parawatch show <card>                # one card in full
 parawatch cards -p <project> -a      # include closed cards
+parawatch guide <topic>              # cards, attachments, prs, runs, lead, machines
 ```

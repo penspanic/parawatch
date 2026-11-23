@@ -10,26 +10,28 @@ import { insidePath } from "./paths.js";
 export const BEGIN = "<!-- parawatch:begin -->";
 export const END = "<!-- parawatch:end -->";
 
+/**
+ * Words every block written from now on carries. A block with them points to the installed version
+ * for how to use parawatch, so it stays right across releases and is never reported as older.
+ */
+const POINTS_TO_GUIDE = "not from this file";
+
+/**
+ * The block for a project's instruction file. It holds only what belongs to the project and does
+ * not change with a release: the project's name, that the human answers on cards, and where the
+ * commands are explained. The commands themselves come from the installed version (the skill,
+ * `parawatch guide`, `--help`), so a release never leaves this block behind.
+ */
 export function instructions(project?: string): string {
   const p = project ?? "<project>";
   return `${BEGIN}
 ## Parawatch
 
-The human follows this work through \`parawatch\`. Use it instead of asking in chat. If a \`parawatch\` skill is available, follow it.
+This repository is the parawatch project \`${p}\`. The human follows this work through \`parawatch\` and answers there, not in chat.
 
-- As soon as you know what you are working on, say so, even when this folder is not where the code lives: \`parawatch claim --project ${p} --task <ticket, PR or short name> --title "<what you do>"\`. Claim again when you move to other work.
-- When you open a pull request: \`parawatch pr link <url>\`. Reviews, CI results and merges on it then wake your wait.
-- When the work is finished: \`parawatch claim --done "<one line on how it ended>"\`.
-
-- Need a decision: \`parawatch ask --project ${p} "question" --option "..." --option "..." --recommend N --body "two or three lines"\`
-- Need approval for a step you have prepared (a merge, a message, a status change): \`parawatch ask --project ${p} "title" --action "<exact command>" [--preview <file with the text>]\`
-- Need the human to try something (a build, a video, a screen): \`parawatch try --project ${p} "title" --open <app or file> --attach <video or image> --look "what to look at"\`
-- Stuck until the human does something only they can do (install, sudo, sign in): \`parawatch block --project ${p} "what to do"\`
-- Something only the human can do, but nothing waits on it now: \`parawatch todo --project ${p} "what to do"\`
-- Put every question for the human on a card, not only in your reply: a question left in chat is easy to miss.
-- After opening a card or linking a pull request, keep a background wait armed: \`parawatch wait\`. It prints the human's answers to your cards and news on your pull requests and exits; act on them, \`parawatch close <card> --note "what you did"\`, then arm it again. A lead waits the same way; answers on another live session's cards go to that session. What no session owns goes to the lead (\`parawatch claim --project ${p} --role lead\`).
-- A long job with no agent log (a bake, a benchmark): \`parawatch run start --project ${p} "title" --heartbeat <seconds> [--log <file>]\`, \`parawatch run note <id> "..."\`, \`parawatch run end <id>\`.
-- Never answer a card yourself. \`parawatch status\` shows everything that is open.
+- Before your first parawatch command in a session, run \`parawatch guide\` or follow the \`parawatch\` skill. Both match the installed version: take commands and flags from there, ${POINTS_TO_GUIDE}.
+- Claims and cards take \`--project ${p}\`.
+- Anything you need from the human goes on a card, never only in your reply. Never answer a card yourself.
 ${END}`;
 }
 
@@ -71,20 +73,36 @@ export function removeInstructions(file: string): boolean {
   return true;
 }
 
-/** Whether a file has the parawatch block, and whether it is the one this version writes. */
-export function instructionState(file: string): "current" | "outdated" | "absent" {
+/** The parawatch block in a file, and the project it names, if any. */
+function readBlock(file: string): { block: string; project?: string } | undefined {
   let text: string;
   try {
     text = fs.readFileSync(file, "utf8");
   } catch {
-    return "absent";
+    return undefined;
   }
   const a = text.indexOf(BEGIN);
   const b = text.indexOf(END);
-  if (a < 0 || b < a) return "absent";
+  if (a < 0 || b < a) return undefined;
   const block = text.slice(a, b + END.length);
   const project = /--project (\S+)/.exec(block)?.[1];
-  return block === instructions(project === "<project>" ? undefined : project) ? "current" : "outdated";
+  return { block, project: project === "<project>" ? undefined : project };
+}
+
+/**
+ * Whether a file has the parawatch block, and whether it is an older one that still spells out
+ * commands (written before 0.3.32) and so falls behind each release.
+ */
+export function instructionState(file: string): "current" | "outdated" | "absent" {
+  const found = readBlock(file);
+  if (!found) return "absent";
+  return found.block.includes(POINTS_TO_GUIDE) ? "current" : "outdated";
+}
+
+/** The `init` command that rewrites a file's block for this version, keeping the project it names. */
+export function initCommand(file: string): string {
+  const project = readBlock(file)?.project;
+  return `parawatch init -f ${path.basename(file)}${project ? ` -p ${project}` : ""}`;
 }
 
 /**

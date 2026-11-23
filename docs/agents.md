@@ -6,7 +6,7 @@ Add the agent protocol to a project's instruction file:
 parawatch init -f AGENTS.md -p game     # or CLAUDE.md
 ```
 
-It writes a short block between `<!-- parawatch:begin -->` and `<!-- parawatch:end -->` and replaces it in place on later runs. The protocol in short:
+It writes a short block between `<!-- parawatch:begin -->` and `<!-- parawatch:end -->` and replaces it in place on later runs. The block names the project, says the human answers on cards, and sends agents to `parawatch guide` or the skill for the commands. It holds no commands itself, so an update of parawatch does not leave it behind; only a block written before 0.3.32, which spelled the commands out, needs `parawatch init -f <file> -p <project>` once, and `parawatch doctor` names it. The protocol in short:
 
 ```
 parawatch claim -p api -t ABC-1234 --title "Fix the login redirect"   # as soon as the work is clear
@@ -35,7 +35,9 @@ The human can dismiss a card that no longer matters, with the x on the card in t
 
 ## Agent skill
 
-[`skills/parawatch/SKILL.md`](../skills/parawatch/SKILL.md) teaches an agent the whole protocol: claiming its session, writing a good card, keeping one background wait armed, closing cards, declaring long jobs, and who asks the human when a lead runs workers. Install it with `parawatch skill install` (see [Install](../README.md#install)); `parawatch skill path` prints where it lives, for runtimes that load skills from elsewhere.
+[`skills/parawatch/SKILL.md`](../skills/parawatch/SKILL.md) is the core an agent reads first: a worker's three commands at the top, then claiming, asking, waiting, handling answers, long jobs and finishing. The rest is in [`references/`](../skills/parawatch/references) (writing cards, attachments, pull requests, long jobs, leads and workers, machines), and `parawatch guide <topic>` prints the same pages from the installed parawatch, so an agent never reads a version other than the one it runs. Install the skill with `parawatch skill install` (see [Install](../README.md#install)); `parawatch skill path` prints where it lives, for runtimes that load skills from elsewhere.
+
+Agents also learn from the commands themselves: `ask`, `try`, `edit`, `claim`, `run watch` and `pr link` end their `--help` with examples, a first word that is a command one level down (`link`) says which one it is (`pr link`), and a card with several pictures and no captions prints a hint with the edit to make. A test checks that every command and flag the skill, its pages, the README, these docs and the AGENTS.md block name exists. `node scripts/agent-usage.mjs` counts, from this machine's agent logs, how agents read the skill and the guide, which commands and `--help` they run, which calls fail and how they attach pictures, to compare before and after a change to any of these.
 
 `claim`, `run start` and every card command pick up the calling session from `$CLAUDE_CODE_SESSION_ID` (or `$CODEX_THREAD_ID`), so an agent can put itself on the board without knowing its id. A process one agent starts inherits its variables, so a `codex exec` worker launched by a Claude Code session has both. Then the command belongs to the nearer agent, found by walking up the process tree from the command (Claude Code names its process in `$CLAUDE_PID`). When the tree cannot be read, as inside Codex's sandbox, the Codex thread wins: a Claude Code session launching Codex workers is the usual way both are set.
 

@@ -1,7 +1,7 @@
 import zlib from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { artPng, countLabel, draw, drawTray, TRAY_IDLE, trayWidth } from "../src/art.js";
-import { npmBin, npmPrefix } from "../src/npmPath.js";
+import { findNpm, npmBin, npmPrefix } from "../src/npmPath.js";
 import { agentsWorking, alertFor, combineAlerts, issueUrl, needsYou, summary, toDo, updateLabel, type Alert } from "../src/rules.js";
 import type { Card, PwEvent, Snapshot } from "../../../src/core/types.js";
 
@@ -217,5 +217,26 @@ describe("deployments waiting for the human", () => {
   it("counts one waiting as needing the human", () => {
     expect(needsYou({ cards: [], deploys: [{}] } as never)).toBe(1);
     expect(needsYou({ cards: [] } as never)).toBe(0);
+  });
+});
+
+describe("findNpm", () => {
+  const have = (...files: string[]) => (f: string) => files.includes(f);
+  it("uses the npm inside the prefix first", () => {
+    expect(findNpm("/opt/homebrew", "darwin", have("/opt/homebrew/bin/npm"))).toBe("/opt/homebrew/bin/npm");
+    expect(findNpm("C:\\Users\\me\\AppData\\Roaming\\npm", "win32", have("C:\\Users\\me\\AppData\\Roaming\\npm\\npm.cmd"), {})).toBe("C:\\Users\\me\\AppData\\Roaming\\npm\\npm.cmd");
+  });
+  it("finds the npm beside node on Windows, where the global prefix has none", () => {
+    const env = { ProgramFiles: "C:\\Program Files", Path: "C:\\Windows;C:\\Users\\me\\AppData\\Roaming\\npm" };
+    expect(findNpm("C:\\Users\\me\\AppData\\Roaming\\npm", "win32", have("C:\\Program Files\\nodejs\\npm.cmd"), env)).toBe("C:\\Program Files\\nodejs\\npm.cmd");
+  });
+  it("prefers the node nvm links, then any npm on the PATH", () => {
+    const nvm = { NVM_SYMLINK: "C:\\nvm4w\\nodejs", ProgramFiles: "C:\\Program Files", Path: "D:\\tools\\node\\" };
+    expect(findNpm("C:\\npm", "win32", have("C:\\nvm4w\\nodejs\\npm.cmd", "C:\\Program Files\\nodejs\\npm.cmd"), nvm)).toBe("C:\\nvm4w\\nodejs\\npm.cmd");
+    expect(findNpm("C:\\npm", "win32", have("D:\\tools\\node\\npm.cmd"), nvm)).toBe("D:\\tools\\node\\npm.cmd");
+  });
+  it("finds none on a Mac without npm in the prefix, and none on Windows without npm anywhere", () => {
+    expect(findNpm("/usr/local", "darwin", have("/opt/homebrew/bin/npm"))).toBeUndefined();
+    expect(findNpm("C:\\npm", "win32", have(), { Path: "C:\\Windows" })).toBeUndefined();
   });
 });

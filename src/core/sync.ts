@@ -403,6 +403,12 @@ export function setupSync(input: SetupInput): SetupResult {
 }
 
 /** Name a folder on this machine so paths under it map to the same name on other machines. */
+/** The folders this machine named for the others (`sync root`), by name. */
+export function namedRoots(): Record<string, string> {
+  if (!sharedDir()) return {};
+  return { ...(readDevice(deviceName())?.roots ?? {}) };
+}
+
 export function setRoot(name: string, folder: string | undefined, version?: string): DeviceInfo {
   if (!sharedDir()) throw new UserError("this machine does not share its log yet: run `parawatch sync setup <folder>` first");
   if (!/^[a-z0-9][a-z0-9_-]{0,31}$/i.test(name) || name === "home" || name === "shared") throw new UserError(`root name "${name}" may use letters, digits, _ and -, and cannot be home or shared`);

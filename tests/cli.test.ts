@@ -200,3 +200,41 @@ describe("cli: projects and the hook", () => {
     expect(pw(["hook", "vim"])).toMatchObject({ code: 1 });
   });
 });
+
+describe("cli: helping agents get commands right", () => {
+  it("a command one level down is named, and todo given choices points to ask", () => {
+    const link = pw(["link", "https://github.com/acme/api/pull/1"]);
+    expect(link.code).toBe(1);
+    expect(link.err).toContain("Did you mean parawatch pr link?");
+    const todo = pw(["todo", "-p", "app", "Renew the domain", "-o", "now"]);
+    expect(todo.code).toBe(1);
+    expect(todo.err).toContain("todo has no choices");
+  });
+
+  it("help ends with examples, and guide prints the skill for this version", () => {
+    expect(ok(["ask", "--help"])).toMatch(/Examples:\n {2}parawatch ask -p game/);
+    expect(ok(["guide"])).toMatch(/A worker a lead started/);
+    expect(ok(["guide", "attachments"])).toMatch(/^# Pictures and videos on a card/);
+    expect(pw(["guide", "nope"]).err).toMatch(/Topics: .*attachments/);
+  });
+
+  it("a card with uncaptioned pictures opens and hints at the edit", () => {
+    const r = pw(["try", "-p", "app", "Look", "--attach", "/x/a.png", "--attach", "/x/b.png"]);
+    expect(r.code).toBe(0);
+    expect(r.out.trim()).toBe("c1");
+    expect(r.err).toMatch(/hint: 2 of 2 pictures .*parawatch edit c1/);
+    const quiet = pw(["try", "-p", "app", "Look", "--attach", "A=/x/a.png", "--attach", "B=/x/b.png", "--compare", "A,B"]);
+    expect(quiet.err).toBe("");
+    expect(ok(["show", "c2"])).toContain("Attached: A: /x/a.png [compare 1]");
+  });
+
+  it("run watch starts a run, ends it with the command, and passes the exit code on", () => {
+    const fail = pw(["run", "watch", "Bench", "-p", "app", "--", process.execPath, "-e", "process.exit(3)"]);
+    expect(fail.code).toBe(3);
+    const good = pw(["run", "watch", "Bench 2", "-p", "app", "--", process.execPath, "-e", "console.log('ok')"]);
+    expect(good.code).toBe(0);
+    expect(good.out).toContain("ok");
+    const runs = ok(["runs", "-p", "app", "--all"]);
+    expect(runs).toMatch(/Bench .*exit code 3/);
+  });
+});

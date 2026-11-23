@@ -15,3 +15,34 @@ export function npmPrefix(cliPath: string | undefined, platform: string = proces
 export function npmBin(prefix: string, platform: string = process.platform): string {
   return platform === "win32" ? `${prefix}\\npm.cmd` : `${prefix}/bin/npm`;
 }
+
+/**
+ * The npm that can update an npm global install at `prefix`, or undefined when there is none.
+ * The npm inside the prefix comes first, as it is the one that made the install. On Windows the
+ * global prefix (%APPDATA%\npm) usually holds no npm of its own: npm sits beside node (Program
+ * Files\nodejs, or the folder nvm links), so those come next, then any npm.cmd on the PATH. The
+ * app passes --prefix, so whichever npm runs writes into the install the command line runs from.
+ */
+export function findNpm(
+  prefix: string,
+  platform: string = process.platform,
+  exists: (file: string) => boolean,
+  env: Record<string, string | undefined> = process.env,
+): string | undefined {
+  const own = npmBin(prefix, platform);
+  if (exists(own)) return own;
+  if (platform !== "win32") return undefined;
+  const dirs = [
+    env.NVM_SYMLINK,
+    env.ProgramFiles && `${env.ProgramFiles}\\nodejs`,
+    env["ProgramFiles(x86)"] && `${env["ProgramFiles(x86)"]}\\nodejs`,
+    ...(env.Path ?? env.PATH ?? "").split(";"),
+  ];
+  for (const d of dirs) {
+    const dir = d?.trim().replace(/[\\/]+$/, "");
+    if (!dir) continue;
+    const npm = `${dir}\\npm.cmd`;
+    if (exists(npm)) return npm;
+  }
+  return undefined;
+}

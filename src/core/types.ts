@@ -32,6 +32,21 @@ export interface Answer {
   attach?: string[];
 }
 
+/**
+ * How a card's attachments are shown. Every list points at attachments by their place in `attach`
+ * (0-based), never by path: paths are mapped to each machine's folders, places are not.
+ */
+export interface CardMedia {
+  /** a short name shown on each attachment; null for one without */
+  captions?: (string | null)[];
+  /** the choice (1-based) each attachment belongs to; null for one that belongs to none */
+  options?: (number | null)[];
+  /** groups of attachments shown as one comparison: one place, switched between them */
+  compare?: number[][];
+  /** lay the attachments out in this many columns of one size */
+  grid?: number;
+}
+
 export interface Comment {
   seq: number;
   at: string;
@@ -49,6 +64,8 @@ export interface Card {
   options?: string[];
   recommend?: number;
   attach?: string[];
+  /** captions, choices, comparisons and a grid for the attachments */
+  media?: CardMedia;
   open?: string[];
   look?: string;
   /** who asked: an agent or session name */
@@ -114,6 +131,8 @@ export interface CardEditInput extends CardEdit {
   preview?: string;
   /** the whole list of attachments; an empty list clears it */
   attach?: string[];
+  /** how they are shown; replaced along with them */
+  media?: CardMedia;
 }
 
 export interface Project {
@@ -279,7 +298,7 @@ export type EventBody =
   | { type: "card.close"; card: string; note?: string; dismissed?: boolean }
   /** the human gave the card to another session, which is told once */
   | { type: "card.hand"; card: string; session: string; by: string }
-  | { type: "card.edit"; card: string; set: CardEdit & Pick<Card, "action" | "preview" | "previewFile" | "attach"> }
+  | { type: "card.edit"; card: string; set: CardEdit & Pick<Card, "action" | "preview" | "previewFile" | "attach" | "media"> }
   | { type: "run.start"; run: { id: string; project: string; task?: string; title: string; parent?: string; heartbeat?: number; log?: string } }
   | { type: "run.note"; run: string; text: string }
   | { type: "run.beat"; run: string }
