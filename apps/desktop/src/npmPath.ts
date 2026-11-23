@@ -46,3 +46,13 @@ export function findNpm(
   }
   return undefined;
 }
+
+/**
+ * A path or argument for a command run through cmd.exe (`shell: true` on Windows), which splits an
+ * unquoted `C:\Program Files\nodejs\npm.cmd` at its space and runs `C:\Program`. Quoted there when
+ * it holds a space or a character cmd treats specially; unchanged elsewhere.
+ */
+export function forCmd(s: string, platform: string = process.platform): string {
+  if (platform !== "win32" || /^".*"$/.test(s) || !/[\s&()^|<>,;=]/.test(s)) return s;
+  return `"${s.replace(/"/g, '""')}"`;
+}

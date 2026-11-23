@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- On Windows the app now updates the command line when npm sits under `C:\Program Files\nodejs`. 0.3.32 found that npm but passed its path to cmd.exe unquoted, so cmd ran `C:\Program` and the update failed. Paths with spaces (npm, the install folder, the command's shim, the Codex command) are now quoted.
+
 ## 0.3.33 (2026-11-24)
 
 - `parawatch app update` has the desktop app running on this machine check for a new version, download it and restart into it, and ends when the new version runs. An agent runs it when `doctor` says the app is older, so nobody has to press Restart to Update; `doctor` and `status` now name it. The app then brings the command line to its version as before.

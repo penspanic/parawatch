@@ -5,6 +5,7 @@
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
+import { forCmd } from "./npmPath.js";
 import { cannotSend, findCodex, liveLine, logOpenBy, readChat, resumeArgs, type ChatState } from "../../../src/core/codexChat.js";
 import type { ChatView } from "../../../src/core/chatTypes.js";
 import type { Run } from "../../../src/core/types.js";
@@ -135,7 +136,9 @@ export class Chats {
     if (!bin) throw new Error("Parawatch could not find the codex command. Install Codex, or set PARAWATCH_CODEX_BIN to its path.");
     const args = resumeArgs(view.id, view.settings);
     const cwd = view.settings.cwd && fs.existsSync(view.settings.cwd) ? view.settings.cwd : undefined;
-    const child = (this.deps.spawn ?? spawn)(bin, args, { cwd, stdio: ["pipe", "pipe", "pipe"], windowsHide: true, shell: process.platform === "win32" && /\.cmd$/i.test(bin) });
+    const viaCmd = process.platform === "win32" && /\.cmd$/i.test(bin);
+    // cmd.exe splits an unquoted path at its spaces (C:\Program Files\...)
+    const child = (this.deps.spawn ?? spawn)(viaCmd ? forCmd(bin) : bin, args, { cwd, stdio: ["pipe", "pipe", "pipe"], windowsHide: true, shell: viaCmd });
     const s: Sending = { child };
     this.sending.set(id, s);
     this.errors.delete(id);
