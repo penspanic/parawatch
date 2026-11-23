@@ -129,42 +129,18 @@ export function hasMedia(media: CardMedia | undefined): media is CardMedia {
 }
 
 /**
- * Words that point at a picture by its place ("the first picture", "left to right", "the top row"),
- * in English and Korean. A body that does this is easier to read with captions on the pictures.
- */
-const POSITIONAL = new RegExp(
-  [
-    String.raw`\b(first|second|third|fourth|last)\s+(picture|image|shot|still|video|clip|sheet|attachment|one)\b`,
-    String.raw`\b(left|right|top|bottom)\s+(to|row|column|one|half)\b`,
-    String.raw`\bfrom (the )?(left|right|top)\b`,
-    String.raw`\b(top|bottom|middle)\s+(row|line)\b`,
-    "(첫|둘째|셋째|넷째|마지막|두 번째|세 번째)\\s?(그림|장|사진|영상|시트|첨부|스틸)",
-    "(왼쪽|오른쪽|위|아래)\\s?(부터|에서부터)",
-    "맨\\s?(왼쪽|오른쪽|위|아래)",
-    "(줄|칸|열|행)은\\s",
-  ].join("|"),
-  "i",
-);
-
-export function pointsAtPlaces(body: string | undefined): boolean {
-  return !!body && POSITIONAL.test(body);
-}
-
-/**
  * What an agent should hear after opening or editing a card, so the human can tell the pictures
  * apart without reading the body: printed on stderr, never blocking.
  */
-export function mediaHints(card: { id: string; body?: string; attach?: string[]; options?: string[]; media?: CardMedia }): string[] {
+export function mediaHints(card: { id: string; attach?: string[]; options?: string[]; media?: CardMedia }): string[] {
   const shown = (card.attach ?? []).filter((f) => IMAGE_FILE.test(f) || VIDEO_FILE.test(f));
   const out: string[] = [];
   if (shown.length < 2) return out;
   const caps = card.media?.captions ?? [];
   const missing = (card.attach ?? []).filter((f, i) => (IMAGE_FILE.test(f) || VIDEO_FILE.test(f)) && !caps[i]).length;
-  const places = pointsAtPlaces(card.body);
-  if (missing || places) {
-    const why = places ? "the body points at pictures by their place" : `${missing} of ${shown.length} pictures and videos have no caption`;
+  if (missing) {
     out.push(
-      `hint: ${why}. Name each one on the picture itself instead: ` +
+      `hint: ${missing} of ${shown.length} pictures and videos have no caption. Name each one on the picture itself: ` +
         `parawatch edit ${card.id} --attach "Now=/abs/now.png" --attach "Ring only=/abs/ring.png" (see parawatch guide attachments)`,
     );
   }

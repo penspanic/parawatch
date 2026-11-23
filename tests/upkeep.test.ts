@@ -192,7 +192,7 @@ describe("doctor", () => {
     expect(by("desktop")).toMatchObject({ state: "ok", text: expect.stringContaining("0.2.2 is running") });
     expect(by("versions")?.state).toBe("warn");
     expect(by("skill:claude-code")).toMatchObject({ state: "warn", fix: "parawatch skill install" });
-    expect(by("instructions")).toMatchObject({ state: "warn", fix: "parawatch init -f AGENTS.md" });
+    expect(by("instructions")).toMatchObject({ state: "warn", fix: "parawatch init -f AGENTS.md -p game" });
     expect(by("hook")?.state).toBe("info");
     expect(by("github")?.state).toBe("off");
     expect(by("store")?.text).toContain(homeDir());

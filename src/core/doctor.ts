@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { CLI_UPDATE, readClient, runningDesktop, versionSkew } from "./clients.js";
 import { ghCommand, ghHosts, githubConfig, githubFailing, readCache, runGh, type GhRunner } from "./github.js";
-import { instructionState } from "./integrate.js";
+import { initCommand, instructionState } from "./integrate.js";
 import { listeners } from "./ops.js";
 import { fold } from "./state.js";
 import { deviceName, eventFiles, homeDir, readEvents, sharedDir, storeFormat } from "./store.js";
@@ -119,7 +119,7 @@ export async function doctor(input: DoctorInput): Promise<Check[]> {
   if (!found.length) add("instructions", "info", `no parawatch block in AGENTS.md or CLAUDE.md in ${cwd}`, "parawatch init");
   for (const x of found) {
     if (x.s === "current") add("instructions", "ok", x.f);
-    else add("instructions", "warn", `${x.f} has an older parawatch block`, `parawatch init -f ${path.basename(x.f)}`);
+    else add("instructions", "warn", `${x.f} has an older parawatch block`, initCommand(x.f));
   }
   const hooked = (input.claudeSettings ?? claudeSettingsFiles()).filter((f) => {
     try {

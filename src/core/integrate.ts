@@ -63,20 +63,33 @@ export function removeInstructions(file: string): boolean {
   return true;
 }
 
-/** Whether a file has the parawatch block, and whether it is the one this version writes. */
-export function instructionState(file: string): "current" | "outdated" | "absent" {
+/** The parawatch block in a file, and the project it names, if any. */
+function readBlock(file: string): { block: string; project?: string } | undefined {
   let text: string;
   try {
     text = fs.readFileSync(file, "utf8");
   } catch {
-    return "absent";
+    return undefined;
   }
   const a = text.indexOf(BEGIN);
   const b = text.indexOf(END);
-  if (a < 0 || b < a) return "absent";
+  if (a < 0 || b < a) return undefined;
   const block = text.slice(a, b + END.length);
   const project = /--project (\S+)/.exec(block)?.[1];
-  return block === instructions(project === "<project>" ? undefined : project) ? "current" : "outdated";
+  return { block, project: project === "<project>" ? undefined : project };
+}
+
+/** Whether a file has the parawatch block, and whether it is the one this version writes. */
+export function instructionState(file: string): "current" | "outdated" | "absent" {
+  const found = readBlock(file);
+  if (!found) return "absent";
+  return found.block === instructions(found.project) ? "current" : "outdated";
+}
+
+/** The `init` command that rewrites a file's block for this version, keeping the project it names. */
+export function initCommand(file: string): string {
+  const project = readBlock(file)?.project;
+  return `parawatch init -f ${path.basename(file)}${project ? ` -p ${project}` : ""}`;
 }
 
 /**

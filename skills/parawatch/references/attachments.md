@@ -57,7 +57,7 @@ Let parawatch line the pictures up instead of joining them into one sheet with a
 
 While nobody has answered, `parawatch edit <card>` replaces them: `--attach` again with every file (captions included), or only `--compare`, `--option-attach` or `--grid` to change the layout and keep the files. `--grid 0` goes back to the usual rows.
 
-After opening a card with two or more pictures and no captions, or with a body that points at pictures by their place, the command prints a hint on stderr with the edit to make.
+After opening a card with two or more pictures and no captions, the command prints a hint on stderr with the edit to make.
 
 ## Where the files live
 

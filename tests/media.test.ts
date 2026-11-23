@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { freshHome } from "./helpers.js";
-import { attachLines, buildMedia, mediaHints, parseAttach, pointsAtPlaces } from "../src/core/media.js";
+import { attachLines, buildMedia, mediaHints, parseAttach } from "../src/core/media.js";
 import { editCard, openCard, readState } from "../src/core/ops.js";
 
 let home = "";
@@ -44,16 +44,12 @@ describe("captions on attachments", () => {
     expect(buildMedia([{ file: "/a.png" }], {}, 0)).toBeUndefined();
   });
 
-  it("hints when pictures have no captions or the body counts places", () => {
+  it("hints when pictures have no captions", () => {
     const two = ["/a/1.png", "/a/2.png"];
     expect(mediaHints({ id: "c1", attach: two })[0]).toMatch(/2 of 2 pictures.*parawatch edit c1 --attach/);
     expect(mediaHints({ id: "c1", attach: two, media: { captions: ["A", "B"] } })).toEqual([]);
-    expect(mediaHints({ id: "c1", attach: two, media: { captions: ["A", "B"] }, body: "왼쪽부터 지금, A" })[0]).toMatch(/by their place/);
     expect(mediaHints({ id: "c1", attach: ["/a/1.png", "/a/log.txt"] })).toEqual([]);
     expect(mediaHints({ id: "c1", attach: two, options: ["A", "B"], media: { captions: ["A", "B"] } })[0]).toMatch(/--option-attach/);
-    expect(pointsAtPlaces("the first picture shows")).toBe(true);
-    expect(pointsAtPlaces("첫 그림 왼쪽이 지금")).toBe(true);
-    expect(pointsAtPlaces("The first build fails")).toBe(false);
   });
 
   it("text views name each attachment with its caption, choice and comparison", () => {
