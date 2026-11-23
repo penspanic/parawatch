@@ -5,6 +5,7 @@
 import type { Card, PwEvent, Snapshot } from "../../../src/core/types.js";
 import { inboxReason } from "../../../src/core/words.js";
 import type { AboutInfo, UpdateState } from "./prefs.js";
+import type { AppUpdateStep } from "../../../src/core/appUpdate.js";
 
 const KIND_WORD: Record<Card["kind"], string> = { decide: "Decide", try: "Try", block: "Blocked", todo: "To do" };
 
@@ -205,4 +206,28 @@ export function issueUrl(a: AboutInfo): string {
     "If you can, paste the output of `parawatch doctor` and attach the log file (Help > Show Log File); look through both for anything private first.",
   ].join("\n");
   return `https://github.com/penspanic/parawatch/issues/new?body=${encodeURIComponent(body)}`;
+}
+
+/**
+ * What the app tells `parawatch app update` for an update state: undefined while there is nothing
+ * new to say. `restarting` is said as soon as a version is ready, right before the app restarts.
+ */
+export function appUpdateStep(s: UpdateState): AppUpdateStep | undefined {
+  switch (s.status) {
+    case "checking":
+      return "checking";
+    case "available":
+    case "downloading":
+      return "downloading";
+    case "ready":
+      return "restarting";
+    case "latest":
+      return "latest";
+    case "off":
+      return "off";
+    case "error":
+      return "error";
+    default:
+      return undefined;
+  }
 }

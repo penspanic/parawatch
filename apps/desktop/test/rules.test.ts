@@ -2,7 +2,7 @@ import zlib from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { artPng, countLabel, draw, drawTray, TRAY_IDLE, trayWidth } from "../src/art.js";
 import { findNpm, npmBin, npmPrefix } from "../src/npmPath.js";
-import { agentsWorking, alertFor, combineAlerts, issueUrl, needsYou, summary, toDo, updateLabel, type Alert } from "../src/rules.js";
+import { agentsWorking, alertFor, appUpdateStep, combineAlerts, issueUrl, needsYou, summary, toDo, updateLabel, type Alert } from "../src/rules.js";
 import type { Card, PwEvent, Snapshot } from "../../../src/core/types.js";
 
 const card = (id: string, kind: Card["kind"], status: Card["status"] = "open"): Card => ({
@@ -238,5 +238,16 @@ describe("findNpm", () => {
   it("finds none on a Mac without npm in the prefix, and none on Windows without npm anywhere", () => {
     expect(findNpm("/usr/local", "darwin", have("/opt/homebrew/bin/npm"))).toBeUndefined();
     expect(findNpm("C:\\npm", "win32", have(), { Path: "C:\\Windows" })).toBeUndefined();
+  });
+});
+
+describe("parawatch app update, from the app's side", () => {
+  it("says restarting once a version is ready, and nothing while idle", () => {
+    expect(appUpdateStep({ status: "ready", version: "0.3.33" })).toBe("restarting");
+    expect(appUpdateStep({ status: "downloading", percent: 10 })).toBe("downloading");
+    expect(appUpdateStep({ status: "available", version: "0.3.33" })).toBe("downloading");
+    expect(appUpdateStep({ status: "latest" })).toBe("latest");
+    expect(appUpdateStep({ status: "off", reason: "a development build does not update itself" })).toBe("off");
+    expect(appUpdateStep({ status: "idle" })).toBeUndefined();
   });
 });

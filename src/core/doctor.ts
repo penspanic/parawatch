@@ -101,7 +101,7 @@ export async function doctor(input: DoctorInput): Promise<Check[]> {
   else if (seen) add("desktop", "info", `not running (last seen ${seen.version}, ${seen.at.slice(0, 10)})${seen.log ? ` · log ${seen.log}` : ""}`);
   else add("desktop", "info", "not used on this machine (the command line works alone)");
   const skew = versionSkew(input.version, desktop?.version);
-  if (skew) add("versions", "warn", skew.text, skew.older === "cli" ? CLI_UPDATE : "Parawatch > Check for Updates");
+  if (skew) add("versions", "warn", skew.text, skew.older === "cli" ? CLI_UPDATE : "parawatch app update");
 
   // what agents are told
   for (const t of input.targets ?? skillTargets()) {

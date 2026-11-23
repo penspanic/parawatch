@@ -87,6 +87,6 @@ export function versionSkew(cli: string | undefined, desktop: string | undefined
   const c = compareVersions(cli, desktop);
   if (c === 0) return undefined;
   const older: ClientName = c < 0 ? "cli" : "desktop";
-  const fix = older === "cli" ? CLI_UPDATE : "update the app (Check for Updates in its menu)";
+  const fix = older === "cli" ? CLI_UPDATE : "update the app: parawatch app update";
   return { cli, desktop, older, text: `The desktop app is ${desktop} and the command line is ${cli}: ${fix}.` };
 }
