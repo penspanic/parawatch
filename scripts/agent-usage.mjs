@@ -43,7 +43,7 @@ function files(dir, depth) {
 const COMMAND = /(?:^|[\s;&|(`$])parawatch\s+([a-z][a-z-]*)(?:\s+([a-z][a-z-]*))?([^\n;&|`]*)/g;
 const FAILED = /error: (unknown option|unknown command|missing required argument|too many arguments)[^\n"\\]*|parawatch: [^\n"\\]{0,120}/;
 const PLACES = /\b(first|second|third|last)\s+(picture|image|shot|video|sheet)\b|\bleft to right\b|(첫|둘째|셋째)\s?(그림|장|영상|시트)|(왼쪽|오른쪽|위)\s?부터|맨\s?(왼쪽|오른쪽)/i;
-const NESTED = new Set(["run", "pr", "sync", "relay", "skill", "project", "issue", "deploy"]);
+const NESTED = new Set(["run", "pr", "sync", "relay", "skill", "project", "issue", "deploy", "app"]);
 // the commands this copy knows, read from its own source, so prose ("parawatch is ...") is not counted
 const KNOWN = new Set(
   [...fs.readFileSync(new URL("../src/bin/cli.ts", import.meta.url), "utf8").matchAll(/\.command\("([a-z][a-z-]*)|cardCommand\("[a-z]+", "([a-z]+)"/g)].map((m) => m[1] ?? m[2]),

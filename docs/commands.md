@@ -40,6 +40,7 @@ parawatch goto api#88            # open the session that owns a pull request
 parawatch lead game 811a9612     # make a session the project's lead; it is handed what no session got
 parawatch hand c12 811a9612      # give a card (or a pull request: api#88) to another session
 parawatch digest                 # what each session did today (--date, --json)
+parawatch app update             # the running desktop app checks, downloads and restarts into a new version; ends when it runs
 ```
 
 Agents say what they work on themselves (`parawatch claim`, below), so nothing has to be registered. Registering a project's paths groups the sessions that start inside it even when they do not claim:

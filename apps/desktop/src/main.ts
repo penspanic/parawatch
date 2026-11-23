@@ -26,7 +26,8 @@ import { artPng, trayPng, type TrayState } from "./art.js";
 import { logger, logPath } from "./logger.js";
 import { siteIcon } from "./siteIcons.js";
 import { KEEP_CLOSED, RUN_TITLES, SINCE_HOURS, THEMES, validPref, type AboutInfo, type Prefs, type Theme, type UpdateState } from "./prefs.js";
-import { alertFor, agentsWorking, combineAlerts, issueUrl, needsYou, newlyStuck, summary, type Alert } from "./rules.js";
+import { alertFor, agentsWorking, appUpdateStep, combineAlerts, issueUrl, needsYou, newlyStuck, summary, type Alert } from "./rules.js";
+import { readAppUpdateRequest, writeAppUpdateStatus } from "../../../src/core/appUpdate.js";
 import { cliState, onCliChange, onCliStuck, updateCli } from "./cliUpdate.js";
 import type { ChatState } from "../../../src/core/chatTypes.js";
 import { Chats } from "./chat.js";
@@ -479,7 +480,42 @@ function shipItStillRunning(): boolean {
 /** The human asked to restart while a newer version was still downloading. */
 let restartWhenReady = false;
 
+/** The request from `parawatch app update` this app is working on, and the last one it saw. */
+let askedToUpdate: string | undefined;
+let lastUpdateAsk: string | undefined;
+/** A request older than this was left for an app that has since quit or restarted. */
+const UPDATE_ASK_MS = 5 * 60_000;
+
+/** Looks for a request from `parawatch app update`; an agent runs it so nobody has to press Restart. */
+function lookForUpdateAsk(): void {
+  const r = readAppUpdateRequest();
+  if (!r || r.id === lastUpdateAsk) return;
+  lastUpdateAsk = r.id;
+  if (!(Date.now() - Date.parse(r.at) < UPDATE_ASK_MS)) return;
+  askedToUpdate = r.id;
+  logger.info(`the command line asked to update now (${r.id})`);
+  writeAppUpdateStatus({ id: r.id, step: "checking" });
+  void checkNow().then(answerUpdateAsk);
+}
+
+/** Tells the waiting command how far the update got, and restarts into it once it is ready. */
+function answerUpdateAsk(s: UpdateState): void {
+  const id = askedToUpdate;
+  const step = id ? appUpdateStep(s) : undefined;
+  if (!id || !step) return;
+  try {
+    writeAppUpdateStatus({ id, step, ...(s.version ? { version: s.version } : {}), ...(s.percent !== undefined ? { percent: s.percent } : {}), ...(s.error || s.reason ? { error: s.error ?? s.reason } : {}) });
+  } catch (err) {
+    logger.warn("could not write the update status:", err);
+  }
+  if (step === "restarting") {
+    askedToUpdate = undefined;
+    void restartToUpdate();
+  } else if (step === "latest" || step === "off" || step === "error") askedToUpdate = undefined;
+}
+
 function onUpdate(s: UpdateState): void {
+  answerUpdateAsk(s);
   if (win && !win.isDestroyed()) win.webContents.send("pw:update", s);
   if (tray) tray.setContextMenu(trayMenu());
   buildAppMenu();
@@ -1063,6 +1099,9 @@ if (!app.requestSingleInstanceLock()) {
     hostChats();
     keepRelay();
     scheduleUpdates(settings.checkUpdates, onUpdate);
+    // a request left before this start is for the app that quit; only newer ones count
+    lastUpdateAsk = readAppUpdateRequest()?.id;
+    setInterval(lookForUpdateAsk, 2_000);
     onCliChange(sendAbout);
     onCliStuck((title, body) => {
       if (settings.notify && Notification.isSupported()) new Notification({ title, body }).show();

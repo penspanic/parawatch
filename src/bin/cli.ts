@@ -58,6 +58,7 @@ import { snapshot } from "../core/snapshot.js";
 import { mediaHints } from "../core/media.js";
 import { watchCommand } from "../core/watch.js";
 import { CODEX_APP } from "../core/codexWake.js";
+import { readAppUpdateStatus, requestAppUpdate, waitForAppUpdate } from "../core/appUpdate.js";
 import { SCHEMA_VERSION, type Card } from "../core/types.js";
 
 const collect = (v: string, prev: string[] = []) => [...prev, v];
@@ -779,6 +780,29 @@ program
     if (!topic) process.stdout.write(`\nTopics: ${guideTopics().join(", ")}\n`);
   });
 
+const appCmd = program.command("app").description("the desktop app running on this machine");
+appCmd
+  .command("update")
+  .description("have the running desktop app check for a new version, download it and restart into it; ends when the new version runs")
+  .option("--timeout <seconds>", "give up following it after this long (the app goes on by itself)", int, 600)
+  .action(async (o: { timeout: number }) => {
+    const app = runningDesktop();
+    if (!app) throw new UserError("The desktop app is not running on this machine. Open it and run this again, or update the command line alone: npm i -g parawatch@latest");
+    const id = requestAppUpdate();
+    const r = await waitForAppUpdate({
+      id,
+      from: app.version,
+      status: readAppUpdateStatus,
+      running: () => runningDesktop()?.version,
+      sleep: (ms) => new Promise((res) => setTimeout(res, ms)),
+      now: Date.now,
+      timeoutMs: o.timeout * 1000,
+      onStep: (s) => process.stderr.write(`${s.step}${s.version ? ` ${s.version}` : ""}\n`),
+    });
+    if (!r.ok) throw new UserError(r.text);
+    process.stdout.write(r.text + "\n");
+  });
+
 const skill = program.command("skill").description("the agent skill that teaches agents to use parawatch");
 skill
   .command("path")
@@ -1045,6 +1069,7 @@ const EXAMPLES: Record<string, string[]> = {
   "run watch": [`parawatch run watch "CI for #88" -p api -- gh run watch 123 --exit-status`, `parawatch run watch "Nightly bench" -p game --heartbeat 600 -- ./bench.sh`],
   "pr link": [`parawatch pr link https://github.com/acme/api/pull/88`, `parawatch pr link #88        # inside the repository`],
   wait: [`parawatch wait               # in the background; it exits with the answer and wakes you`],
+  "app update": [`parawatch app update         # nobody needs to press Restart to Update`],
 };
 
 /** Notes under the examples: what the help alone does not say. */
@@ -1052,6 +1077,7 @@ const NOTES: Record<string, string> = {
   ask: "Caption every picture (caption=file) instead of pointing at pictures by their place in the body. More: parawatch guide attachments",
   try: "Caption every picture (caption=file) instead of pointing at pictures by their place in the body. More: parawatch guide attachments",
   claim: "A worker a lead started needs only claim, pr link and claim --done. More: parawatch guide",
+  "app update": "Run it yourself when doctor says the app is older; do not ask the human to press the button. The app restarts (about half a minute with no window) and then updates the command line.",
   run: "Prefer run watch: one call that starts, keeps alive and ends the run with the command. More: parawatch guide runs",
 };
 

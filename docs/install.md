@@ -21,7 +21,7 @@ It links [`skills/parawatch`](../skills/parawatch/SKILL.md) into `~/.claude/skil
 - **macOS**: the DMG, `arm64` for Apple silicon, `x64` for Intel. It is signed and notarized, so it opens without warnings.
 - **Windows** (from 0.3.9): `Parawatch-Setup-<version>.exe`, for x64. It installs for your user only, into `%LOCALAPPDATA%\Programs\parawatch`, with a Start menu entry, and waits in the notification area (under ^ until you pin it). It is not signed, so SmartScreen warns the first time it runs: More info > Run anyway.
 
-Both update themselves: they download a new version in the background and ask you to restart (Check for Updates in the menu bar or tray menu, or Settings > Update automatically). On Linux, [build it from source](../apps/desktop/README.md#run-from-source).
+Both update themselves: they download a new version in the background and ask you to restart (Check for Updates in the menu bar or tray menu, or Settings > Update automatically). `parawatch app update` does the whole update from the command line, restart included, so an agent can do it when `doctor` says the app is older, without asking anyone to press a button. On Linux, [build it from source](../apps/desktop/README.md#run-from-source).
 
 **Checking the setup.** `parawatch doctor` shows the versions of the CLI and the app and whether they differ, the store, the skill links, the instruction files in this folder, the hook, and GitHub, with what to run for anything that needs work. Paste it into bug reports. `status` also says, at its end, when a newer CLI is out or when the app and the CLI are different versions.
 

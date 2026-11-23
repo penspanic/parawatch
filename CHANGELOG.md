@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `parawatch app update` has the desktop app running on this machine check for a new version, download it and restart into it, and ends when the new version runs. An agent runs it when `doctor` says the app is older, so nobody has to press Restart to Update; `doctor` and `status` now name it. The app then brings the command line to its version as before.
+
 ## 0.3.32 (2026-11-23)
 
 - Pictures on a card say what they are. `--attach "Now=/path/now.png"` puts a caption under the picture in the panel and the viewer, `--option-attach "2=Outline"` ties pictures to a choice (its number shows on them, and pointing at the choice lights them and flips comparisons to them), `--compare "Now,Outline"` shows several pictures or videos as one with a tab for each (the viewer keeps the zoom while flipping, and videos keep their moment), and `--grid 3` lays them out in columns of one width. `edit` changes all of these while nobody has answered. Cards stay readable by older copies, which show the files as before.

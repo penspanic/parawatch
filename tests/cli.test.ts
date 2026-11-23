@@ -237,4 +237,9 @@ describe("cli: helping agents get commands right", () => {
     const runs = ok(["runs", "-p", "app", "--all"]);
     expect(runs).toMatch(/Bench .*exit code 3/);
   });
+  it("app update says when no desktop app runs here", () => {
+    const r = pw(["app", "update"]);
+    expect(r.code).not.toBe(0);
+    expect(r.err).toMatch(/not running on this machine/);
+  });
 });
