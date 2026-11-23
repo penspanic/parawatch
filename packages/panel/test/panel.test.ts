@@ -578,3 +578,64 @@ describe("opening a session", () => {
     expect(p.focusTarget("issue:github.com/kim/game#99")).toBe(false);
   });
 });
+
+describe("redraws keep what the human is doing", () => {
+  const cardEl = (id: string) => root.querySelector<HTMLElement>(`[data-card-id="${id}"]`);
+  const note = (id: string) => root.querySelector<HTMLTextAreaElement>(`textarea[data-card="${id}"]`)!;
+
+  it("keeps a card that did not change, and swaps only the one that did", () => {
+    const a = card({ id: "c1", title: "Ship the top-box ending?" });
+    const b = card({ id: "c2", title: "Merge #88?" });
+    const p = mount(snapshot({ cards: [a, b] }));
+    const before1 = cardEl("c1");
+    const before2 = cardEl("c2");
+    p.update(snapshot({ cards: [a, { ...b, title: "Merge #88 now?" }] }));
+    expect(cardEl("c1")).toBe(before1);
+    expect(cardEl("c2")).not.toBe(before2);
+    expect(cardEl("c2")?.textContent).toContain("Merge #88 now?");
+  });
+
+  it("leaves the field being typed in alone when another card arrives above it", () => {
+    const b = card({ id: "c2", title: "Merge #88?", openedAt: ago(5) });
+    const p = mount(snapshot({ cards: [b] }));
+    const field = note("c2");
+    field.focus();
+    field.value = "after the CI run";
+    field.setSelectionRange(5, 5);
+    p.update(snapshot({ cards: [card({ id: "c1", title: "Older question", openedAt: ago(50) }), b] }));
+    expect(note("c2")).toBe(field);
+    expect(document.activeElement).toBe(field);
+    expect(field.value).toBe("after the CI run");
+    expect(field.selectionStart).toBe(5);
+  });
+
+  it("holds a card that changes while the human types in it, and draws it once they leave", async () => {
+    const b = card({ id: "c2", title: "Merge #88?" });
+    const p = mount(snapshot({ cards: [b] }));
+    const field = note("c2");
+    field.focus();
+    p.update(snapshot({ cards: [{ ...b, title: "Merge #88 now?" }] }));
+    expect(note("c2")).toBe(field);
+    expect(cardEl("c2")?.textContent).not.toContain("now?");
+    field.blur();
+    field.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 5));
+    expect(cardEl("c2")?.textContent).toContain("Merge #88 now?");
+  });
+
+  it("waits while a syllable is being composed", async () => {
+    const b = card({ id: "c2", title: "Merge #88?" });
+    const p = mount(snapshot({ cards: [b] }));
+    const field = note("c2");
+    field.focus();
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    p.update(snapshot({ cards: [b, card({ id: "c3", title: "New one" })] }));
+    expect(cardEl("c3")).toBeNull();
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 5));
+    // still typing: the new card is drawn, the field stays
+    p.update(snapshot({ cards: [b, card({ id: "c3", title: "New one" })] }));
+    expect(cardEl("c3")).not.toBeNull();
+    expect(note("c2")).toBe(field);
+  });
+});
