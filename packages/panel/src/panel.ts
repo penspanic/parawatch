@@ -129,6 +129,116 @@ const GRID_MIN = 170;
  * preferring the next one in order, so a tall video gets a neighbour instead of empty space and
  * nothing shrinks to a sliver. A lone item is capped so it does not take the whole window.
  */
+/**
+ * Redrawing the cards keeps what did not change. The column is built again from the snapshot into
+ * a detached copy, then the copy is laid onto what is on screen: a card, row or section that looks
+ * the same as before keeps its element, so the caret, a Korean syllable being composed, a playing
+ * video, an open fold and the scroll position stay where they were; only what changed is swapped.
+ * Sections are walked into, and everything else is matched by its key (card, row, section) or, with
+ * no key, by its place. How a node looked when it was drawn is kept apart from the live DOM, which
+ * hover and folding change.
+ */
+const drawn = new WeakMap<Node, string>();
+
+function nodeKey(n: Node): string | undefined {
+  if (!(n instanceof HTMLElement)) return undefined;
+  const d = n.dataset;
+  if (d.sec) return `sec:${d.sec}`;
+  if (d.cardId) return `card:${d.cardId}:${n.classList.contains("pw-card-past") ? "past" : "open"}`;
+  if (d.focus) return `row:${d.focus}`;
+  return undefined;
+}
+
+function isSection(n: Node): n is HTMLElement {
+  return n instanceof HTMLElement && (n.classList.contains("pw-fold-group") || n.classList.contains("pw-fold-body"));
+}
+
+function sameKind(a: Node, b: Node): boolean {
+  if (a.nodeType !== b.nodeType) return false;
+  if (!(a instanceof HTMLElement) || !(b instanceof HTMLElement)) return true;
+  return a.tagName === b.tagName && a.classList[0] === b.classList[0];
+}
+
+/** How a node looked when it was drawn, without the ages that tick on their own. */
+function looks(n: Node): string {
+  const known = drawn.get(n);
+  if (known !== undefined) return known;
+  let text: string;
+  if (n instanceof Element) {
+    const copy = n.cloneNode(true) as Element;
+    for (const a of [copy, ...Array.from(copy.querySelectorAll("[data-since]"))]) if ((a as HTMLElement).dataset?.since) a.textContent = "";
+    text = copy.outerHTML;
+  } else text = n.textContent ?? "";
+  drawn.set(n, text);
+  return text;
+}
+
+/** Remember how a node and everything under it looked when drawn, before anyone touches it. */
+function remember(n: Node): void {
+  if (isSection(n)) for (const k of Array.from(n.childNodes)) remember(k);
+  else looks(n);
+}
+
+/** The text field the human is typing in, if any. */
+export function typingIn(): HTMLElement | undefined {
+  const a = document.activeElement as HTMLElement | null;
+  if (!a) return undefined;
+  if (a instanceof HTMLTextAreaElement || a.isContentEditable) return a;
+  if (a instanceof HTMLInputElement && !["button", "checkbox", "radio", "submit", "range", "color", "file"].includes(a.type)) return a;
+  return undefined;
+}
+
+/**
+ * Lay `next` (a detached, freshly drawn copy) onto `live`. Returns true when a changed node was
+ * left as it was because the human is typing in it; draw again once they stop.
+ */
+export function reconcile(live: HTMLElement, next: HTMLElement): boolean {
+  let held = false;
+  const typing = typingIn();
+  const old = Array.from(live.childNodes);
+  // a queue per key, so two nodes that share one (the same card id from two machines) both match
+  const byKey = new Map<string, Node[]>();
+  for (const o of old) {
+    const k = nodeKey(o);
+    if (k) byKey.set(k, [...(byKey.get(k) ?? []), o]);
+  }
+  const loose = old.filter((o) => !nodeKey(o));
+  let li = 0;
+  const used = new Set<Node>();
+  const placed: Node[] = [];
+  for (const n of Array.from(next.childNodes)) {
+    const k = nodeKey(n);
+    let was: Node | undefined;
+    if (k) was = byKey.get(k)?.shift();
+    else if (loose[li] && sameKind(loose[li]!, n)) was = loose[li++];
+    let use: Node = n;
+    if (was && !used.has(was) && sameKind(was, n)) {
+      if (isSection(was) && isSection(n)) {
+        // a section: take its new look (counts, folded or not) and walk into it
+        for (const a of Array.from(was.attributes)) if (!n.hasAttribute(a.name)) was.removeAttribute(a.name);
+        for (const a of Array.from(n.attributes)) if (was.getAttribute(a.name) !== a.value) was.setAttribute(a.name, a.value);
+        if (reconcile(was, n)) held = true;
+        use = was;
+      } else if (looks(was) === looks(n)) use = was;
+      else if (typing && was.contains(typing)) {
+        held = true;
+        use = was;
+      }
+    }
+    if (use === n) remember(n);
+    used.add(use);
+    placed.push(use);
+  }
+  for (const o of old) if (!used.has(o)) o.parentNode?.removeChild(o);
+  // move only what is out of order, so the node being typed in stays put
+  let at: ChildNode | null = live.firstChild;
+  for (const u of placed) {
+    if (u === at) at = at.nextSibling;
+    else live.insertBefore(u, at);
+  }
+  return held;
+}
+
 export function layoutMedia(row: HTMLElement): void {
   const width = row.clientWidth;
   if (row.classList.contains("is-grid")) {
@@ -235,6 +345,12 @@ export class Panel {
   private deployConfirm = new Map<string, "approved" | "rejected">();
   private deploySending = new Set<string>();
   private cardsSig = "";
+  /** a changed card was left as it was because the human is typing in it */
+  private heldCards = false;
+  /** an input method is putting a syllable together in a field on the cards */
+  private composing = false;
+  /** a mouse button or finger is down on the cards: a redraw waits so the click lands */
+  private pressing = false;
   private head: HTMLElement;
   private cardsEl: HTMLElement;
   private agentsEl: HTMLElement;
@@ -267,10 +383,45 @@ export class Panel {
     // what the agents are doing sits on top, as a chart; what needs you follows
     this.agentsEl = el("div", "pw-agents", undefined, this.feedEl);
     this.cardsEl = el("div", "pw-cards", undefined, this.feedEl);
+    this.holdForTheHuman();
     this.layout();
     this.sizer.observe(root);
     this.renderHead();
     el("div", "pw-empty", "Loading…", this.cardsEl);
+  }
+
+  /**
+   * Redraws of the cards wait for the human: while an input method composes a syllable, and, for a
+   * card that changed while they type in it, until they leave the field (after the click that took
+   * them out has landed).
+   */
+  private holdForTheHuman(): void {
+    const cards = this.cardsEl;
+    const later = () => {
+      if (this.composing || this.pressing) return;
+      if (this.cardsSig !== "" && !this.heldCards) return;
+      setTimeout(() => {
+        if (!this.composing && !this.pressing && !typingIn()) this.update(undefined, this.error);
+      }, 0);
+    };
+    cards.addEventListener("compositionstart", () => {
+      this.composing = true;
+    });
+    cards.addEventListener("compositionend", () => {
+      this.composing = false;
+      later();
+    });
+    cards.addEventListener("pointerdown", () => {
+      this.pressing = true;
+    });
+    const up = () => {
+      if (!this.pressing) return;
+      this.pressing = false;
+      later();
+    };
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    cards.addEventListener("focusout", () => later());
   }
 
   update(snapshot: Snapshot | undefined, error?: string): void {
@@ -279,7 +430,11 @@ export class Panel {
     const now = Date.now();
     this.renderHead();
     const sig = this.signature();
-    if (sig !== this.cardsSig) {
+    if (this.composing || this.pressing) {
+      // a Korean (or other IME) syllable is being put together, or a click is on its way: a redraw
+      // now would break the syllable or swap the button under the pointer
+      this.cardsSig = "";
+    } else if (sig !== this.cardsSig) {
       this.cardsSig = sig;
       this.renderCards(now);
     } else {
@@ -580,13 +735,13 @@ export class Panel {
   }
 
   private renderCards(now: number): void {
-    const root = this.cardsEl;
-    // keep the focused textarea's caret across a rebuild
+    // drawn detached, then laid onto the column so what did not change keeps its element
+    const root = document.createElement("div");
+    // a field that had to be drawn anew gets the focus and the caret back
     const active = document.activeElement as HTMLTextAreaElement | null;
     const focusId = active?.dataset?.card;
     const caret = focusId ? [active!.selectionStart, active!.selectionEnd] : undefined;
 
-    root.replaceChildren();
     this.mediaSize.disconnect();
     const cards = this.snapshot?.cards ?? [];
     const open = cards
@@ -786,8 +941,15 @@ export class Panel {
       for (const c of closed) body.appendChild(this.pastCard(c, now));
     }
 
-    if (focusId) {
-      const t = root.querySelector<HTMLTextAreaElement>(`textarea[data-card="${focusId}"]`);
+    this.heldCards = reconcile(this.cardsEl, root);
+    // a card left alone while the human types in it is drawn again on the next update
+    if (this.heldCards) this.cardsSig = "";
+    this.mediaSize.disconnect();
+    for (const row of Array.from(this.cardsEl.querySelectorAll<HTMLElement>(".pw-media"))) this.mediaSize.observe(row);
+    for (const age of Array.from(this.cardsEl.querySelectorAll<HTMLElement>("[data-since]"))) age.textContent = ago(age.dataset.since, now);
+
+    if (focusId && document.activeElement !== active) {
+      const t = this.cardsEl.querySelector<HTMLTextAreaElement>(`textarea[data-card="${focusId}"]`);
       if (t) {
         t.focus();
         if (caret) t.setSelectionRange(caret[0] ?? 0, caret[1] ?? 0);
