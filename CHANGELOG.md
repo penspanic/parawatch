@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.33 (2026-11-24)
 
 - `parawatch app update` has the desktop app running on this machine check for a new version, download it and restart into it, and ends when the new version runs. An agent runs it when `doctor` says the app is older, so nobody has to press Restart to Update; `doctor` and `status` now name it. The app then brings the command line to its version as before.
 - The panel no longer redraws every card when one changes. A card, row or section that looks the same keeps its place on screen, so the reply being typed, its caret, a Korean syllable being composed, a playing video, an open fold and the scroll position stay put when an answer, a comment or pull request news comes in. A card that changes while you type in it waits until you leave the field, and redraws wait while an input method composes a syllable or a click is on its way.
