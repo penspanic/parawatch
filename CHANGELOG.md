@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.35 (2026-11-24)
 
 - Moving the playhead of a video on a card now works, in the card and full screen. The app sent a video file whole instead of the part the player asked for, so the player took it as a video it cannot move in and went on from where it was playing. It now sends the asked-for bytes.
 - On Windows, files from the relay reach the shared folder again when something holds them for a moment. A file is written beside its place and then swapped in; when Windows refused the swap (a virus scanner reading the new file, say), the whole look at the relay failed and was tried again a minute later, failing the same way, so answers and runs from the other machine stopped arriving. The swap now waits a little, then writes over the old file. A file that still cannot be written no longer holds back the others and is fetched again on the next look, and `parawatch sync` says the folder is out of step instead of calling the relay not reachable.
