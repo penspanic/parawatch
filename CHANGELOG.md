@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.34 (2026-11-24)
 
 - A video on a card stays full screen. Going full screen changed the size of its row, and laying the row out again took the video's cell out of the page and put it back, which ended full screen at once (and paused a playing video whenever the window was resized). Cells now move only when their order changes, and a row with a full screen video waits until it comes back.
 - On Windows the app now updates the command line when npm sits under `C:\Program Files\nodejs`. 0.3.32 found that npm but passed its path to cmd.exe unquoted, so cmd ran `C:\Program` and the update failed. Paths with spaces (npm, the install folder, the command's shim, the Codex command) are now quoted.
