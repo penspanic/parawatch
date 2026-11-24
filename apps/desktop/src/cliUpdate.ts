@@ -16,7 +16,7 @@ import { readClient } from "../../../src/core/clients.js";
 import { compareVersions } from "../../../src/core/semver.js";
 import { logger } from "./logger.js";
 import type { CliState } from "./prefs.js";
-import { findNpm, npmPrefix } from "./npmPath.js";
+import { findNpm, forCmd, npmPrefix } from "./npmPath.js";
 
 const INSTALL_TIMEOUT_MS = 180_000;
 /** npm can take a few minutes to list a version the app's feed already has */
@@ -88,9 +88,10 @@ export async function updateCli(appVersion: string, why: string): Promise<CliSta
   logger.info(`updating the command line from ${now.version} to ${appVersion} (${why}) with ${npm}`);
   const result = await new Promise<{ ok: boolean; out: string }>((resolve) => {
     execFile(
-      npm,
+      // through cmd.exe on Windows: npm there lives under "Program Files", which needs quotes
+      forCmd(npm),
       // --prefix: into the install the command line runs from, whatever this npm would pick on its own
-      ["install", "-g", "--prefix", prefix, `parawatch@${appVersion}`, "--prefer-online", "--no-fund", "--no-audit"],
+      ["install", "-g", "--prefix", forCmd(prefix), `parawatch@${appVersion}`, "--prefer-online", "--no-fund", "--no-audit"],
       {
         timeout: INSTALL_TIMEOUT_MS,
         // the GUI's PATH lacks the install's node; npm's own shebang looks for it there
@@ -106,7 +107,7 @@ export async function updateCli(appVersion: string, why: string): Promise<CliSta
     // any run of the command line rewrites its note, so the settings read the new version at once
     // the command's shim lives in the prefix, which on Windows is not where npm came from
     const shim = process.platform === "win32" ? path.join(prefix, "parawatch.cmd") : path.join(prefix, "bin", "parawatch");
-    await new Promise((resolve) => execFile(shim, ["--version"], { env: { ...process.env, PATH: [bin, process.env.PATH ?? ""].join(path.delimiter) }, timeout: 20_000, shell: process.platform === "win32", windowsHide: true }, resolve));
+    await new Promise((resolve) => execFile(forCmd(shim), ["--version"], { env: { ...process.env, PATH: [bin, process.env.PATH ?? ""].join(path.delimiter) }, timeout: 20_000, shell: process.platform === "win32", windowsHide: true }, resolve));
     set({ status: "idle" });
     return cliState(appVersion);
   }

@@ -1,7 +1,11 @@
+import { execFile } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import zlib from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { artPng, countLabel, draw, drawTray, TRAY_IDLE, trayWidth } from "../src/art.js";
-import { findNpm, npmBin, npmPrefix } from "../src/npmPath.js";
+import { findNpm, forCmd, npmBin, npmPrefix } from "../src/npmPath.js";
 import { agentsWorking, alertFor, appUpdateStep, combineAlerts, issueUrl, needsYou, summary, toDo, updateLabel, type Alert } from "../src/rules.js";
 import type { Card, PwEvent, Snapshot } from "../../../src/core/types.js";
 
@@ -249,5 +253,27 @@ describe("parawatch app update, from the app's side", () => {
     expect(appUpdateStep({ status: "latest" })).toBe("latest");
     expect(appUpdateStep({ status: "off", reason: "a development build does not update itself" })).toBe("off");
     expect(appUpdateStep({ status: "idle" })).toBeUndefined();
+  });
+});
+
+describe("commands run through cmd.exe", () => {
+  it("quotes a Windows path with a space, and leaves the rest alone", () => {
+    expect(forCmd("C:\\Program Files\\nodejs\\npm.cmd", "win32")).toBe('"C:\\Program Files\\nodejs\\npm.cmd"');
+    expect(forCmd("C:\\Users\\First Last\\AppData\\Roaming\\npm", "win32")).toBe('"C:\\Users\\First Last\\AppData\\Roaming\\npm"');
+    expect(forCmd("C:\\Users\\panik\\AppData\\Roaming\\npm\\npm.cmd", "win32")).toBe("C:\\Users\\panik\\AppData\\Roaming\\npm\\npm.cmd");
+    expect(forCmd("parawatch@0.3.34", "win32")).toBe("parawatch@0.3.34");
+    expect(forCmd('"C:\\Program Files\\x.cmd"', "win32")).toBe('"C:\\Program Files\\x.cmd"');
+    expect(forCmd("/opt/home brew/bin/npm", "darwin")).toBe("/opt/home brew/bin/npm");
+  });
+
+  // the Windows CI runs this for real: a .cmd under a folder with a space, as npm sits under Program Files
+  it.runIf(process.platform === "win32")("runs a .cmd whose path has a space", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pw cmd "));
+    const cmd = path.join(dir, "say.cmd");
+    fs.writeFileSync(cmd, "@echo off\r\necho said %~1\r\n");
+    const out = await new Promise<string>((resolve, reject) =>
+      execFile(forCmd(cmd), [forCmd("C:\\Some Folder")], { shell: true, windowsHide: true }, (err, stdout) => (err ? reject(err) : resolve(stdout))),
+    );
+    expect(out.trim()).toBe("said C:\\Some Folder");
   });
 });
