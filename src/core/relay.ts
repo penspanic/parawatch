@@ -184,6 +184,8 @@ export interface MirrorState {
   /** files changed here and not yet on the server */
   pending?: number;
   skipped?: string[];
+  /** files from the server this machine could not write yet, by their name on the server; tried again on every pull */
+  retry?: string[];
 }
 
 export function mirrorStatePath(): string {
@@ -213,21 +215,70 @@ function safeRel(rel: string): boolean {
 
 const hashOf = (b: Buffer) => crypto.createHash("sha256").update(b).digest("hex");
 
-/**
- * Write a file whole or not at all, and on disk before it takes the old one's place. Without the
- * flush, a machine that loses power can keep the new name with nothing behind it: zeros where the
- * file was.
- */
-export function writeDurable(file: string, data: Buffer | string): void {
-  const tmp = path.join(path.dirname(file), `.${path.basename(file)}.relay.tmp`);
-  const fd = fs.openSync(tmp, "w");
+type Rename = (from: string, to: string) => void;
+
+/** Windows refuses to rename over a file for a moment while something else has it open: a virus scanner reading a file just written, a reader of the log. */
+const isBusy = (err: unknown) => ["EPERM", "EACCES", "EBUSY"].includes((err as NodeJS.ErrnoException).code ?? "");
+
+const tmpOf = (file: string) => path.join(path.dirname(file), `.${path.basename(file)}.relay.tmp`);
+
+function writeSynced(file: string, data: Buffer): void {
+  const fd = fs.openSync(file, "w");
   try {
-    fs.writeSync(fd, typeof data === "string" ? Buffer.from(data) : data);
+    fs.writeSync(fd, data);
     fs.fsyncSync(fd);
   } finally {
     fs.closeSync(fd);
   }
-  fs.renameSync(tmp, file);
+}
+
+/** The bytes written over the file itself, when it cannot be swapped in; the copy beside it goes if it can. */
+function overwrite(file: string, data: Buffer): void {
+  writeSynced(file, data);
+  try {
+    fs.rmSync(tmpOf(file), { force: true });
+  } catch {
+    // still held; a hidden .tmp file is left alone by the mirror and replaced on the next write
+  }
+}
+
+/**
+ * Write a file whole or not at all, and on disk before it takes the old one's place. Without the
+ * flush, a machine that loses power can keep the new name with nothing behind it: zeros where the
+ * file was. When Windows will not let the copy take the old one's place, the bytes are written
+ * over the old file instead: a file that came in late is worse than one written in place.
+ */
+export function writeDurable(file: string, data: Buffer | string, rename: Rename = fs.renameSync): void {
+  const buf = typeof data === "string" ? Buffer.from(data) : data;
+  const tmp = tmpOf(file);
+  try {
+    writeSynced(tmp, buf);
+    rename(tmp, file);
+  } catch (err) {
+    if (!isBusy(err)) throw err;
+    overwrite(file, buf);
+  }
+}
+
+/** writeDurable that first waits a little for the file to be let go, so it is still swapped in whole. */
+export async function writeDurableSoon(file: string, data: Buffer, rename: Rename = fs.renameSync, waits = [50, 200, 750]): Promise<void> {
+  const tmp = tmpOf(file);
+  try {
+    writeSynced(tmp, data);
+  } catch (err) {
+    if (!isBusy(err)) throw err;
+    return overwrite(file, data);
+  }
+  for (let i = 0; ; i++) {
+    try {
+      rename(tmp, file);
+      return;
+    } catch (err) {
+      if (!isBusy(err)) throw err;
+      if (i >= waits.length) return overwrite(file, data);
+      await sleep(waits[i] ?? 0);
+    }
+  }
 }
 
 /**
@@ -249,6 +300,8 @@ export interface MirrorOptions {
   log?: (line: string) => void;
   /** where the mirror remembers what it has seen; the home folder's relay-state.json by default */
   stateFile?: string;
+  /** how a file written beside its place takes it; fs.renameSync, or a stand-in in tests */
+  rename?: Rename;
 }
 
 export class RelayMirror {
@@ -314,8 +367,14 @@ export class RelayMirror {
   async pull(wait = 0): Promise<number> {
     this.abort = new AbortController();
     const { head, changes } = await this.client.changes(this.state.cursor, wait, this.abort.signal);
+    // A file that could not be written here is fetched again, so one file held open does not keep
+    // every later change from this machine.
+    const listed = new Set(changes.map((c) => c.name));
+    const retry = new Set(this.state.retry ?? []);
+    const failed: string[] = [];
     let n = 0;
-    for (const ch of changes) {
+    for (const ch of [...changes, ...[...retry].filter((r) => !listed.has(r)).map((name): Change => ({ name, seq: 0 }))]) {
+      retry.delete(ch.name);
       const known = this.names.get(ch.name);
       if (ch.deleted) {
         if (known) {
@@ -360,30 +419,40 @@ export class RelayMirror {
       // a change made here that has not gone up yet wins; it goes up on the next push
       if (here && k && hereHash !== k.hash && hereHash !== hash) continue;
       let mergedHere = false;
-      if (here && !k && hereHash !== hash && rel.endsWith(".jsonl")) {
-        // No record of this log here, and it differs: the record was lost (a crash) or this
-        // machine joins with a folder of its own. Taking the server's copy would drop the events
-        // only this machine has, so keep both. The merged log goes up on the next push.
-        const merged = mergeLines(data, here);
-        if (!merged.equals(here)) {
-          writeDurable(p, merged);
+      let st: fs.Stats;
+      try {
+        if (here && !k && hereHash !== hash && rel.endsWith(".jsonl")) {
+          // No record of this log here, and it differs: the record was lost (a crash) or this
+          // machine joins with a folder of its own. Taking the server's copy would drop the events
+          // only this machine has, so keep both. The merged log goes up on the next push.
+          const merged = mergeLines(data, here);
+          if (!merged.equals(here)) {
+            await writeDurableSoon(p, merged, this.o.rename);
+            n++;
+          }
+          mergedHere = !merged.equals(data);
+          this.log(`kept ${rel} from both this machine and the relay`);
+        } else if (hereHash !== hash) {
+          fs.mkdirSync(path.dirname(p), { recursive: true });
+          await writeDurableSoon(p, data, this.o.rename);
           n++;
         }
-        mergedHere = !merged.equals(data);
-        this.log(`kept ${rel} from both this machine and the relay`);
-      } else if (hereHash !== hash) {
-        fs.mkdirSync(path.dirname(p), { recursive: true });
-        writeDurable(p, data);
-        n++;
+        st = fs.statSync(p);
+      } catch (err) {
+        failed.push(`${rel}: ${(err as Error).message}`);
+        retry.add(ch.name);
+        continue;
       }
-      const st = fs.statSync(p);
       // a merged log is newer than the server's copy: a size no file has makes push() send it
       this.state.files[rel] = { hash, size: mergedHere ? -1 : st.size, mtime: st.mtimeMs };
       this.names.set(ch.name, rel);
     }
     this.state.cursor = head;
+    this.state.retry = retry.size ? [...retry] : undefined;
     this.state.lastOk = new Date().toISOString();
-    this.state.error = undefined;
+    const error = failed.length ? `could not write ${failed.length} file(s) from the relay, tried again on the next look: ${failed[0]}` : undefined;
+    if (error && error !== this.state.error) this.log(`relay: ${error}`);
+    this.state.error = error;
     this.save();
     return n;
   }

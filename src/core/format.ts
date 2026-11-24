@@ -516,7 +516,7 @@ export function syncText(st: SyncStatus | undefined, color = false, now = Date.n
   if (!st) return "This machine keeps its log to itself. To share it with another machine: parawatch sync setup <folder> --device <name>";
   const lines = [
     `${paint(v, st.device, "bold")} writes to ${st.dir}`,
-    `adapter  ${st.adapter}${st.ok ? "" : paint(v, " (not reachable)", "yellow")}${st.lastSync ? ` · last in step ${ago(st.lastSync, now)} ago` : ""}${st.pending ? ` · ${st.pending} file(s) on the way` : ""}`,
+    `adapter  ${st.adapter}${st.ok ? "" : paint(v, " (out of step)", "yellow")}${st.lastSync ? ` · last in step ${ago(st.lastSync, now)} ago` : ""}${st.pending ? ` · ${st.pending} file(s) on the way` : ""}`,
   ];
   if (!st.peers.length) lines.push("peers    none yet");
   for (const p of st.peers) {

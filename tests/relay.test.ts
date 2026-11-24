@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { RelayClient, RelayMirror, joinCode, newKey, open, readJoinCode, seal, sealedName, type RelayConfig } from "../src/core/relay.js";
+import { RelayClient, RelayMirror, joinCode, newKey, open, readJoinCode, readMirrorState, seal, sealedName, writeDurable, writeDurableSoon, type RelayConfig } from "../src/core/relay.js";
 import { createRelayServer } from "../src/relay/server.js";
 
 let root: string;
@@ -34,10 +34,10 @@ async function space(): Promise<RelayConfig> {
   return { url, ...made, key: newKey() };
 }
 
-function machine(name: string, c: RelayConfig) {
+function machine(name: string, c: RelayConfig, rename?: (from: string, to: string) => void) {
   const dir = path.join(root, name);
   fs.mkdirSync(dir, { recursive: true });
-  const m = new RelayMirror({ dir, config: c, stateFile: path.join(root, `${name}-state.json`) });
+  const m = new RelayMirror({ dir, config: c, stateFile: path.join(root, `${name}-state.json`), rename });
   const write = (rel: string, text: string) => {
     fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
     fs.writeFileSync(path.join(dir, rel), text);
@@ -240,5 +240,86 @@ describe("two machines through a relay", () => {
     const pc = machine("pc", c);
     await pc.m.pull();
     expect(fs.existsSync(path.join(root, "escape.txt"))).toBe(false);
+  });
+});
+
+const fsError = (code: string) => Object.assign(new Error(`${code}: operation not permitted, rename`), { code });
+
+describe("writing a file that came in", () => {
+  it("writes over the old file when Windows will not let the new copy take its place", () => {
+    const file = path.join(root, "mac.jsonl");
+    fs.writeFileSync(file, "old\n");
+    writeDurable(file, "new\n", () => {
+      throw fsError("EPERM");
+    });
+    expect(fs.readFileSync(file, "utf8")).toBe("new\n");
+    expect(fs.readdirSync(root).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+  });
+
+  it("waits for the file to be let go and then swaps the copy in", async () => {
+    const file = path.join(root, "mac.jsonl");
+    fs.writeFileSync(file, "old\n");
+    let tries = 0;
+    await writeDurableSoon(file, Buffer.from("new\n"), (a, b) => {
+      if (++tries < 3) throw fsError("EBUSY");
+      fs.renameSync(a, b);
+    }, [1, 1, 1]);
+    expect(tries).toBe(3);
+    expect(fs.readFileSync(file, "utf8")).toBe("new\n");
+    expect(fs.readdirSync(root).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+  });
+
+  it("still fails on a fault that waiting does not mend", () => {
+    const file = path.join(root, "mac.jsonl");
+    fs.writeFileSync(file, "old\n");
+    expect(() =>
+      writeDurable(file, "new\n", () => {
+        throw fsError("EIO");
+      }),
+    ).toThrow(/EIO/);
+    expect(fs.readFileSync(file, "utf8")).toBe("old\n");
+  });
+});
+
+describe("a file that cannot be written here", () => {
+  it("still lands when the rename stays refused", async () => {
+    const c = await space();
+    const mac = machine("mac", c);
+    const pc = machine("pc", c, (a, b) => {
+      if (b.endsWith("mac.jsonl")) throw fsError("EPERM");
+      fs.renameSync(a, b);
+    });
+    mac.write("events/mac.jsonl", "one\n");
+    await mac.m.once();
+    await pc.m.pull();
+    mac.write("events/mac.jsonl", "one\ntwo\n");
+    await mac.m.once();
+    await pc.m.pull();
+    expect(pc.read("events/mac.jsonl")).toBe("one\ntwo\n");
+  });
+
+  it("does not hold back the other files, and comes on the next look", async () => {
+    const c = await space();
+    const mac = machine("mac", c);
+    let stuck = true;
+    const pc = machine("pc", c, (a, b) => {
+      if (stuck && b.endsWith("mac.jsonl")) throw fsError("EIO");
+      fs.renameSync(a, b);
+    });
+    mac.write("events/mac.jsonl", "answer\n");
+    mac.write("runs/mac.json", "running");
+    await mac.m.once();
+    await pc.m.pull();
+    expect(pc.read("runs/mac.json")).toBe("running");
+    expect(pc.read("events/mac.jsonl")).toBeUndefined();
+    const st = readMirrorState(c.space, path.join(root, "pc-state.json"));
+    expect(st.error).toMatch(/events\/mac\.jsonl/);
+    expect(st.retry).toHaveLength(1);
+    stuck = false;
+    await pc.m.pull();
+    expect(pc.read("events/mac.jsonl")).toBe("answer\n");
+    const after = readMirrorState(c.space, path.join(root, "pc-state.json"));
+    expect(after.error).toBeUndefined();
+    expect(after.retry).toBeUndefined();
   });
 });
