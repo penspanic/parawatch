@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Panel, spanLabel } from "../src/panel";
+import { layoutMedia, Panel, spanLabel } from "../src/panel";
 import type { Backend, Card, DeployView, InboxThread, IssueView, NewsItem, PrView, Run, Snapshot } from "../src/types";
 
 /**
@@ -637,5 +637,50 @@ describe("redraws keep what the human is doing", () => {
     p.update(snapshot({ cards: [b, card({ id: "c3", title: "New one" })] }));
     expect(cardEl("c3")).not.toBeNull();
     expect(note("c2")).toBe(field);
+  });
+});
+
+describe("laying out a row of pictures and videos", () => {
+  function row(n: number): HTMLElement {
+    const r = document.createElement("div");
+    r.className = "pw-media";
+    for (let i = 0; i < n; i++) {
+      const item = document.createElement("div");
+      item.className = "pw-media-item";
+      item.dataset.ar = String(1 + i * 0.3);
+      item.appendChild(document.createElement(i === 0 ? "video" : "img"));
+      r.appendChild(item);
+    }
+    document.body.appendChild(r);
+    Object.defineProperty(r, "clientWidth", { configurable: true, value: 400 });
+    return r;
+  }
+
+  it("does not take cells out of the page when their order stays", async () => {
+    const r = row(3);
+    layoutMedia(r);
+    const moved: Node[] = [];
+    const mo = new MutationObserver((ms) => ms.forEach((m) => moved.push(...Array.from(m.removedNodes))));
+    mo.observe(r, { childList: true });
+    Object.defineProperty(r, "clientWidth", { configurable: true, value: 380 });
+    layoutMedia(r);
+    await new Promise((done) => setTimeout(done, 0));
+    mo.disconnect();
+    // moving a cell stops its video and ends its full screen
+    expect(moved).toEqual([]);
+  });
+
+  it("leaves a row alone while one of its videos is full screen", () => {
+    const r = row(2);
+    const video = r.querySelector("video")!;
+    Object.defineProperty(document, "fullscreenElement", { configurable: true, get: () => video });
+    try {
+      layoutMedia(r);
+      expect((r.firstElementChild as HTMLElement).style.width).toBe("");
+    } finally {
+      Object.defineProperty(document, "fullscreenElement", { configurable: true, get: () => null });
+    }
+    layoutMedia(r);
+    expect((r.firstElementChild as HTMLElement).style.width).not.toBe("");
   });
 });
