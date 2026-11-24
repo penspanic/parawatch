@@ -16,7 +16,7 @@ import { readClient } from "../../../src/core/clients.js";
 import { compareVersions } from "../../../src/core/semver.js";
 import { logger } from "./logger.js";
 import type { CliState } from "./prefs.js";
-import { findNpm, forCmd, npmPrefix } from "./npmPath.js";
+import { findNpm, forCmd, npmFailure, npmPrefix } from "./npmPath.js";
 
 const INSTALL_TIMEOUT_MS = 180_000;
 /** npm can take a few minutes to list a version the app's feed already has */
@@ -111,9 +111,8 @@ export async function updateCli(appVersion: string, why: string): Promise<CliSta
     set({ status: "idle" });
     return cliState(appVersion);
   }
-  const last = result.out.split("\n").filter(Boolean).slice(-3).join(" ");
   logger.warn(`command line update failed: ${result.out}`);
-  const notYet = /ETARGET|No matching version|notarget/i.test(result.out);
+  const { notYet, reason: last } = npmFailure(result.out);
   if (!notYet) stuck(appVersion, `npm could not update the command line: ${last.slice(0, 160)}`);
   set({ status: "error", version: now.version, target: appVersion, npm, path: now.path, error: notYet ? `${appVersion} is not on npm yet; trying again in a few minutes` : last.slice(0, 200) });
   if (notYet) {

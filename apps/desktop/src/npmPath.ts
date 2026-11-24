@@ -56,3 +56,16 @@ export function forCmd(s: string, platform: string = process.platform): string {
   if (platform !== "win32" || /^".*"$/.test(s) || !/[\s&()^|<>,;=]/.test(s)) return s;
   return `"${s.replace(/"/g, '""')}"`;
 }
+
+/**
+ * What a failed `npm install -g parawatch@<version>` said: whether the version is only not there
+ * yet (npm lists a new version before its registry serves the file, so a 404 for the tarball comes
+ * a few minutes after publishing too), and the lines that say why, not npm's notices and log path.
+ */
+export function npmFailure(out: string): { notYet: boolean; reason: string } {
+  const notYet = /ETARGET|No matching version|notarget|\bE404\b|404 Not Found/i.test(out);
+  const lines = out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const errors = lines.filter((l) => /^npm (error|ERR!)/.test(l) && !/complete log of this run|^npm (error|ERR!)\s*(\d+)?\s*$/.test(l));
+  const reason = (errors.length ? errors.slice(0, 2) : lines.slice(-3)).join(" ");
+  return { notYet, reason };
+}

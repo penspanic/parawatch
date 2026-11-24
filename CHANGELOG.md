@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The app tries the command line update again a few minutes later when npm answers 404 for the new version's file. npm lists a version a little before its registry serves the file, so an app that updated itself right after a release took the 404 as a failure, told you to update by hand and did not try again. When the update does fail, the app now shows npm's error instead of its notices.
+
 ## 0.3.35 (2026-11-24)
 
 - Moving the playhead of a video on a card now works, in the card and full screen. The app sent a video file whole instead of the part the player asked for, so the player took it as a video it cannot move in and went on from where it was playing. It now sends the asked-for bytes.
