@@ -6,8 +6,7 @@
 import { execFile, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
-import { app, autoUpdater as squirrel, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, Notification, protocol, shell, systemPreferences, Tray } from "electron";
+import { app, autoUpdater as squirrel, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, protocol, shell, systemPreferences, Tray } from "electron";
 import { readClient, recordClient, versionSkew } from "../../../src/core/clients.js";
 import { answerCard, dismissCard, endedSessions, hideRun, holdListeners, makeLead, readState, releaseListeners, setIssueAside, UserError } from "../../../src/core/ops.js";
 import { CodexWaker, thisMachine } from "../../../src/core/codexWake.js";
@@ -26,6 +25,7 @@ import { artPng, trayPng, type TrayState } from "./art.js";
 import { logger, logPath } from "./logger.js";
 import { siteIcon } from "./siteIcons.js";
 import { KEEP_CLOSED, RUN_TITLES, SINCE_HOURS, THEMES, validPref, type AboutInfo, type Prefs, type Theme, type UpdateState } from "./prefs.js";
+import { mediaResponse } from "./mediaResponse.js";
 import { alertFor, agentsWorking, appUpdateStep, combineAlerts, issueUrl, needsYou, newlyStuck, summary, type Alert } from "./rules.js";
 import { readAppUpdateRequest, writeAppUpdateStatus } from "../../../src/core/appUpdate.js";
 import { cliState, onCliChange, onCliStuck, updateCli } from "./cliUpdate.js";
@@ -1081,7 +1081,8 @@ if (!app.requestSingleInstanceLock()) {
     protocol.handle(MEDIA_SCHEME, (req) => {
       const p = decodeURIComponent(new URL(req.url).pathname.slice(1));
       if (!allowedMedia().has(path.resolve(p))) return new Response("not allowed", { status: 403 });
-      return net.fetch(pathToFileURL(p).toString(), { headers: req.headers });
+      // with byte ranges, so a video can be moved to any moment (net.fetch of a file sends it whole)
+      return mediaResponse(p, req.headers.get("range"));
     });
     try {
       fs.mkdirSync(homeDir(), { recursive: true });

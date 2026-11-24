@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Moving the playhead of a video on a card now works, in the card and full screen. The app sent a video file whole instead of the part the player asked for, so the player took it as a video it cannot move in and went on from where it was playing. It now sends the asked-for bytes.
+
 ## 0.3.34 (2026-11-24)
 
 - A video on a card stays full screen. Going full screen changed the size of its row, and laying the row out again took the video's cell out of the page and put it back, which ended full screen at once (and paused a playing video whenever the window was resized). Cells now move only when their order changes, and a row with a full screen video waits until it comes back.
