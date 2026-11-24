@@ -249,6 +249,11 @@ export function layoutMedia(row: HTMLElement): void {
   }
   const items = Array.from(row.children) as HTMLElement[];
   if (!width || !items.length) return;
+  // a video shown full screen from this row: moving its cell now would take it out of full screen
+  // (the row changes size as it leaves), so the row is laid out again once it comes back
+  const full = typeof document !== "undefined" ? document.fullscreenElement : null;
+  if (full && row.contains(full)) return;
+  const order: HTMLElement[] = [];
   const target = Math.max(200, Math.min(300, width * 0.55));
   const cap = items.length === 1 ? 520 : target * 1.35;
   const ratio = (i: HTMLElement) => Number(i.dataset.ar) || 1.6;
@@ -276,8 +281,15 @@ export function layoutMedia(row: HTMLElement): void {
       i.style.width = `${Math.floor(ratio(i) * h)}px`;
       // a caption strip sits under the picture, outside its shape
       i.style.height = `${Math.floor(h) + (i.dataset.foot ? MEDIA_FOOT : 0)}px`;
-      row.appendChild(i); // rows are placed in order, so a pulled-forward item moves up
+      order.push(i); // rows are placed in order, so a pulled-forward item moves up
     }
+  }
+  // move only the cells that are out of place: taking a cell out of the page, even to put it back,
+  // stops its video and ends its full screen
+  let at = row.firstElementChild;
+  for (const i of order) {
+    if (i === at) at = at.nextElementSibling;
+    else row.insertBefore(i, at);
   }
 }
 
