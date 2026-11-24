@@ -5,7 +5,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { artPng, countLabel, draw, drawTray, TRAY_IDLE, trayWidth } from "../src/art.js";
-import { findNpm, forCmd, npmBin, npmPrefix } from "../src/npmPath.js";
+import { findNpm, forCmd, npmBin, npmFailure, npmPrefix } from "../src/npmPath.js";
 import { agentsWorking, alertFor, appUpdateStep, combineAlerts, issueUrl, needsYou, summary, toDo, updateLabel, type Alert } from "../src/rules.js";
 import type { Card, PwEvent, Snapshot } from "../../../src/core/types.js";
 
@@ -275,5 +275,43 @@ describe("commands run through cmd.exe", () => {
       execFile(forCmd(cmd), [forCmd("C:\\Some Folder")], { shell: true, windowsHide: true }, (err, stdout) => (err ? reject(err) : resolve(stdout))),
     );
     expect(out.trim()).toBe("said C:\\Some Folder");
+  });
+});
+
+describe("npmFailure", () => {
+  // what npm printed on a Windows machine a few minutes after a release was published
+  const tarball404 = [
+    "npm warn cleanup Failed to remove some directories [",
+    "npm warn cleanup   [ 'C:\\\\Users\\\\me\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\parawatch', [Error: EPERM: operation not permitted, rmdir] ]",
+    "npm warn cleanup ]",
+    "npm notice",
+    "npm notice New major version of npm available! 11.6.2 -> 12.2.3",
+    "npm notice To update run: npm install -g npm@12.2.3",
+    "npm notice",
+    "npm error code E404",
+    "npm error 404 Not Found - GET https://registry.npmjs.org/parawatch/-/parawatch-0.3.35.tgz - Not found",
+    "npm error 404",
+    "npm error 404  The requested resource 'parawatch@https://registry.npmjs.org/parawatch/-/parawatch-0.3.35.tgz' could not be found or you do not have permission to access it.",
+    "npm error A complete log of this run can be found in: C:\\Users\\me\\AppData\\Local\\npm-cache\\_logs\\x-debug-0.log",
+  ].join("\r\n");
+
+  it("takes a tarball npm does not serve yet as a version still on its way", () => {
+    const f = npmFailure(tarball404);
+    expect(f.notYet).toBe(true);
+    expect(f.reason).toBe("npm error code E404 npm error 404 Not Found - GET https://registry.npmjs.org/parawatch/-/parawatch-0.3.35.tgz - Not found");
+  });
+
+  it("takes a version npm does not list yet as on its way", () => {
+    expect(npmFailure("npm error code ETARGET\nnpm error notarget No matching version found for parawatch@9.9.9.").notYet).toBe(true);
+  });
+
+  it("names the error of any other failure, not npm's notices", () => {
+    const f = npmFailure("npm notice To update run: npm install -g npm@12\nnpm error code EACCES\nnpm error syscall mkdir\nnpm error A complete log of this run can be found in: /x.log");
+    expect(f.notYet).toBe(false);
+    expect(f.reason).toBe("npm error code EACCES npm error syscall mkdir");
+  });
+
+  it("falls back to the last lines when npm printed no error line", () => {
+    expect(npmFailure("one\ntwo\nthree\nfour").reason).toBe("two three four");
   });
 });
