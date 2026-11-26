@@ -82,6 +82,24 @@ const cards: Card[] = [
     comments: [],
   },
   {
+    // videos to compare: two of one size and length and a longer, smaller one
+    id: "c31",
+    kind: "decide",
+    project: "game",
+    task: "990",
+    title: "Keep the new spark trail?",
+    body: "Compare the trail side by side or with the slider in the viewer.",
+    options: ["Keep it", "Back to no trail"],
+    attach: ["/captures/trail-off.mp4", "/captures/trail-on.mp4", "/captures/trail-long.mp4"],
+    media: { captions: ["Trail off", "Trail on", "Trail on, long take"], options: [2, 1, null], compare: [[0, 1, 2]] },
+    from: "Game Director",
+    session: "lead-game",
+    openedAt: at(6),
+    status: "open",
+    answers: [],
+    comments: [],
+  },
+  {
     id: "c6",
     kind: "decide",
     project: "game",
@@ -202,6 +220,10 @@ const media: Record<string, string> = {
   "/captures/halo-now-b.png": swatch("Piggy bank", 300),
   "/captures/halo-ring-b.png": swatch("Piggy bank", 330),
   "/captures/halo-outline-b.png": swatch("Piggy bank", 0),
+  // made by build.mjs with ffmpeg
+  "/captures/trail-off.mp4": "media/trail-off.mp4",
+  "/captures/trail-on.mp4": "media/trail-on.mp4",
+  "/captures/trail-long.mp4": "media/trail-long.mp4",
 };
 
 const toast = makeToast(document.getElementById("toast")!);

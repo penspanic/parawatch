@@ -27,7 +27,7 @@ parawatch ask -p game "Which ending?" -o "Side tank" -o "Top box" -r 2 \
 
 ## Compare in one place
 
-Before and after, on and off, A and B: `--compare "<a>,<b>[,...]"` shows them as one picture with a tab for each. The human flips between them in the same spot, so a small difference shows. In the viewer the zoom stays put while flipping, and videos keep their moment.
+Before and after, on and off, A and B: `--compare "<a>,<b>[,...]"` shows them as one picture with a tab for each. The human flips between them in the same spot, so a small difference shows. In the viewer the zoom stays put while flipping, and videos keep their moment. The viewer can also show them all at once, side by side or as a slider (one laid over the other, with a line to drag between them), with videos playing together and stepping by a frame. That works best when the captures match: the same size, the same framing, and for videos the same start and length.
 
 ```
 parawatch try -p game "Did the trail get better?" \

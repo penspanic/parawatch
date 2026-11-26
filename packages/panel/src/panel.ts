@@ -4,7 +4,7 @@ import { serviceName, siteForPr, siteForRun } from "../../../src/core/sites.js";
 import { inboxReason, newsWords } from "../../../src/core/words.js";
 import { ago, clean, groupRuns, OTHER, type FoldNode, type Group, type RunNode } from "./tree";
 import type { Backend, Card, DeployView, InboxThread, IssueView, Listener, NewsItem, PrView, Reply, Run, Snapshot } from "./types";
-import { openViewer } from "./viewer";
+import { openViewer, type ViewMode } from "./viewer";
 import { runLabel, runLabelText, type RunTitles } from "./runTitle";
 import { ChatPane } from "./chat";
 import { splitInlineList } from "./inlineList";
@@ -1704,6 +1704,19 @@ export class Panel {
         });
         if (!video) media.onclick = () => this.view(order, f, c);
       });
+      // a comparison opens all at once in the viewer, side by side (and from there as a slider)
+      if (members.filter((f) => IMAGE.test(f) || VIDEO.test(f)).length > 1) {
+        const b = el("button", "pw-media-expand pw-media-compare", undefined, frame);
+        this.host.icon(b, "columns-2");
+        b.title = "Compare side by side";
+        b.setAttribute("aria-label", `Compare ${members.map((f) => caption(f) ?? basename(f)).join(", ")} side by side`);
+        b.onclick = (e) => {
+          e.stopPropagation();
+          const l = layers[current];
+          if (l instanceof HTMLVideoElement) l.pause();
+          this.view(order, members[current]!, c, "side");
+        };
+      }
       // a picture opens in the viewer over the window; a video plays where it is and has a button for it
       if (layers.some((l) => l instanceof HTMLVideoElement)) {
         const b = el("button", "pw-media-expand", undefined, frame);
@@ -1733,7 +1746,7 @@ export class Panel {
   }
 
   /** Opens the viewer on `file`, with the other pictures and videos of the same card beside it. */
-  private view(files: string[], file: string, c?: Card): void {
+  private view(files: string[], file: string, c?: Card, mode?: ViewMode): void {
     const all = c?.attach ?? files;
     const at = (f: string) => all.indexOf(f);
     const items = files
@@ -1748,10 +1761,16 @@ export class Panel {
       this.backend.open(file);
       return;
     }
-    openViewer(this.root.ownerDocument, items, start, {
-      icon: (e, name) => this.host.icon(e, name),
-      openExternal: (f) => this.backend.open(f),
-    });
+    openViewer(
+      this.root.ownerDocument,
+      items,
+      start,
+      {
+        icon: (e, name) => this.host.icon(e, name),
+        openExternal: (f) => this.backend.open(f),
+      },
+      { mode },
+    );
   }
 
   /**
