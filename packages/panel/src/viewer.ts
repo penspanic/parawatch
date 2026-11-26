@@ -136,6 +136,7 @@ export function openViewer(doc: Document, items: ViewerItem[], start: number, ho
   const drawCompare = () => {
     if (!cmp) return;
     level.textContent = `${Math.round(cmp.level() * 100)}%`;
+    level.disabled = false;
     zoomOut.disabled = !cmp.canZoomOut();
     zoomIn.disabled = !cmp.canZoomIn();
   };
@@ -146,6 +147,7 @@ export function openViewer(doc: Document, items: ViewerItem[], start: number, ho
     media.style.height = `${nh}px`;
     media.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
     level.textContent = `${Math.round(scale * 100)}%`;
+    level.disabled = false;
     root.classList.toggle("is-zoomed", scale > fit * 1.001);
     zoomOut.disabled = scale <= Math.min(fit, 1) * 0.5 + 1e-6;
     zoomIn.disabled = scale >= MAX_SCALE - 1e-6;
@@ -212,6 +214,8 @@ export function openViewer(doc: Document, items: ViewerItem[], start: number, ho
       );
       drawCompare();
     } else if (item.video) {
+      level.textContent = "";
+      level.disabled = zoomIn.disabled = zoomOut.disabled = true;
       const v = el("video", "pw-viewer-video", stage);
       v.controls = true;
       v.autoplay = !moment || moment.playing;

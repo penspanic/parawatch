@@ -1199,6 +1199,9 @@ button.pw-option.has-media .pw-option-n {
   color: #f2f2f3;
   outline: none;
   animation: pw-viewer-in 140ms ease-out;
+  /* the desktop app drags its window by the title bar under the viewer's buttons: a click there
+     would move the window instead of pressing the button */
+  -webkit-app-region: no-drag;
 }
 .pw-viewer.is-closing {
   animation: pw-viewer-out 120ms ease-in forwards;
@@ -1270,9 +1273,6 @@ button.pw-option.has-media .pw-option-n {
   background: rgba(32, 32, 36, 0.82);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
 }
-.pw-viewer.is-video .pw-viewer-zoom {
-  display: none;
-}
 .pw-viewer-btn,
 .pw-viewer-level {
   display: grid;
@@ -1290,7 +1290,10 @@ button.pw-option.has-media .pw-option-n {
 .pw-viewer-level:hover {
   background: rgba(255, 255, 255, 0.12);
 }
-.pw-viewer-btn:disabled {
+/* a video shown alone does not zoom: its zoom buttons stay in place, off, so the buttons beside
+   them do not move when the viewer goes between pictures and videos */
+.pw-viewer-btn:disabled,
+.pw-viewer-level:disabled {
   opacity: 0.35;
   cursor: default;
   background: transparent;
