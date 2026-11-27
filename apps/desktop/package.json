@@ -1,7 +1,7 @@
 {
   "name": "@parawatch/desktop",
   "productName": "Parawatch",
-  "version": "0.3.36",
+  "version": "0.3.37",
   "private": true,
   "description": "Parawatch as a desktop app: what needs you, what your agents are doing, with notifications and a badge.",
   "license": "MIT",

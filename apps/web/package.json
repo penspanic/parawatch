@@ -1,6 +1,6 @@
 {
   "name": "@parawatch/web",
-  "version": "0.3.36",
+  "version": "0.3.37",
   "private": true,
   "description": "The parawatch panel as a phone web app, reading the shared folder through a relay.",
   "license": "MIT",
