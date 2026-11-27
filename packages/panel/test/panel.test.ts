@@ -178,6 +178,13 @@ describe("panel", () => {
     opts[1]!.dispatchEvent(new Event("mouseleave"));
     expect(shown()).toBe(0);
     expect(cells[1]!.classList.contains("is-dim")).toBe(false);
+
+    // the comparison opens all at once in the viewer; a lone picture has no such button
+    expect(cells[1]!.querySelector(".pw-media-compare")).toBeNull();
+    cells[0]!.querySelector<HTMLButtonElement>(".pw-media-compare")!.click();
+    const viewer = document.querySelector(".pw-viewer")!;
+    expect([...viewer.querySelectorAll(".pw-cmp.is-side .pw-cmp-label")].map((l) => l.textContent)).toEqual(["Now", "2 · Ring removed", "1 · Outline"]);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   });
 
   it("a single picture with a caption shows it under the picture, with its choice", async () => {

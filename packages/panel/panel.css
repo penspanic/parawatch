@@ -1076,6 +1076,10 @@ button.pw-ref.is-missing {
 .pw-media-expand:hover {
   background: rgba(0, 0, 0, 0.75);
 }
+/* beside the button that opens a video larger, when there is one */
+.pw-media-compare:has(~ .pw-media-expand) {
+  right: 36px;
+}
 .pw-media-expand svg {
   width: 14px;
   height: 14px;
@@ -1195,6 +1199,9 @@ button.pw-option.has-media .pw-option-n {
   color: #f2f2f3;
   outline: none;
   animation: pw-viewer-in 140ms ease-out;
+  /* the desktop app drags its window by the title bar under the viewer's buttons: a click there
+     would move the window instead of pressing the button */
+  -webkit-app-region: no-drag;
 }
 .pw-viewer.is-closing {
   animation: pw-viewer-out 120ms ease-in forwards;
@@ -1266,9 +1273,6 @@ button.pw-option.has-media .pw-option-n {
   background: rgba(32, 32, 36, 0.82);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
 }
-.pw-viewer.is-video .pw-viewer-zoom {
-  display: none;
-}
 .pw-viewer-btn,
 .pw-viewer-level {
   display: grid;
@@ -1286,7 +1290,10 @@ button.pw-option.has-media .pw-option-n {
 .pw-viewer-level:hover {
   background: rgba(255, 255, 255, 0.12);
 }
-.pw-viewer-btn:disabled {
+/* a video shown alone does not zoom: its zoom buttons stay in place, off, so the buttons beside
+   them do not move when the viewer goes between pictures and videos */
+.pw-viewer-btn:disabled,
+.pw-viewer-level:disabled {
   opacity: 0.35;
   cursor: default;
   background: transparent;
@@ -1373,6 +1380,246 @@ button.pw-option.has-media .pw-option-n {
   overflow: hidden;
   text-overflow: ellipsis;
   pointer-events: none;
+}
+/* the viewer's ways of showing a comparison: one at a time, side by side, a slider */
+.pw-viewer-modes {
+  display: flex;
+  gap: 2px;
+}
+.pw-viewer-modes[hidden],
+.pw-viewer-sep[hidden] {
+  display: none;
+}
+.pw-viewer-btn.is-on {
+  background: rgba(255, 255, 255, 0.2);
+}
+.pw-viewer.is-compare .pw-viewer-stage {
+  cursor: default;
+}
+
+/* a comparison all at once (compare.ts) */
+.pw-cmp {
+  position: absolute;
+  inset: 60px 16px 46px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pw-viewer.has-nav .pw-cmp {
+  left: 64px;
+  right: 64px;
+}
+.pw-cmp [hidden] {
+  display: none !important;
+}
+.pw-cmp-panes {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-auto-flow: row;
+  gap: 8px;
+}
+.pw-cmp.is-wipe .pw-cmp-panes {
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+}
+.pw-cmp-pane {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  user-select: none;
+  touch-action: none;
+}
+.pw-cmp.is-wipe .pw-cmp-pane {
+  cursor: col-resize;
+}
+.pw-cmp.is-zoomed .pw-cmp-pane {
+  cursor: grab;
+}
+.pw-cmp.is-panning .pw-cmp-pane {
+  cursor: grabbing;
+}
+.pw-cmp-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.pw-cmp-media {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: none;
+  transform-origin: 0 0;
+  opacity: 0;
+}
+video.pw-cmp-media {
+  background: #000;
+}
+.pw-cmp-media.is-ready {
+  opacity: 1;
+}
+.pw-cmp-divider {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 18px;
+  margin-left: -9px;
+  cursor: ew-resize;
+  z-index: 2;
+}
+.pw-cmp-divider::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 8px;
+  width: 2px;
+  background: #fff;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.6);
+}
+.pw-cmp-grip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+.pw-cmp-grip::before,
+.pw-cmp-grip::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  border: 5px solid transparent;
+}
+.pw-cmp-grip::before {
+  left: 3px;
+  border-right: 6px solid #222;
+}
+.pw-cmp-grip::after {
+  right: 3px;
+  border-left: 6px solid #222;
+}
+.pw-cmp.is-sliding .pw-cmp-pane {
+  cursor: ew-resize;
+}
+.pw-cmp-label {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 3;
+  max-width: calc(50% - 16px);
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(20, 20, 24, 0.75);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.pw-cmp.is-side .pw-cmp-label {
+  max-width: calc(100% - 16px);
+}
+.pw-cmp-label.is-right {
+  left: auto;
+  right: 8px;
+}
+.pw-cmp-note {
+  flex: none;
+  text-align: center;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+.pw-cmp-transport {
+  flex: none;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: min(760px, 100%);
+  padding: 4px 8px;
+  border-radius: 10px;
+  background: rgba(32, 32, 36, 0.82);
+}
+.pw-cmp-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.pw-cmp-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.pw-cmp-btn svg {
+  width: 16px;
+  height: 16px;
+}
+.pw-cmp-btn.is-loop:not(.is-on) {
+  opacity: 0.45;
+}
+.pw-cmp-time {
+  flex: none;
+  padding: 0 8px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pw-cmp-scrub {
+  flex: 1;
+  min-width: 60px;
+  accent-color: #fff;
+}
+.pw-cmp-pick {
+  flex: none;
+  align-self: center;
+  display: flex;
+  gap: 4px;
+  max-width: 100%;
+  padding: 3px;
+  border-radius: 9px;
+  background: rgba(32, 32, 36, 0.72);
+}
+.pw-cmp-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pw-cmp-tab:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+.pw-cmp-tab.is-on {
+  background: #fff;
+  color: #111;
+}
+.pw-cmp-side {
+  font-size: 10px;
+  font-weight: 700;
+}
+.pw-cmp-side:empty {
+  display: none;
 }
 @media (prefers-reduced-motion: reduce) {
   .pw-viewer,
