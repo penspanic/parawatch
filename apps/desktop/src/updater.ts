@@ -19,6 +19,8 @@ let listener: (s: UpdateState) => void = () => {};
 let timer: NodeJS.Timeout | undefined;
 let first: NodeJS.Timeout | undefined;
 let wired = false;
+/** The check under way, if any. */
+let checking: Promise<void> | undefined;
 /** The version an earlier restart failed to install; its next update-downloaded is flagged. */
 let unfinished: string | undefined;
 /**
@@ -132,13 +134,24 @@ export async function checkNow(): Promise<UpdateState> {
   // a ready update is checked again: a newer release may have come out since it was downloaded,
   // and restarting into the older one would only mean a second update right after
   if (state.status === "downloading" || state.status === "checking") return state;
-  wire();
-  try {
-    await autoUpdater.checkForUpdates();
-  } catch (err) {
-    // the error event has set the state already
-    logger.warn("update check threw:", err);
+  // a ready update stays "ready" while it is checked again, so a second call meanwhile joins the
+  // check under way instead of asking GitHub again and handing the file to Squirrel once more
+  if (!checking) {
+    wire();
+    checking = autoUpdater
+      .checkForUpdates()
+      .then(
+        () => {},
+        (err: unknown) => {
+          // the error event has set the state already
+          logger.warn("update check threw:", err);
+        },
+      )
+      .finally(() => {
+        checking = undefined;
+      });
   }
+  await checking;
   return state;
 }
 
@@ -180,9 +193,13 @@ export async function freshestBeforeRestart(waitMs = 15_000): Promise<UpdateStat
   return state;
 }
 
+/** Set once the app has asked to quit and install; asking again would only quit again. */
+let installing = false;
+
 /** Quit and open the new version. */
 export function installNow(): void {
-  if (state.status !== "ready") return;
+  if (state.status !== "ready" || installing) return;
+  installing = true;
   logger.info(`restarting into ${state.version}`);
   setImmediate(() => autoUpdater.quitAndInstall(false, true));
 }

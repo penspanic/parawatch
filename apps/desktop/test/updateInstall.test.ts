@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { clearMarker, INSTALL_WINDOW_MS, installingNotice, interruptedNotice, notPreparedNotice, parseMarker, readMarker, shipItRunning, startState, writeMarker } from "../src/updateInstall.js";
+import { clearMarker, INSTALL_WINDOW_MS, installingNotice, interruptedNotice, notPreparedNotice, oneAtATime, parseMarker, readMarker, shipItRunning, startState, writeMarker } from "../src/updateInstall.js";
 import { updateLabel } from "../src/rules.js";
 
 const at = "2026-11-10T12:00:00.000Z";
@@ -76,5 +76,35 @@ describe("notPreparedNotice", () => {
     const n = notPreparedNotice("0.3.19", "the update was still being unpacked");
     expect(n.title).toBe("0.3.19 could not be installed yet");
     expect(n.body).toContain("stays open: the update was still being unpacked");
+  });
+});
+
+describe("oneAtATime", () => {
+  it("lets calls made during a run join it, and runs again after", async () => {
+    let runs = 0;
+    let finish = () => {};
+    const restart = oneAtATime(async () => {
+      runs++;
+      await new Promise<void>((r) => (finish = r));
+    });
+    const calls = [restart(), restart(), restart()];
+    expect(runs).toBe(1);
+    finish();
+    await Promise.all(calls);
+    const next = restart();
+    expect(runs).toBe(2);
+    finish();
+    await next;
+  });
+
+  it("runs again after a run that failed", async () => {
+    let runs = 0;
+    const f = oneAtATime(async () => {
+      runs++;
+      throw new Error("no");
+    });
+    await expect(f()).rejects.toThrow("no");
+    await expect(f()).rejects.toThrow("no");
+    expect(runs).toBe(2);
   });
 });

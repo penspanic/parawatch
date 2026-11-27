@@ -80,6 +80,25 @@ export function interruptedNotice(version: string): { title: string; body: strin
   return { title: `${version} was not installed`, body: "The last restart did not finish. Restart to Update to try again." };
 }
 
+/**
+ * Runs `f` one call at a time: a call while a run is going on joins that run instead of starting
+ * another. Restart to Update is asked for from several places (the tray, the menu, the settings
+ * button, `parawatch app update`, a download that finishes after the human asked), and each run
+ * checks GitHub and waits for Squirrel, so calls that piled up meanwhile each showed the installing
+ * notice and each checked GitHub again.
+ */
+export function oneAtATime(f: () => Promise<void>): () => Promise<void> {
+  let running: Promise<void> | undefined;
+  return () => {
+    if (!running) {
+      running = f().finally(() => {
+        running = undefined;
+      });
+    }
+    return running;
+  };
+}
+
 export function readMarker(dir: string): InstallMarker | undefined {
   try {
     return parseMarker(fs.readFileSync(path.join(dir, MARKER_FILE), "utf8"));

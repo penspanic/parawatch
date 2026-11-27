@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Restart to Update shows "Installing" once and checks GitHub once. Asks to restart that came in while one was under way (the restart looks for a newer release and waits for the update to be unpacked first) each ran on their own, so the notice came up many times and the burst of checks ran into GitHub's rate limit. They now join the restart under way, and checks made at the same time share one.
+
 ## 0.3.37 (2026-11-27)
 
 - A comparison can be seen all at once in the viewer: side by side, or as a slider that lays one over the other with a line to drag between them. The buttons at the top (or 1, 2 and 3) switch between one at a time, side by side and the slider, and the viewer keeps the choice. Side by side picks rows, a column or a grid by the window's shape. The zoom and the spot are shared, so the same part of each stays in view, and pictures of different sizes are drawn to one size with a note that they differ. Videos play on one clock: the longest leads, the others follow it within a few milliseconds and hold their last frame when they are shorter, and one bar plays, pauses, moves, loops and steps them by a frame (Space, comma and period). With three or more, the slider shows two and the strip under it picks which. A button on a comparison in the card opens it side by side.
