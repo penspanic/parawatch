@@ -34,7 +34,7 @@ import { Chats } from "./chat.js";
 import { ChatHost, REMOTE_OWNER } from "./chatHost.js";
 import { RemoteChats } from "./chatRemote.js";
 import { checkNow, freshestBeforeRestart, installNow, preparedForInstall, RELEASES_URL, resumeUnfinished, scheduleUpdates, stopUpdates, updateState } from "./updater.js";
-import { clearMarker, installingNotice, interruptedNotice, notPreparedNotice, readMarker, shipItRunning, startState, stillInstallingNotice, writeMarker } from "./updateInstall.js";
+import { clearMarker, installingNotice, interruptedNotice, notPreparedNotice, oneAtATime, readMarker, shipItRunning, startState, stillInstallingNotice, writeMarker } from "./updateInstall.js";
 
 const MEDIA_SCHEME = "pwfile";
 const MAX_MEDIA_BYTES = 200 * 1024 * 1024;
@@ -415,10 +415,16 @@ function notifyAndWait(alert: { title: string; body: string }): Promise<void> {
 
 /**
  * Restart to Update. The install takes about half a minute with nothing on screen, and opening the
- * app again meanwhile makes it fail, so say so first and leave a marker for the next start.
+ * app again meanwhile makes it fail, so say so first and leave a marker for the next start. Asks
+ * that come in while one is going on join it, and none starts once the app is quitting to install.
  */
-async function restartToUpdate(): Promise<void> {
-  if (updateState().status !== "ready") return;
+const restartToUpdate = oneAtATime(restartToUpdateOnce);
+
+/** Set once the app has said it is installing and quit for it. */
+let quittingToInstall = false;
+
+async function restartToUpdateOnce(): Promise<void> {
+  if (quittingToInstall || updateState().status !== "ready") return;
   const u = await freshestBeforeRestart();
   if (u.status !== "ready" || !u.version) {
     // a newer release came out after the last download: get it, then restart into it
@@ -434,6 +440,7 @@ async function restartToUpdate(): Promise<void> {
     await notifyAndWait(notPreparedNotice(u.version, notReady));
     return;
   }
+  quittingToInstall = true;
   writeMarker(app.getPath("userData"), u.version);
   logger.info(`quitting to install ${u.version}`);
   await notifyAndWait(installingNotice(u.version));
@@ -522,6 +529,8 @@ function onUpdate(s: UpdateState): void {
   if (s.status === "latest") clearUnfinishedMarker();
   if (s.status === "error") restartWhenReady = false;
   if (s.status === "ready" && restartWhenReady) {
+    // once: every check while ready says ready again, and the restart itself checks once more
+    restartWhenReady = false;
     void restartToUpdate();
     return;
   }

@@ -55,6 +55,9 @@ async function load() {
 }
 
 beforeEach(() => {
+  // each test loads updater.js afresh and wires it again to the same stand-ins
+  updater.emitter?.removeAllListeners();
+  updater.native?.removeAllListeners();
   Object.assign(feed, { latest: "0.3.9", cached: undefined, current: "0.3.8", checks: 0, installs: [], squirrel: "ok", squirrelMs: 5 });
 });
 
@@ -149,6 +152,26 @@ describe("updater", () => {
     const u = await load();
     await u.checkNow();
     expect(await u.preparedForInstall(20)).toBe("the update was still being unpacked");
+  });
+
+  it("checks that start while one is under way join it instead of asking GitHub again", async () => {
+    const u = await load();
+    await u.checkNow();
+    feed.checks = 0;
+    const all = await Promise.all([u.checkNow(), u.checkNow(), u.freshestBeforeRestart(), u.freshestBeforeRestart()]);
+    expect(feed.checks).toBe(1);
+    for (const s of all) expect(s).toMatchObject({ status: "ready", version: "0.3.9" });
+    await u.checkNow();
+    expect(feed.checks).toBe(2);
+  });
+
+  it("asks to quit and install once, however often it is told to", async () => {
+    const u = await load();
+    await u.checkNow();
+    u.installNow();
+    u.installNow();
+    await new Promise((r) => setImmediate(r));
+    expect(feed.installs).toEqual(["0.3.9"]);
   });
 
   it("is prepared at once once Squirrel is done", async () => {
