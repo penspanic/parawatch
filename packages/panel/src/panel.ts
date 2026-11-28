@@ -743,7 +743,7 @@ export class Panel {
     const news = (s?.news ?? []).slice(0, NEWS_SHOWN).map((n) => [n.key, n.change, n.at, n.sessionTitle]);
     // the lead help lists the project's sessions
     const leaders = this.helpOpen.size ? (s?.runs ?? []).filter((r) => r.kind === "session").map((r) => [r.id, this.nameOf(r), r.state, r.project]) : [];
-    return JSON.stringify([cards.map((c) => [c.id, c.status, c.kind, c.title, c.since, c.from, c.session, c.answers.length, c.comments.length, c.closedAt, c.lead, c.unrouted]), asks, prs, ls, [...this.busy], [...this.reopened], [...this.helpOpen], leaders, issues, this.showAside, inbox, news, deploys, [...this.deployConfirm], [...this.deploySending]]);
+    return JSON.stringify([cards.map((c) => [c.id, c.status, c.kind, c.title, c.since, c.from, c.session, c.answers.length, c.comments.length, c.closedAt, c.lead, c.unrouted, c.missing, c.away]), asks, prs, ls, [...this.busy], [...this.reopened], [...this.helpOpen], leaders, issues, this.showAside, inbox, news, deploys, [...this.deployConfirm], [...this.deploySending]]);
   }
 
   private renderCards(now: number): void {
