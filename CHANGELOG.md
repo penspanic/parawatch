@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A picture or file that reaches this machine after its card was drawn now shows on the card. The card stayed as it was first drawn, saying the file was not here, until something else on it changed.
+
 ## 0.3.38 (2026-11-27)
 
 - Restart to Update shows "Installing" once and checks GitHub once. Asks to restart that came in while one was under way (the restart looks for a newer release and waits for the update to be unpacked first) each ran on their own, so the notice came up many times and the burst of checks ran into GitHub's rate limit. They now join the restart under way, and checks made at the same time share one.

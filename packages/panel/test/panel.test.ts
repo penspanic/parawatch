@@ -205,6 +205,16 @@ describe("panel", () => {
     expect(notices.at(-1)).toMatch(/only on pc/);
   });
 
+  it("a picture that arrives after the card is drawn shows once it is here", async () => {
+    backend.mediaUrl.mockImplementation(async (f: string) => `blob:${f}`);
+    const f = "/Users/me/agent-sync/shared/game/after.png";
+    const p = mount(snapshot({ cards: [card({ id: "pc-c2", kind: "try", title: "Better?", dev: "pc", attach: [f], missing: [f] })] }));
+    expect(root.querySelector(".pw-file.is-missing")?.textContent).toBe("after.png · not on this machine yet");
+    p.update(snapshot({ cards: [card({ id: "pc-c2", kind: "try", title: "Better?", dev: "pc", attach: [f] })] }));
+    expect(root.querySelector(".pw-file.is-missing")).toBeNull();
+    await vi.waitFor(() => expect(root.querySelector<HTMLImageElement>(".pw-media-img")?.src).toBe(`blob:${f}`));
+  });
+
   it("answered cards wait on the agent; those no session gets have their own group and a Help button", async () => {
     const answered = { status: "answered" as const, answers: [{ seq: 2, at: ago(1), by: "human", choice: 1 }], options: ["Yes"] };
     mount(
