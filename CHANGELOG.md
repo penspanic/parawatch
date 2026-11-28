@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.39 (2026-11-28)
 
 - A picture or file that reaches this machine after its card was drawn now shows on the card. The card stayed as it was first drawn, saying the file was not here, until something else on it changed.
 
